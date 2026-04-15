@@ -13,7 +13,6 @@
 #pragma once
 
 #include "Equation.hpp"
-#include <iostream>
 #include <map>
 
 class EquationDifferentielle : public Equation {

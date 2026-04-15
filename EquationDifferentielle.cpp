@@ -11,6 +11,7 @@
  */
 
 #include "EquationDifferentielle.hpp"
+#include <iostream>
 
 EquationDifferentielle::EquationDifferentielle() {}
 
