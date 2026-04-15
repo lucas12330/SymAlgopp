@@ -13,16 +13,18 @@
 #pragma once
 
 #include "Equation.hpp"
+#include <iostream>
+#include <map>
 
 class EquationDifferentielle : public Equation {
 public:
-    EquationDifferentielle();
-    ~EquationDifferentielle() override = default;
+  EquationDifferentielle();
+  ~EquationDifferentielle() override = default;
 
-    /*
-     * TODO: Surcharger les méthodes de l'interface et ajouter les attributs
-     * propres aux EDO (ex: ordre de la dérivée, variables intégrées).
-     */
+  /*
+   * TODO: Surcharger les méthodes de l'interface et ajouter les attributs
+   * propres aux EDO (ex: ordre de la dérivée, variables intégrées).
+   */
+private:
+  std::map<unsigned int, double> m_terme;
 };
-
-
