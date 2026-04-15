@@ -27,4 +27,6 @@ public:
    * : virtual double eval(double x) const = 0; virtual Equation* derivee()
    * const = 0;
    */
+  virtual double eval(double x) const = 0;
+  virtual Equation *derivee() { return nullptr; }
 };

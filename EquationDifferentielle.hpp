@@ -20,6 +20,12 @@ class EquationDifferentielle : public Equation {
 public:
   EquationDifferentielle();
   ~EquationDifferentielle() override = default;
+  double eval(double x) const override;
+  
+  // Fonction d'ajout des terme et coefficient.
+  void ajouterTerme(unsigned int rang, double coeff);
+  // Fonction simple d'affichage
+  void afficher() const;
 
   /*
    * TODO: Surcharger les méthodes de l'interface et ajouter les attributs
