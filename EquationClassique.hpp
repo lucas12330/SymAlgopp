@@ -1,28 +1,40 @@
 /**
  * @file EquationClassique.hpp
- * @author Lucas Bezanilla
- * @date 2026-04-14
+ * @author Lucas Bezanilla (MODIFIED)
  * @brief Fichier d'en-tête pour la sous-classe EquationClassique.
  *
- * Projet SymAlgo++ :
- * Cette classe hérite de la classe de base Equation. Elle a vocation à
- * représenter et manipuler des équations algébriques ou fonctions standards
- * (ex: polynômes, fonctions trigonométriques).
- * Elle implémente les méthodes héritées de façon spécifique à ces cas de
- * figure.
+ * Cette classe a été restructurée pour opérer comme un wrapper (manipulateur)
+ * dynamique autour d'un Abstract Syntax Tree (ASTNode), ce qui lui accorde
+ * la résolution symbolique.
  */
 
 #pragma once
 
 #include "Equation.hpp"
+#include "ASTNode.hpp"
 
 class EquationClassique : public Equation {
 public:
-  EquationClassique();
-  ~EquationClassique() override = default;
+    // Construit l'équation autour de son arborescence
+    explicit EquationClassique(ExprPtr racine);
+    
+    // Constructeur par défaut (zéro)
+    EquationClassique();
+    
+    ~EquationClassique() override = default;
 
-  /*
-   * TODO: Implémenter et surcharger les méthodes virtuelles avec "override"
-   * ex: double eval(double x) const override;
-   */
+    // Surcharge de l'interface parente (évaluation simple)
+    double eval(double x) const override;
+    
+    // Génère formellement la dérivée (retourne un nouvel objet dérivé alloué)
+    EquationClassique* derivee() override;
+
+    // Méthode propre pour forcer la factorisation et simplification de l'arbre
+    void simplifier();
+
+    // Affiche l'équation symbolique
+    void afficher() const;
+
+private:
+    ExprPtr m_racine;
 };
