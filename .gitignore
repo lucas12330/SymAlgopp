@@ -1,2 +1,5 @@
-Exec
-
+Exec/
+build/
+bin/
+*.o
+*.out

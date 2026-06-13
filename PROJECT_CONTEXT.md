@@ -40,5 +40,16 @@ L'intégration de bibliothèques tierces doit être justifiée par un besoin d'e
 * **Paradigmes C++** : Utilisez du C++ moderne. Pensez à sécuriser la mémoire (utilisation pertinente de `std::unique_ptr` ou `std::shared_ptr` dans la hiérarchie polymorphique), utilisez `const` par défaut lorsque c'est pertinent, et le passage par référence constante pour les objets lourds.
 * **Extensibilité** : La conception doit permettre l'ajout futur de nouvelles familles d'équations avec un minimum de modifications du code existant.
 
+## 6. Gestion du Dépôt Git
+Afin de maintenir un dépôt propre et une collaboration fluide, les directives suivantes doivent être suivies :
+* **Stratégie de Branches** : Travailler sur des branches de fonctionnalités dédiées (ex: `feature/nom-de-la-tache`). Ne jamais commit ou push directement sur la branche principale `main`.
+* **Convention de Commits (en français)** : Utiliser des messages de commit basés sur les standards de l'industrie :
+  * `feat: ...` pour l'ajout de nouvelles fonctionnalités.
+  * `fix: ...` pour la correction de bogues.
+  * `refactor: ...` pour la réorganisation ou l'amélioration du code existant.
+  * `docs: ...` pour les modifications de documentation.
+  * `chore: ...` pour la maintenance des outils et fichiers de configuration (ex: Makefile, .gitignore).
+* **Interdiction des fichiers générés** : Ne jamais commiter de fichiers objets (`.o`), de binaires compilés ou de répertoires générés lors du build (`build/`, `bin/`). Ces fichiers doivent être exclus via le fichier `.gitignore`.
+
 ---
 *Note aux Agents : Lisez ce document avant de modifier ou lire l'architecture du projet.*
