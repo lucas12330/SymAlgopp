@@ -17,19 +17,41 @@
 
 class EquationDifferentielle : public Equation {
 public:
+  /*
+   * Nom : EquationDifferentielle
+   * Description : Constructeur par défaut de l'équation différentielle.
+   * Utilisation : EquationDifferentielle eq_diff;
+   */
   EquationDifferentielle();
-  ~EquationDifferentielle() override = default;
-  double eval(double x) const override;
-  
-  // Fonction d'ajout des terme et coefficient.
-  void ajouterTerme(unsigned int rang, double coeff);
-  // Fonction simple d'affichage
-  void afficher() const;
 
   /*
-   * TODO: Surcharger les méthodes de l'interface et ajouter les attributs
-   * propres aux EDO (ex: ordre de la dérivée, variables intégrées).
+   * Nom : ~EquationDifferentielle
+   * Description : Destructeur par défaut.
+   * Utilisation : Appelé automatiquement à la destruction de l'objet.
    */
+  ~EquationDifferentielle() override = default;
+
+  /*
+   * Nom : eval
+   * Description : Evalue l'équation différentielle pour une valeur de x donnée.
+   * Utilisation : double resultat = eq_diff.eval(valeur);
+   */
+  double eval(double x) const override;
+  
+  /*
+   * Nom : ajouterTerme
+   * Description : Ajoute un terme à l'équation différentielle selon le rang de dérivation et son coefficient.
+   * Utilisation : eq_diff.ajouterTerme(2, 5.0); // Ajoute 5.0 * y''
+   */
+  void ajouterTerme(unsigned int rang, double coeff);
+
+  /*
+   * Nom : afficher
+   * Description : Fonction simple d'affichage sur la sortie standard.
+   * Utilisation : eq_diff.afficher();
+   */
+  void afficher() const;
+
 private:
   std::map<unsigned int, double> m_terme;
 };

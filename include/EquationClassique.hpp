@@ -15,24 +15,53 @@
 
 class EquationClassique : public Equation {
 public:
-    // Construit l'équation autour de son arborescence
+    /*
+     * Nom : EquationClassique
+     * Description : Construit l'équation autour de son arborescence.
+     * Utilisation : EquationClassique eq(racine_ast);
+     */
     explicit EquationClassique(ExprPtr racine);
     
-    // Constructeur par défaut (zéro)
+    /*
+     * Nom : EquationClassique
+     * Description : Constructeur par défaut (initialise à zéro).
+     * Utilisation : EquationClassique eq;
+     */
     EquationClassique();
     
+    /*
+     * Nom : ~EquationClassique
+     * Description : Destructeur par défaut.
+     * Utilisation : Appelé automatiquement à la destruction de l'objet.
+     */
     ~EquationClassique() override = default;
 
-    // Surcharge de l'interface parente (évaluation simple)
+    /*
+     * Nom : eval
+     * Description : Surcharge de l'interface parente, évalue l'équation pour une valeur x donnée via l'arbre AST.
+     * Utilisation : double resultat = eq.eval(valeur);
+     */
     double eval(double x) const override;
     
-    // Génère formellement la dérivée (retourne un nouvel objet dérivé alloué)
+    /*
+     * Nom : derivee
+     * Description : Génère formellement la dérivée et retourne un nouvel objet dérivé alloué.
+     * Utilisation : EquationClassique* eq_derivee = eq.derivee();
+     */
     EquationClassique* derivee() override;
 
-    // Méthode propre pour forcer la factorisation et simplification de l'arbre
+    /*
+     * Nom : simplifier
+     * Description : Méthode propre pour forcer la factorisation et simplification de l'arbre.
+     * Utilisation : eq.simplifier();
+     */
     void simplifier();
 
-    // Affiche l'équation symbolique
+    /*
+     * Nom : afficher
+     * Description : Affiche l'équation symbolique sur la sortie standard.
+     * Utilisation : eq.afficher();
+     */
     void afficher() const;
 
 private:

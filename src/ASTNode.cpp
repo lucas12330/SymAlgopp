@@ -2,7 +2,11 @@
 #include <cmath>
 #include <iostream>
 
-// Helper interne pour la factorisation de type a*U + b*U
+/*
+ * Nom : extractCoeff
+ * Description : Helper interne pour la factorisation de type a*U + b*U. Modifie coeff et u passés en référence.
+ * Utilisation : double c; ExprPtr u; extractCoeff(expr, c, u);
+ */
 void extractCoeff(ExprPtr e, double& coeff, ExprPtr& u) {
     auto mult = std::dynamic_pointer_cast<Multiplication>(e);
     if (mult) {
@@ -22,35 +26,149 @@ void extractCoeff(ExprPtr e, double& coeff, ExprPtr& u) {
 }
 
 // ============== CONSTANTE ==================
+
+/*
+ * Nom : Constante
+ * Description : Constructeur de constante qui stocke la valeur passée.
+ * Utilisation : Constante c(3.14);
+ */
 Constante::Constante(double valeur) : m_valeur(valeur) {}
+
+/*
+ * Nom : eval
+ * Description : Renvoie la valeur de la constante, ignore x.
+ * Utilisation : double val = c.eval(x);
+ */
 double Constante::eval(double) const { return m_valeur; }
+
+/*
+ * Nom : derivee
+ * Description : La dérivée d'une constante vaut 0. Renvoie un noeud Constante 0.
+ * Utilisation : ExprPtr d = c.derivee();
+ */
 ExprPtr Constante::derivee() const { return cst(0.0); }
+
+/*
+ * Nom : simplifier
+ * Description : Ne simplifie rien, renvoie une copie d'elle-même.
+ * Utilisation : ExprPtr simp = c.simplifier();
+ */
 ExprPtr Constante::simplifier() const { return clone(); }
+
+/*
+ * Nom : afficher
+ * Description : Ecrit la valeur numérique sur le flux.
+ * Utilisation : c.afficher(std::cout);
+ */
 void Constante::afficher(std::ostream& os) const { os << m_valeur; }
+
+/*
+ * Nom : clone
+ * Description : Renvoie un nouveau noeud constante avec la même valeur.
+ * Utilisation : ExprPtr copie = c.clone();
+ */
 ExprPtr Constante::clone() const { return cst(m_valeur); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est une constante et possède la même valeur aux erreurs flottantes près.
+ * Utilisation : bool eq = c.estEgal(autre);
+ */
 bool Constante::estEgal(const ASTNode& autre) const {
     return autre.estConstante() && std::abs(autre.getValeurConstante() - m_valeur) < 1e-9;
 }
 
 // ============== VARIABLE ==================
+
+/*
+ * Nom : Variable
+ * Description : Constructeur de variable qui l'initialise avec le nom donné.
+ * Utilisation : Variable v("t");
+ */
 Variable::Variable(const std::string& nom) : m_nom(nom) {}
+
+/*
+ * Nom : eval
+ * Description : Renvoie la valeur x, assumant que la variable est l'inconnue d'évaluation.
+ * Utilisation : double val = v.eval(x);
+ */
 double Variable::eval(double x) const { return x; }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée de x qui est 1.
+ * Utilisation : ExprPtr d = v.derivee();
+ */
 ExprPtr Variable::derivee() const { return cst(1.0); }
+
+/*
+ * Nom : simplifier
+ * Description : Ne simplifie rien, renvoie une copie.
+ * Utilisation : ExprPtr simp = v.simplifier();
+ */
 ExprPtr Variable::simplifier() const { return clone(); }
+
+/*
+ * Nom : afficher
+ * Description : Imprime le nom de la variable.
+ * Utilisation : v.afficher(std::cout);
+ */
 void Variable::afficher(std::ostream& os) const { os << m_nom; }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de la variable avec le même nom.
+ * Utilisation : ExprPtr copie = v.clone();
+ */
 ExprPtr Variable::clone() const { return var(m_nom); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est une variable portant le même nom.
+ * Utilisation : bool eq = v.estEgal(autre);
+ */
 bool Variable::estEgal(const ASTNode& autre) const {
     const Variable* v = dynamic_cast<const Variable*>(&autre);
     return v != nullptr && v->m_nom == m_nom;
 }
 
 // ============== OP Binaire Base ==================
+
+/*
+ * Nom : OperateurBinaire
+ * Description : Initialise les sous-arbres gauche et droite d'un opérateur.
+ * Utilisation : Appelé par les classes dérivées.
+ */
 OperateurBinaire::OperateurBinaire(ExprPtr gauche, ExprPtr droite) : m_gauche(gauche), m_droite(droite) {}
 
 // ============== ADDITION ==================
+
+/*
+ * Nom : Addition
+ * Description : Constructeur de l'addition.
+ * Utilisation : Addition add(gauche, droite);
+ */
 Addition::Addition(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue chaque opérande puis les additionne.
+ * Utilisation : double val = add.eval(x);
+ */
 double Addition::eval(double x) const { return m_gauche->eval(x) + m_droite->eval(x); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie un noeud Addition des dérivées de chaque opérande.
+ * Utilisation : ExprPtr d = add.derivee();
+ */
 ExprPtr Addition::derivee() const { return m_gauche->derivee() + m_droite->derivee(); }
+
+/*
+ * Nom : simplifier
+ * Description : Simplifie les termes constants, supprime les zéros inutiles, et factorise a*U + b*U en (a+b)*U.
+ * Utilisation : ExprPtr simp = add.simplifier();
+ */
 ExprPtr Addition::simplifier() const {
     auto g = m_gauche->simplifier();
     auto d = m_droite->simplifier();
@@ -69,10 +187,28 @@ ExprPtr Addition::simplifier() const {
     
     return std::make_shared<Addition>(g, d);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche (gauche + droite).
+ * Utilisation : add.afficher(std::cout);
+ */
 void Addition::afficher(std::ostream& os) const {
     os << "("; m_gauche->afficher(os); os << " + "; m_droite->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de l'addition et de ses enfants.
+ * Utilisation : ExprPtr copie = add.clone();
+ */
 ExprPtr Addition::clone() const { return std::make_shared<Addition>(m_gauche->clone(), m_droite->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est la même addition (tient compte de la commutativité).
+ * Utilisation : bool eq = add.estEgal(autre);
+ */
 bool Addition::estEgal(const ASTNode& autre) const {
     const Addition* a = dynamic_cast<const Addition*>(&autre);
     if (!a) return false;
@@ -81,9 +217,33 @@ bool Addition::estEgal(const ASTNode& autre) const {
 }
 
 // ============== SOUSTRACTION ==================
+
+/*
+ * Nom : Soustraction
+ * Description : Constructeur de la soustraction.
+ * Utilisation : Soustraction sub(gauche, droite);
+ */
 Soustraction::Soustraction(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue chaque opérande puis effectue gauche - droite.
+ * Utilisation : double val = sub.eval(x);
+ */
 double Soustraction::eval(double x) const { return m_gauche->eval(x) - m_droite->eval(x); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie un noeud Soustraction des dérivées de chaque opérande.
+ * Utilisation : ExprPtr d = sub.derivee();
+ */
 ExprPtr Soustraction::derivee() const { return m_gauche->derivee() - m_droite->derivee(); }
+
+/*
+ * Nom : simplifier
+ * Description : Simplifie les termes constants, supprime -0 et factorise a*U - b*U en (a-b)*U.
+ * Utilisation : ExprPtr simp = sub.simplifier();
+ */
 ExprPtr Soustraction::simplifier() const {
     auto g = m_gauche->simplifier();
     auto d = m_droite->simplifier();
@@ -101,21 +261,63 @@ ExprPtr Soustraction::simplifier() const {
     
     return std::make_shared<Soustraction>(g, d);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche (gauche - droite).
+ * Utilisation : sub.afficher(std::cout);
+ */
 void Soustraction::afficher(std::ostream& os) const {
     os << "("; m_gauche->afficher(os); os << " - "; m_droite->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de la soustraction et de ses enfants.
+ * Utilisation : ExprPtr copie = sub.clone();
+ */
 ExprPtr Soustraction::clone() const { return std::make_shared<Soustraction>(m_gauche->clone(), m_droite->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est la même soustraction exacte.
+ * Utilisation : bool eq = sub.estEgal(autre);
+ */
 bool Soustraction::estEgal(const ASTNode& autre) const {
     const Soustraction* a = dynamic_cast<const Soustraction*>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
 // ============== MULTIPLICATION ==================
+
+/*
+ * Nom : Multiplication
+ * Description : Constructeur de la multiplication.
+ * Utilisation : Multiplication mul(gauche, droite);
+ */
 Multiplication::Multiplication(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue chaque opérande puis effectue gauche * droite.
+ * Utilisation : double val = mul.eval(x);
+ */
 double Multiplication::eval(double x) const { return m_gauche->eval(x) * m_droite->eval(x); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée du produit : u'v + uv'.
+ * Utilisation : ExprPtr d = mul.derivee();
+ */
 ExprPtr Multiplication::derivee() const {
     return (m_gauche->derivee() * m_droite) + (m_gauche * m_droite->derivee());
 }
+
+/*
+ * Nom : simplifier
+ * Description : Evalue les constantes, simplifie les multiplications par 0 ou 1. Place les constantes à gauche.
+ * Utilisation : ExprPtr simp = mul.simplifier();
+ */
 ExprPtr Multiplication::simplifier() const {
     auto g = m_gauche->simplifier();
     auto d = m_droite->simplifier();
@@ -132,10 +334,28 @@ ExprPtr Multiplication::simplifier() const {
     }
     return std::make_shared<Multiplication>(g, d);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche gauche * droite.
+ * Utilisation : mul.afficher(std::cout);
+ */
 void Multiplication::afficher(std::ostream& os) const {
     m_gauche->afficher(os); os << " * "; m_droite->afficher(os);
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de la multiplication et de ses enfants.
+ * Utilisation : ExprPtr copie = mul.clone();
+ */
 ExprPtr Multiplication::clone() const { return std::make_shared<Multiplication>(m_gauche->clone(), m_droite->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est une multiplication identique (commutativité acceptée).
+ * Utilisation : bool eq = mul.estEgal(autre);
+ */
 bool Multiplication::estEgal(const ASTNode& autre) const {
     const Multiplication* a = dynamic_cast<const Multiplication*>(&autre);
     if (!a) return false;
@@ -144,13 +364,37 @@ bool Multiplication::estEgal(const ASTNode& autre) const {
 }
 
 // ============== DIVISION ==================
+
+/*
+ * Nom : Division
+ * Description : Constructeur de la division.
+ * Utilisation : Division div(gauche, droite);
+ */
 Division::Division(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue chaque opérande puis effectue gauche / droite.
+ * Utilisation : double val = div.eval(x);
+ */
 double Division::eval(double x) const { return m_gauche->eval(x) / m_droite->eval(x); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée du quotient : (u'v - uv') / v^2.
+ * Utilisation : ExprPtr d = div.derivee();
+ */
 ExprPtr Division::derivee() const { // (u'v - uv') / v^2
     auto num = (m_gauche->derivee() * m_droite) - (m_gauche * m_droite->derivee());
     auto den = m_droite * m_droite;
     return num / den;
 }
+
+/*
+ * Nom : simplifier
+ * Description : Evalue les constantes, simplifie 0/u, u/1, et u/u.
+ * Utilisation : ExprPtr simp = div.simplifier();
+ */
 ExprPtr Division::simplifier() const {
     auto g = m_gauche->simplifier();
     auto d = m_droite->simplifier();
@@ -161,18 +405,54 @@ ExprPtr Division::simplifier() const {
     if (g->estEgal(*d)) return cst(1.0);
     return std::make_shared<Division>(g, d);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche (gauche / droite).
+ * Utilisation : div.afficher(std::cout);
+ */
 void Division::afficher(std::ostream& os) const {
     os << "("; m_gauche->afficher(os); os << " / "; m_droite->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de la division et de ses enfants.
+ * Utilisation : ExprPtr copie = div.clone();
+ */
 ExprPtr Division::clone() const { return std::make_shared<Division>(m_gauche->clone(), m_droite->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est la même division exacte.
+ * Utilisation : bool eq = div.estEgal(autre);
+ */
 bool Division::estEgal(const ASTNode& autre) const {
     const Division* a = dynamic_cast<const Division*>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
 // ============== PUISSANCE ==================
+
+/*
+ * Nom : Puissance
+ * Description : Constructeur de la puissance (base^exposant).
+ * Utilisation : Puissance p(base, exposant);
+ */
 Puissance::Puissance(ExprPtr base, ExprPtr exposant) : OperateurBinaire(base, exposant) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue la base élevée à l'exposant avec pow().
+ * Utilisation : double val = p.eval(x);
+ */
 double Puissance::eval(double x) const { return std::pow(m_gauche->eval(x), m_droite->eval(x)); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée pour un exposant constant : n*u^{n-1}*u'. Renvoie 0 autrement.
+ * Utilisation : ExprPtr d = p.derivee();
+ */
 ExprPtr Puissance::derivee() const {
     if (m_droite->estConstante()) { // (u^n)' = n*u^{n-1}*u'
         double n = m_droite->getValeurConstante();
@@ -181,6 +461,12 @@ ExprPtr Puissance::derivee() const {
     }
     return cst(0.0); 
 }
+
+/*
+ * Nom : simplifier
+ * Description : Evalue les constantes, simplifie u^0 = 1, u^1 = u, 0^p = 0, 1^p = 1.
+ * Utilisation : ExprPtr simp = p.simplifier();
+ */
 ExprPtr Puissance::simplifier() const {
     auto b = m_gauche->simplifier();
     auto p = m_droite->simplifier();
@@ -191,49 +477,157 @@ ExprPtr Puissance::simplifier() const {
     if (b->estConstante() && b->getValeurConstante() == 1.0) return cst(1.0);
     return ast_pow(b, p);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche (base)^(exposant).
+ * Utilisation : p.afficher(std::cout);
+ */
 void Puissance::afficher(std::ostream& os) const {
     os << "("; m_gauche->afficher(os); os << ")^("; m_droite->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie de la puissance et de ses enfants.
+ * Utilisation : ExprPtr copie = p.clone();
+ */
 ExprPtr Puissance::clone() const { return std::make_shared<Puissance>(m_gauche->clone(), m_droite->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est une puissance avec la même base et le même exposant.
+ * Utilisation : bool eq = p.estEgal(autre);
+ */
 bool Puissance::estEgal(const ASTNode& autre) const {
     const Puissance* a = dynamic_cast<const Puissance*>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
 // ============== FONCTION UNAIRE BASE =================
+
+/*
+ * Nom : FonctionUnaire
+ * Description : Constructeur de base des fonctions mathématiques unaires initialisant l'argument.
+ * Utilisation : Appelé par les constructeurs des classes filles.
+ */
 FonctionUnaire::FonctionUnaire(ExprPtr arg) : m_argument(arg) {}
 
 // ============== SINUS ==================
+
+/*
+ * Nom : Sinus
+ * Description : Constructeur de la fonction sinus avec l'argument.
+ * Utilisation : Sinus s(expr);
+ */
 Sinus::Sinus(ExprPtr arg) : FonctionUnaire(arg) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue sin(argument).
+ * Utilisation : double val = s.eval(x);
+ */
 double Sinus::eval(double x) const { return std::sin(m_argument->eval(x)); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée de sin(u) : cos(u)*u'.
+ * Utilisation : ExprPtr d = s.derivee();
+ */
 ExprPtr Sinus::derivee() const { return ast_cos(m_argument) * m_argument->derivee(); }
+
+/*
+ * Nom : simplifier
+ * Description : Evalue la constante si possible.
+ * Utilisation : ExprPtr simp = s.simplifier();
+ */
 ExprPtr Sinus::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::sin(arg->getValeurConstante()));
     return ast_sin(arg);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche sin(argument).
+ * Utilisation : s.afficher(std::cout);
+ */
 void Sinus::afficher(std::ostream& os) const {
     os << "sin("; m_argument->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie du sinus et de son argument.
+ * Utilisation : ExprPtr copie = s.clone();
+ */
 ExprPtr Sinus::clone() const { return std::make_shared<Sinus>(m_argument->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est un sinus avec le même argument exact.
+ * Utilisation : bool eq = s.estEgal(autre);
+ */
 bool Sinus::estEgal(const ASTNode& autre) const {
     const Sinus* a = dynamic_cast<const Sinus*>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
 // ============== COSINUS ==================
+
+/*
+ * Nom : Cosinus
+ * Description : Constructeur de la fonction cosinus avec l'argument.
+ * Utilisation : Cosinus c(expr);
+ */
 Cosinus::Cosinus(ExprPtr arg) : FonctionUnaire(arg) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue cos(argument).
+ * Utilisation : double val = c.eval(x);
+ */
 double Cosinus::eval(double x) const { return std::cos(m_argument->eval(x)); }
+
+/*
+ * Nom : derivee
+ * Description : Renvoie la dérivée de cos(u) : -sin(u)*u'.
+ * Utilisation : ExprPtr d = c.derivee();
+ */
 ExprPtr Cosinus::derivee() const { return (cst(-1.0) * ast_sin(m_argument)) * m_argument->derivee(); }
+
+/*
+ * Nom : simplifier
+ * Description : Evalue la constante si possible.
+ * Utilisation : ExprPtr simp = c.simplifier();
+ */
 ExprPtr Cosinus::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::cos(arg->getValeurConstante()));
     return ast_cos(arg);
 }
+
+/*
+ * Nom : afficher
+ * Description : Affiche cos(argument).
+ * Utilisation : c.afficher(std::cout);
+ */
 void Cosinus::afficher(std::ostream& os) const {
     os << "cos("; m_argument->afficher(os); os << ")";
 }
+
+/*
+ * Nom : clone
+ * Description : Renvoie une copie du cosinus et de son argument.
+ * Utilisation : ExprPtr copie = c.clone();
+ */
 ExprPtr Cosinus::clone() const { return std::make_shared<Cosinus>(m_argument->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est un cosinus avec le même argument exact.
+ * Utilisation : bool eq = c.estEgal(autre);
+ */
 bool Cosinus::estEgal(const ASTNode& autre) const {
     const Cosinus* a = dynamic_cast<const Cosinus*>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
@@ -242,28 +636,135 @@ bool Cosinus::estEgal(const ASTNode& autre) const {
 
 // --- Surcharge d'Opérateurs =---
 
+/*
+ * Nom : cst
+ * Description : Helper générant un noeud Constante à partir d'un double.
+ * Utilisation : ExprPtr noeud = cst(3.14);
+ */
 ExprPtr cst(double valeur) { return std::make_shared<Constante>(valeur); }
+
+/*
+ * Nom : var
+ * Description : Helper générant un noeud Variable à partir d'un nom de variable.
+ * Utilisation : ExprPtr noeud = var("y");
+ */
 ExprPtr var(const std::string& nom) { return std::make_shared<Variable>(nom); }
 
+/*
+ * Nom : operator+
+ * Description : Surcharge de l'addition entre deux ExprPtr générant un noeud Addition.
+ * Utilisation : ExprPtr resultat = e1 + e2;
+ */
 ExprPtr operator+(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Addition>(gauche, droite); }
+
+/*
+ * Nom : operator+
+ * Description : Surcharge de l'addition entre ExprPtr et double générant un noeud Addition.
+ * Utilisation : ExprPtr resultat = e + 2.0;
+ */
 ExprPtr operator+(ExprPtr gauche, double droite) { return std::make_shared<Addition>(gauche, cst(droite)); }
+
+/*
+ * Nom : operator+
+ * Description : Surcharge de l'addition entre double et ExprPtr générant un noeud Addition.
+ * Utilisation : ExprPtr resultat = 2.0 + e;
+ */
 ExprPtr operator+(double gauche, ExprPtr droite) { return std::make_shared<Addition>(cst(gauche), droite); }
 
+/*
+ * Nom : operator-
+ * Description : Surcharge de la soustraction entre deux ExprPtr générant un noeud Soustraction.
+ * Utilisation : ExprPtr resultat = e1 - e2;
+ */
 ExprPtr operator-(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Soustraction>(gauche, droite); }
+
+/*
+ * Nom : operator-
+ * Description : Surcharge de la soustraction entre ExprPtr et double générant un noeud Soustraction.
+ * Utilisation : ExprPtr resultat = e - 2.0;
+ */
 ExprPtr operator-(ExprPtr gauche, double droite) { return std::make_shared<Soustraction>(gauche, cst(droite)); }
+
+/*
+ * Nom : operator-
+ * Description : Surcharge de la soustraction entre double et ExprPtr générant un noeud Soustraction.
+ * Utilisation : ExprPtr resultat = 2.0 - e;
+ */
 ExprPtr operator-(double gauche, ExprPtr droite) { return std::make_shared<Soustraction>(cst(gauche), droite); }
 
+/*
+ * Nom : operator*
+ * Description : Surcharge de la multiplication entre deux ExprPtr générant un noeud Multiplication.
+ * Utilisation : ExprPtr resultat = e1 * e2;
+ */
 ExprPtr operator*(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Multiplication>(gauche, droite); }
+
+/*
+ * Nom : operator*
+ * Description : Surcharge de la multiplication entre ExprPtr et double générant un noeud Multiplication.
+ * Utilisation : ExprPtr resultat = e * 2.0;
+ */
 ExprPtr operator*(ExprPtr gauche, double droite) { return std::make_shared<Multiplication>(gauche, cst(droite)); }
+
+/*
+ * Nom : operator*
+ * Description : Surcharge de la multiplication entre double et ExprPtr générant un noeud Multiplication.
+ * Utilisation : ExprPtr resultat = 2.0 * e;
+ */
 ExprPtr operator*(double gauche, ExprPtr droite) { return std::make_shared<Multiplication>(cst(gauche), droite); }
 
+/*
+ * Nom : operator/
+ * Description : Surcharge de la division entre deux ExprPtr générant un noeud Division.
+ * Utilisation : ExprPtr resultat = e1 / e2;
+ */
 ExprPtr operator/(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Division>(gauche, droite); }
+
+/*
+ * Nom : operator/
+ * Description : Surcharge de la division entre ExprPtr et double générant un noeud Division.
+ * Utilisation : ExprPtr resultat = e / 2.0;
+ */
 ExprPtr operator/(ExprPtr gauche, double droite) { return std::make_shared<Division>(gauche, cst(droite)); }
+
+/*
+ * Nom : operator/
+ * Description : Surcharge de la division entre double et ExprPtr générant un noeud Division.
+ * Utilisation : ExprPtr resultat = 2.0 / e;
+ */
 ExprPtr operator/(double gauche, ExprPtr droite) { return std::make_shared<Division>(cst(gauche), droite); }
 
+/*
+ * Nom : ast_pow
+ * Description : Helper générant un noeud Puissance entre deux ExprPtr.
+ * Utilisation : ExprPtr resultat = ast_pow(base, exposant);
+ */
 ExprPtr ast_pow(ExprPtr base, ExprPtr exposant) { return std::make_shared<Puissance>(base, exposant); }
+
+/*
+ * Nom : ast_pow
+ * Description : Helper générant un noeud Puissance avec un exposant double constant.
+ * Utilisation : ExprPtr resultat = ast_pow(base, 2.0);
+ */
 ExprPtr ast_pow(ExprPtr base, double exposant) { return std::make_shared<Puissance>(base, cst(exposant)); }
+
+/*
+ * Nom : ast_pow
+ * Description : Helper générant un noeud Puissance avec une base double constante.
+ * Utilisation : ExprPtr resultat = ast_pow(2.0, exposant);
+ */
 ExprPtr ast_pow(double base, ExprPtr exposant) { return std::make_shared<Puissance>(cst(base), exposant); }
 
+/*
+ * Nom : ast_sin
+ * Description : Helper générant un noeud Sinus.
+ * Utilisation : ExprPtr resultat = ast_sin(e);
+ */
 ExprPtr ast_sin(ExprPtr arg) { return std::make_shared<Sinus>(arg); }
+
+/*
+ * Nom : ast_cos
+ * Description : Helper générant un noeud Cosinus.
+ * Utilisation : ExprPtr resultat = ast_cos(e);
+ */
 ExprPtr ast_cos(ExprPtr arg) { return std::make_shared<Cosinus>(arg); }
