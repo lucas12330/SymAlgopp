@@ -3,3 +3,6 @@ build/
 bin/
 *.o
 *.out
+.clangd
+compile_commands.json
+.vscode/
