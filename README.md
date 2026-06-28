@@ -133,6 +133,24 @@ Les fichiers intermédiaires sont compilés dans le dossier `build/` et les exé
 
 ---
 
+## Benchmarks de Performances
+
+Pour mesurer les performances de SymAlgo++ et les comparer avec une librairie symbolique standard de l'industrie, nous utilisons **Google Benchmark** ainsi que la librairie concurrente **GiNaC**. 
+
+### 1. Installation des dépendances (Arch Linux / EndeavourOS)
+Pour pouvoir compiler les benchmarks, vous devez installer les paquets suivants :
+```bash
+sudo pacman -Syu benchmark ginac
+```
+
+### 2. Lancer les Benchmarks
+La commande suivante compilera les benchmarks avec le maximum d'optimisations (`-O3`) et exécutera la suite de tests comparatifs (équations classiques et différentielles jusqu'à de grands ordres) :
+```bash
+make bench
+```
+
+---
+
 ## Organisation du dépôt et conventions
 
 * **Arborescence** :

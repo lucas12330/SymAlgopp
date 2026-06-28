@@ -10,6 +10,7 @@ CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude -Ivendor/eigen
 SRC_DIR = src
 INCLUDE_DIR = include
 TEST_DIR = tests
+BENCH_DIR = benchmarks
 BUILD_DIR = build
 BIN_DIR = bin
 
@@ -24,7 +25,11 @@ TEST_DIFF_SRC = $(TEST_DIR)/test_differentielle.cpp
 TEST_AST_BIN = $(BIN_DIR)/test_ast
 TEST_DIFF_BIN = $(BIN_DIR)/test_differentielle
 
-.PHONY: all clean directories run_tests
+# Cibles de benchmark
+BENCH_SRC = $(wildcard $(BENCH_DIR)/*.cpp)
+BENCH_BIN = $(BIN_DIR)/benchmark_suite
+
+.PHONY: all clean directories run_tests bench
 
 # Cible par défaut
 all: directories $(TEST_AST_BIN) $(TEST_DIFF_BIN)
@@ -50,6 +55,14 @@ run_tests: all
 	@./$(TEST_AST_BIN)
 	@echo "\n--- EXECUTION DU TEST EQUATION DIFFERENTIELLE ---"
 	@./$(TEST_DIFF_BIN)
+
+# Règle pour compiler les benchmarks (avec optimisation maximale)
+$(BENCH_BIN): $(BENCH_SRC) $(OBJS)
+	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ -lbenchmark -lpthread -lginac -lcln
+
+bench: directories $(BENCH_BIN)
+	@echo "\n--- EXECUTION DES BENCHMARKS ---"
+	@./$(BENCH_BIN)
 
 # Nettoyage
 clean:
