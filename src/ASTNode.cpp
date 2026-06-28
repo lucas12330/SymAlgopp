@@ -801,7 +801,7 @@ ExprPtr ASTNode::DL(double a, int ordre) const {
 ExprPtr Constante::integrer() const {
     return cst(m_valeur) * var("x");
 }
-ExprPtr Constante::limite(double a) const {
+ExprPtr Constante::limite(double /*a*/) const {
     return cst(m_valeur);
 }
 
@@ -890,6 +890,54 @@ ExprPtr Cosinus::integrer() const {
 }
 ExprPtr Cosinus::limite(double a) const {
     return ast_cos(m_argument->limite(a));
+}
+
+// ============== EXPONENTIELLE ==================
+
+Exponentielle::Exponentielle(ExprPtr arg) : FonctionUnaire(arg) {}
+
+double Exponentielle::eval(double x) const { return std::exp(m_argument->eval(x)); }
+
+ExprPtr Exponentielle::derivee() const {
+    return ast_exp(m_argument) * m_argument->derivee();
+}
+
+ExprPtr Exponentielle::simplifier() const {
+    auto arg = m_argument->simplifier();
+    if (arg->estConstante()) return cst(std::exp(arg->getValeurConstante()));
+    if (auto ln_node = std::dynamic_pointer_cast<Logarithme>(arg)) {
+        return ln_node->m_argument->simplifier();
+    }
+    return ast_exp(arg);
+}
+
+void Exponentielle::afficher(std::ostream& os) const {
+    os << "exp("; m_argument->afficher(os); os << ")";
+}
+
+ExprPtr Exponentielle::clone() const { return ast_exp(m_argument->clone()); }
+
+bool Exponentielle::estEgal(const ASTNode& autre) const {
+    const Exponentielle* a = dynamic_cast<const Exponentielle*>(&autre);
+    return a && m_argument->estEgal(*(a->m_argument));
+}
+
+ExprPtr Exponentielle::integrer() const {
+    if (dynamic_cast<Variable*>(m_argument.get())) return ast_exp(m_argument);
+    double cG; ExprPtr uG;
+    extractCoeff(m_argument, cG, uG);
+    if (dynamic_cast<Variable*>(uG.get()) && cG != 0.0) {
+        return cst(1.0 / cG) * ast_exp(m_argument);
+    }
+    return cst(0.0);
+}
+
+ExprPtr Exponentielle::limite(double a) const {
+    return ast_exp(m_argument->limite(a));
+}
+
+ExprPtr ast_exp(ExprPtr arg) {
+    return std::make_shared<Exponentielle>(arg);
 }
 
 // ============== LOGARITHME ==================

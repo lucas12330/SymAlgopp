@@ -4,7 +4,7 @@
 
 # Compilateur et options
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude
+CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude -Ivendor/eigen
 
 # Répertoires
 SRC_DIR = src

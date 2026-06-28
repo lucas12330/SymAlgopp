@@ -648,6 +648,19 @@ public:
 
 
 
+class Exponentielle : public FonctionUnaire {
+public:
+    explicit Exponentielle(ExprPtr arg);
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    ExprPtr clone() const override;
+    bool estEgal(const ASTNode& autre) const override;
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+};
+
 class Logarithme : public FonctionUnaire {
 public:
     explicit Logarithme(ExprPtr arg);
@@ -796,6 +809,13 @@ ExprPtr ast_sin(ExprPtr arg);
  */
 ExprPtr ast_cos(ExprPtr arg);
 
+
+/*
+ * Nom : ast_exp
+ * Description : Fonction pour créer le noeud exponentielle d'une expression.
+ * Utilisation : ExprPtr e = ast_exp(expr);
+ */
+ExprPtr ast_exp(ExprPtr arg);
 
 /*
  * Nom : ast_ln
