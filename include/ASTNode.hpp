@@ -6,6 +6,11 @@
 class ASTNode;
 using ExprPtr = std::shared_ptr<ASTNode>;
 
+enum class NodeType {
+    Constante, Variable, Addition, Soustraction, Multiplication, Division, Puissance,
+    Sinus, Cosinus, Exponentielle, Logarithme
+};
+
 // Classe abstraite de base pour tous les noeuds de l'arbre
 class ASTNode : public std::enable_shared_from_this<ASTNode> {
 public:
@@ -15,6 +20,7 @@ public:
      * Utilisation : Appelé automatiquement à la destruction d'un objet ASTNode.
      */
     virtual ~ASTNode() = default;
+    virtual NodeType getType() const = 0;
     
     /*
      * Nom : eval
@@ -100,6 +106,7 @@ public:
 class Constante : public ASTNode {
     double m_valeur;
 public:
+        NodeType getType() const override { return NodeType::Constante; }
     /*
      * Nom : Constante
      * Description : Constructeur initialisant la constante avec sa valeur numérique.
@@ -171,6 +178,7 @@ public:
 class Variable : public ASTNode {
     std::string m_nom;
 public:
+        NodeType getType() const override { return NodeType::Variable; }
     /*
      * Nom : Variable
      * Description : Constructeur d'une variable mathématique avec un nom (par défaut "x").
@@ -242,6 +250,7 @@ public:
 
 class Addition : public OperateurBinaire {
 public:
+        NodeType getType() const override { return NodeType::Addition; }
     /*
      * Nom : Addition
      * Description : Construit un noeud d'addition de deux expressions.
@@ -298,6 +307,7 @@ public:
 
 class Soustraction : public OperateurBinaire {
 public:
+        NodeType getType() const override { return NodeType::Soustraction; }
     /*
      * Nom : Soustraction
      * Description : Construit un noeud de soustraction.
@@ -354,6 +364,7 @@ public:
 
 class Multiplication : public OperateurBinaire {
 public:
+        NodeType getType() const override { return NodeType::Multiplication; }
     /*
      * Nom : Multiplication
      * Description : Construit un noeud de multiplication de deux expressions.
@@ -410,6 +421,7 @@ public:
 
 class Division : public OperateurBinaire {
 public:
+        NodeType getType() const override { return NodeType::Division; }
     /*
      * Nom : Division
      * Description : Construit un noeud de division de deux expressions.
@@ -466,6 +478,7 @@ public:
 
 class Puissance : public OperateurBinaire {
 public:
+        NodeType getType() const override { return NodeType::Puissance; }
     /*
      * Nom : Puissance
      * Description : Construit un noeud de puissance (base^exposant).
@@ -536,6 +549,7 @@ public:
 
 class Sinus : public FonctionUnaire {
 public:
+        NodeType getType() const override { return NodeType::Sinus; }
     /*
      * Nom : Sinus
      * Description : Construit un noeud pour la fonction sinus.
@@ -592,6 +606,7 @@ public:
 
 class Cosinus : public FonctionUnaire {
 public:
+        NodeType getType() const override { return NodeType::Cosinus; }
     /*
      * Nom : Cosinus
      * Description : Construit un noeud pour la fonction cosinus.
@@ -650,6 +665,7 @@ public:
 
 class Exponentielle : public FonctionUnaire {
 public:
+        NodeType getType() const override { return NodeType::Exponentielle; }
     explicit Exponentielle(ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -663,6 +679,7 @@ public:
 
 class Logarithme : public FonctionUnaire {
 public:
+        NodeType getType() const override { return NodeType::Logarithme; }
     explicit Logarithme(ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;

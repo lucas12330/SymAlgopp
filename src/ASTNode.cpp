@@ -8,8 +8,8 @@
  * Utilisation : double c; ExprPtr u; extractCoeff(expr, c, u);
  */
 void extractCoeff(ExprPtr e, double& coeff, ExprPtr& u) {
-    auto mult = std::dynamic_pointer_cast<Multiplication>(e);
-    if (mult) {
+    if (e->getType() == NodeType::Multiplication) {
+        auto mult = std::static_pointer_cast<Multiplication>(e);
         if (mult->m_gauche->estConstante()) {
             coeff = mult->m_gauche->getValeurConstante();
             u = mult->m_droite;
@@ -53,7 +53,7 @@ ExprPtr Constante::derivee() const { return cst(0.0); }
  * Description : Ne simplifie rien, renvoie une copie d'elle-même.
  * Utilisation : ExprPtr simp = c.simplifier();
  */
-ExprPtr Constante::simplifier() const { return clone(); }
+ExprPtr Constante::simplifier() const { return const_cast<Constante*>(this)->shared_from_this(); }
 
 /*
  * Nom : afficher
@@ -106,7 +106,7 @@ ExprPtr Variable::derivee() const { return cst(1.0); }
  * Description : Ne simplifie rien, renvoie une copie.
  * Utilisation : ExprPtr simp = v.simplifier();
  */
-ExprPtr Variable::simplifier() const { return clone(); }
+ExprPtr Variable::simplifier() const { return const_cast<Variable*>(this)->shared_from_this(); }
 
 /*
  * Nom : afficher
@@ -128,7 +128,7 @@ ExprPtr Variable::clone() const { return var(m_nom); }
  * Utilisation : bool eq = v.estEgal(autre);
  */
 bool Variable::estEgal(const ASTNode& autre) const {
-    const Variable* v = dynamic_cast<const Variable*>(&autre);
+    const Variable* v = (autre.getType() == NodeType::Variable) ? static_cast<const Variable*>(&autre) : nullptr;
     return v != nullptr && v->m_nom == m_nom;
 }
 
@@ -184,7 +184,7 @@ ExprPtr Addition::simplifier() const {
     if (uG->estEgal(*uD)) {
         return cst(cG + cD) * uG;
     }
-    
+    if (g == m_gauche && d == m_droite) return const_cast<Addition*>(this)->shared_from_this();
     return std::make_shared<Addition>(g, d);
 }
 
@@ -210,7 +210,7 @@ ExprPtr Addition::clone() const { return std::make_shared<Addition>(m_gauche->cl
  * Utilisation : bool eq = add.estEgal(autre);
  */
 bool Addition::estEgal(const ASTNode& autre) const {
-    const Addition* a = dynamic_cast<const Addition*>(&autre);
+    const Addition* a = (autre.getType() == NodeType::Addition) ? static_cast<const Addition*>(&autre) : nullptr;
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
            (m_gauche->estEgal(*(a->m_droite)) && m_droite->estEgal(*(a->m_gauche)));
@@ -258,7 +258,7 @@ ExprPtr Soustraction::simplifier() const {
         if (std::abs(cG - cD) < 1e-9) return cst(0.0);
         return cst(cG - cD) * uG;
     }
-    
+    if (g == m_gauche && d == m_droite) return const_cast<Soustraction*>(this)->shared_from_this();
     return std::make_shared<Soustraction>(g, d);
 }
 
@@ -284,7 +284,7 @@ ExprPtr Soustraction::clone() const { return std::make_shared<Soustraction>(m_ga
  * Utilisation : bool eq = sub.estEgal(autre);
  */
 bool Soustraction::estEgal(const ASTNode& autre) const {
-    const Soustraction* a = dynamic_cast<const Soustraction*>(&autre);
+    const Soustraction* a = (autre.getType() == NodeType::Soustraction) ? static_cast<const Soustraction*>(&autre) : nullptr;
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -332,6 +332,7 @@ ExprPtr Multiplication::simplifier() const {
         // Place toujours la constante à gauche
         return std::make_shared<Multiplication>(d, g); 
     }
+    if (g == m_gauche && d == m_droite) return const_cast<Multiplication*>(this)->shared_from_this();
     return std::make_shared<Multiplication>(g, d);
 }
 
@@ -357,7 +358,7 @@ ExprPtr Multiplication::clone() const { return std::make_shared<Multiplication>(
  * Utilisation : bool eq = mul.estEgal(autre);
  */
 bool Multiplication::estEgal(const ASTNode& autre) const {
-    const Multiplication* a = dynamic_cast<const Multiplication*>(&autre);
+    const Multiplication* a = (autre.getType() == NodeType::Multiplication) ? static_cast<const Multiplication*>(&autre) : nullptr;
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
            (m_gauche->estEgal(*(a->m_droite)) && m_droite->estEgal(*(a->m_gauche)));
@@ -403,6 +404,7 @@ ExprPtr Division::simplifier() const {
     if (g->estConstante() && g->getValeurConstante() == 0.0) return cst(0.0);
     if (d->estConstante() && d->getValeurConstante() == 1.0) return g;
     if (g->estEgal(*d)) return cst(1.0);
+    if (g == m_gauche && d == m_droite) return const_cast<Division*>(this)->shared_from_this();
     return std::make_shared<Division>(g, d);
 }
 
@@ -428,7 +430,7 @@ ExprPtr Division::clone() const { return std::make_shared<Division>(m_gauche->cl
  * Utilisation : bool eq = div.estEgal(autre);
  */
 bool Division::estEgal(const ASTNode& autre) const {
-    const Division* a = dynamic_cast<const Division*>(&autre);
+    const Division* a = (autre.getType() == NodeType::Division) ? static_cast<const Division*>(&autre) : nullptr;
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -479,6 +481,7 @@ ExprPtr Puissance::simplifier() const {
     if (p->estConstante() && p->getValeurConstante() == 1.0) return b;
     if (b->estConstante() && b->getValeurConstante() == 0.0) return cst(0.0);
     if (b->estConstante() && b->getValeurConstante() == 1.0) return cst(1.0);
+    if (b == m_gauche && p == m_droite) return const_cast<Puissance*>(this)->shared_from_this();
     return ast_pow(b, p);
 }
 
@@ -504,7 +507,7 @@ ExprPtr Puissance::clone() const { return std::make_shared<Puissance>(m_gauche->
  * Utilisation : bool eq = p.estEgal(autre);
  */
 bool Puissance::estEgal(const ASTNode& autre) const {
-    const Puissance* a = dynamic_cast<const Puissance*>(&autre);
+    const Puissance* a = (autre.getType() == NodeType::Puissance) ? static_cast<const Puissance*>(&autre) : nullptr;
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -548,6 +551,7 @@ ExprPtr Sinus::derivee() const { return ast_cos(m_argument) * m_argument->derive
 ExprPtr Sinus::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::sin(arg->getValeurConstante()));
+    if (arg == m_argument) return const_cast<Sinus*>(this)->shared_from_this();
     return ast_sin(arg);
 }
 
@@ -573,7 +577,7 @@ ExprPtr Sinus::clone() const { return std::make_shared<Sinus>(m_argument->clone(
  * Utilisation : bool eq = s.estEgal(autre);
  */
 bool Sinus::estEgal(const ASTNode& autre) const {
-    const Sinus* a = dynamic_cast<const Sinus*>(&autre);
+    const Sinus* a = (autre.getType() == NodeType::Sinus) ? static_cast<const Sinus*>(&autre) : nullptr;
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -608,6 +612,7 @@ ExprPtr Cosinus::derivee() const { return (cst(-1.0) * ast_sin(m_argument)) * m_
 ExprPtr Cosinus::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::cos(arg->getValeurConstante()));
+    if (arg == m_argument) return const_cast<Cosinus*>(this)->shared_from_this();
     return ast_cos(arg);
 }
 
@@ -633,7 +638,7 @@ ExprPtr Cosinus::clone() const { return std::make_shared<Cosinus>(m_argument->cl
  * Utilisation : bool eq = c.estEgal(autre);
  */
 bool Cosinus::estEgal(const ASTNode& autre) const {
-    const Cosinus* a = dynamic_cast<const Cosinus*>(&autre);
+    const Cosinus* a = (autre.getType() == NodeType::Cosinus) ? static_cast<const Cosinus*>(&autre) : nullptr;
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -645,21 +650,41 @@ bool Cosinus::estEgal(const ASTNode& autre) const {
  * Description : Helper générant un noeud Constante à partir d'un double.
  * Utilisation : ExprPtr noeud = cst(3.14);
  */
-ExprPtr cst(double valeur) { return std::make_shared<Constante>(valeur); }
+ExprPtr cst(double valeur) {
+    static const auto zero = std::make_shared<Constante>(0.0);
+    static const auto one = std::make_shared<Constante>(1.0);
+    static const auto minus_one = std::make_shared<Constante>(-1.0);
+    static const auto two = std::make_shared<Constante>(2.0);
+
+    if (valeur == 0.0) return zero;
+    if (valeur == 1.0) return one;
+    if (valeur == -1.0) return minus_one;
+    if (valeur == 2.0) return two;
+    
+    return std::make_shared<Constante>(valeur);
+}
 
 /*
  * Nom : var
  * Description : Helper générant un noeud Variable à partir d'un nom de variable.
  * Utilisation : ExprPtr noeud = var("y");
  */
-ExprPtr var(const std::string& nom) { return std::make_shared<Variable>(nom); }
+ExprPtr var(const std::string& nom) {
+    static const auto var_x = std::make_shared<Variable>("x");
+    if (nom == "x") return var_x;
+    return std::make_shared<Variable>(nom);
+}
 
 /*
  * Nom : operator+
  * Description : Surcharge de l'addition entre deux ExprPtr générant un noeud Addition.
  * Utilisation : ExprPtr resultat = e1 + e2;
  */
-ExprPtr operator+(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Addition>(gauche, droite); }
+ExprPtr operator+(ExprPtr gauche, ExprPtr droite) {
+    if (gauche->estConstante() && gauche->getValeurConstante() == 0.0) return droite;
+    if (droite->estConstante() && droite->getValeurConstante() == 0.0) return gauche;
+    return std::make_shared<Addition>(gauche, droite);
+}
 
 /*
  * Nom : operator+
@@ -680,7 +705,10 @@ ExprPtr operator+(double gauche, ExprPtr droite) { return std::make_shared<Addit
  * Description : Surcharge de la soustraction entre deux ExprPtr générant un noeud Soustraction.
  * Utilisation : ExprPtr resultat = e1 - e2;
  */
-ExprPtr operator-(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Soustraction>(gauche, droite); }
+ExprPtr operator-(ExprPtr gauche, ExprPtr droite) {
+    if (droite->estConstante() && droite->getValeurConstante() == 0.0) return gauche;
+    return std::make_shared<Soustraction>(gauche, droite);
+}
 
 /*
  * Nom : operator-
@@ -701,7 +729,13 @@ ExprPtr operator-(double gauche, ExprPtr droite) { return std::make_shared<Soust
  * Description : Surcharge de la multiplication entre deux ExprPtr générant un noeud Multiplication.
  * Utilisation : ExprPtr resultat = e1 * e2;
  */
-ExprPtr operator*(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Multiplication>(gauche, droite); }
+ExprPtr operator*(ExprPtr gauche, ExprPtr droite) {
+    if (gauche->estConstante() && gauche->getValeurConstante() == 0.0) return gauche;
+    if (droite->estConstante() && droite->getValeurConstante() == 0.0) return droite;
+    if (gauche->estConstante() && gauche->getValeurConstante() == 1.0) return droite;
+    if (droite->estConstante() && droite->getValeurConstante() == 1.0) return gauche;
+    return std::make_shared<Multiplication>(gauche, droite);
+}
 
 /*
  * Nom : operator*
@@ -722,7 +756,11 @@ ExprPtr operator*(double gauche, ExprPtr droite) { return std::make_shared<Multi
  * Description : Surcharge de la division entre deux ExprPtr générant un noeud Division.
  * Utilisation : ExprPtr resultat = e1 / e2;
  */
-ExprPtr operator/(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Division>(gauche, droite); }
+ExprPtr operator/(ExprPtr gauche, ExprPtr droite) {
+    if (gauche->estConstante() && gauche->getValeurConstante() == 0.0) return gauche;
+    if (droite->estConstante() && droite->getValeurConstante() == 1.0) return gauche;
+    return std::make_shared<Division>(gauche, droite);
+}
 
 /*
  * Nom : operator/
@@ -783,7 +821,7 @@ ExprPtr ast_cos(ExprPtr arg) { return std::make_shared<Cosinus>(arg); }
 // --- ASTNode : Développement Limité ---
 ExprPtr ASTNode::DL(double a, int ordre) const {
     ExprPtr result = cst(this->eval(a));
-    ExprPtr deriv = this->clone();
+    ExprPtr deriv = const_cast<ASTNode*>(this)->shared_from_this();
     long long factorielle = 1;
     for (int i = 1; i <= ordre; ++i) {
         deriv = deriv->derivee();
@@ -861,7 +899,7 @@ ExprPtr Division::limite(double a) const {
 
 // --- Puissance ---
 ExprPtr Puissance::integrer() const {
-    if (m_droite->estConstante() && dynamic_cast<Variable*>(m_gauche.get())) {
+    if (m_droite->estConstante() && (m_gauche->getType() == NodeType::Variable)) {
         double n = m_droite->getValeurConstante();
         if (std::abs(n + 1.0) < 1e-9) {
             return ast_ln(m_gauche);
@@ -876,7 +914,7 @@ ExprPtr Puissance::limite(double a) const {
 
 // --- Sinus ---
 ExprPtr Sinus::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return cst(-1.0) * ast_cos(m_argument);
+    if ((m_argument->getType() == NodeType::Variable)) return cst(-1.0) * ast_cos(m_argument);
     return cst(0.0);
 }
 ExprPtr Sinus::limite(double a) const {
@@ -885,7 +923,7 @@ ExprPtr Sinus::limite(double a) const {
 
 // --- Cosinus ---
 ExprPtr Cosinus::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return ast_sin(m_argument);
+    if ((m_argument->getType() == NodeType::Variable)) return ast_sin(m_argument);
     return cst(0.0);
 }
 ExprPtr Cosinus::limite(double a) const {
@@ -908,6 +946,7 @@ ExprPtr Exponentielle::simplifier() const {
     if (auto ln_node = std::dynamic_pointer_cast<Logarithme>(arg)) {
         return ln_node->m_argument->simplifier();
     }
+    if (arg == m_argument) return const_cast<Exponentielle*>(this)->shared_from_this();
     return ast_exp(arg);
 }
 
@@ -918,15 +957,15 @@ void Exponentielle::afficher(std::ostream& os) const {
 ExprPtr Exponentielle::clone() const { return ast_exp(m_argument->clone()); }
 
 bool Exponentielle::estEgal(const ASTNode& autre) const {
-    const Exponentielle* a = dynamic_cast<const Exponentielle*>(&autre);
+    const Exponentielle* a = (autre.getType() == NodeType::Exponentielle) ? static_cast<const Exponentielle*>(&autre) : nullptr;
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
 ExprPtr Exponentielle::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return ast_exp(m_argument);
+    if ((m_argument->getType() == NodeType::Variable)) return ast_exp(m_argument);
     double cG; ExprPtr uG;
     extractCoeff(m_argument, cG, uG);
-    if (dynamic_cast<Variable*>(uG.get()) && cG != 0.0) {
+    if ((uG && uG->getType() == NodeType::Variable) && cG != 0.0) {
         return cst(1.0 / cG) * ast_exp(m_argument);
     }
     return cst(0.0);
@@ -953,6 +992,7 @@ ExprPtr Logarithme::derivee() const {
 ExprPtr Logarithme::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::log(arg->getValeurConstante()));
+    if (arg == m_argument) return const_cast<Logarithme*>(this)->shared_from_this();
     return ast_ln(arg);
 }
 
@@ -963,12 +1003,12 @@ void Logarithme::afficher(std::ostream& os) const {
 ExprPtr Logarithme::clone() const { return ast_ln(m_argument->clone()); }
 
 bool Logarithme::estEgal(const ASTNode& autre) const {
-    const Logarithme* a = dynamic_cast<const Logarithme*>(&autre);
+    const Logarithme* a = (autre.getType() == NodeType::Logarithme) ? static_cast<const Logarithme*>(&autre) : nullptr;
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
 ExprPtr Logarithme::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) {
+    if ((m_argument->getType() == NodeType::Variable)) {
         return m_argument * ast_ln(m_argument) - m_argument;
     }
     return cst(0.0);
