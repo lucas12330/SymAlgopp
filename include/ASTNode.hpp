@@ -24,6 +24,13 @@ public:
     virtual double eval(double x) const = 0;
     
     /*
+     * Nom : DL
+     * Description : Calcule le développement limité symbolique de l'expression en a, à l'ordre donné.
+     * Utilisation : ExprPtr dl = noeud->DL(a, ordre);
+     */
+    virtual ExprPtr DL(double a, int ordre) const;
+    
+    /*
      * Nom : derivee
      * Description : Calcule la dérivée symbolique de l'expression.
      * Utilisation : ExprPtr d = noeud->derivee();
@@ -50,6 +57,21 @@ public:
      * Utilisation : ExprPtr copie = noeud->clone();
      */
     virtual ExprPtr clone() const = 0;
+
+    /*
+     * Nom : integrer
+     * Description : Calcule la primitive symbolique de l'expression.
+     * Utilisation : ExprPtr p = noeud->integrer();
+     */
+    virtual ExprPtr integrer() const = 0;
+    
+    /*
+     * Nom : limite
+     * Description : Calcule la limite symbolique quand x tend vers a.
+     * Utilisation : ExprPtr l = noeud->limite(a);
+     */
+    virtual ExprPtr limite(double a) const = 0;
+
     
     /*
      * Nom : estEgal
@@ -126,6 +148,10 @@ public:
      * Utilisation : bool eq = c.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
     
     /*
      * Nom : estConstante
@@ -193,6 +219,10 @@ public:
      * Utilisation : bool eq = v.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 // --- Opérateurs Binaires ---
@@ -260,6 +290,10 @@ public:
      * Utilisation : bool eq = add.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 class Soustraction : public OperateurBinaire {
@@ -312,6 +346,10 @@ public:
      * Utilisation : bool eq = sub.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 class Multiplication : public OperateurBinaire {
@@ -364,6 +402,10 @@ public:
      * Utilisation : bool eq = mul.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 class Division : public OperateurBinaire {
@@ -416,6 +458,10 @@ public:
      * Utilisation : bool eq = div.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 class Puissance : public OperateurBinaire {
@@ -468,6 +514,10 @@ public:
      * Utilisation : bool eq = p.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 // --- Fonctions Unaires ---
@@ -534,6 +584,10 @@ public:
      * Utilisation : bool eq = s.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
 class Cosinus : public FonctionUnaire {
@@ -586,8 +640,39 @@ public:
      * Utilisation : bool eq = c.estEgal(autre);
      */
     bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
 };
 
+
+
+class Exponentielle : public FonctionUnaire {
+public:
+    explicit Exponentielle(ExprPtr arg);
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    ExprPtr clone() const override;
+    bool estEgal(const ASTNode& autre) const override;
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+};
+
+class Logarithme : public FonctionUnaire {
+public:
+    explicit Logarithme(ExprPtr arg);
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    ExprPtr clone() const override;
+    bool estEgal(const ASTNode& autre) const override;
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+};
 
 // --- Fonctions Helpers & Surcharge d'Opérateurs ---
 
@@ -723,3 +808,18 @@ ExprPtr ast_sin(ExprPtr arg);
  * Utilisation : ExprPtr c = ast_cos(expr);
  */
 ExprPtr ast_cos(ExprPtr arg);
+
+
+/*
+ * Nom : ast_exp
+ * Description : Fonction pour créer le noeud exponentielle d'une expression.
+ * Utilisation : ExprPtr e = ast_exp(expr);
+ */
+ExprPtr ast_exp(ExprPtr arg);
+
+/*
+ * Nom : ast_ln
+ * Description : Fonction pour créer le noeud logarithme d'une expression.
+ * Utilisation : ExprPtr l = ast_ln(expr);
+ */
+ExprPtr ast_ln(ExprPtr arg);

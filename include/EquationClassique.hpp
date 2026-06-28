@@ -64,6 +64,35 @@ public:
      */
     void afficher() const;
 
+    /*
+     * Nom : integrer
+     * Description : Calcule l'intégrale formelle de l'équation.
+     * Utilisation : EquationClassique* eq_int = eq.integrer();
+     */
+    EquationClassique* integrer() const;
+
+    /*
+     * Nom : limite
+     * Description : Calcule la limite symbolique (avec L'Hôpital si besoin).
+     * Utilisation : EquationClassique* eq_lim = eq.limite(x0);
+     */
+    EquationClassique* limite(double x0) const;
+
+    /*
+     * Nom : DL
+     * Description : Calcule le développement limité de l'équation.
+     * Utilisation : EquationClassique* eq_dl = eq.DL(x0, ordre);
+     */
+    EquationClassique* DL(double x0, int ordre) const;
+
+    /*
+     * Nom : genererPointsTrace
+     * Description : Génère un tableau de points (x, y) optimisé par échantillonnage adaptatif.
+     * Utilisation : auto pts = eq.genererPointsTrace(-10, 10, 0.05);
+     */
+    std::vector<std::pair<double, double>> genererPointsTrace(double xMin, double xMax, double tolerance = 1e-3) const;
+
 private:
     ExprPtr m_racine;
+    void echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const;
 };

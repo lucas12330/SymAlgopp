@@ -14,6 +14,10 @@
 
 #include "Equation.hpp"
 #include <map>
+#include <vector>
+#include <Eigen/Dense>
+
+class EquationClassique;
 
 class EquationDifferentielle : public Equation {
 public:
@@ -33,7 +37,7 @@ public:
 
   /*
    * Nom : eval
-   * Description : Evalue l'équation différentielle pour une valeur de x donnée.
+   * Description : Evalue l'équation différentielle numériquement (Runge-Kutta 4) depuis x=0.
    * Utilisation : double resultat = eq_diff.eval(valeur);
    */
   double eval(double x) const override;
@@ -47,11 +51,31 @@ public:
 
   /*
    * Nom : afficher
-   * Description : Fonction simple d'affichage sur la sortie standard.
+   * Description : Affiche proprement l'équation différentielle.
    * Utilisation : eq_diff.afficher();
    */
   void afficher() const;
 
+  /*
+   * Nom : setConditionsInitiales
+   * Description : Définit les conditions initiales pour la résolution numérique.
+   * Utilisation : eq_diff.setConditionsInitiales({y0, y'0, ...});
+   */
+  void setConditionsInitiales(const std::vector<double>& ci);
+
+  /*
+   * Nom : getMatriceCompagnon
+   * Description : Renvoie la matrice d'état A associée au système d'ordre 1 (Y' = A*Y).
+   */
+  Eigen::MatrixXd getMatriceCompagnon() const;
+
+  /*
+   * Nom : resoudreLitteral
+   * Description : Résout analytiquement l'équation linéaire et retourne la solution formelle.
+   */
+  EquationClassique* resoudreLitteral() const;
+
 private:
   std::map<unsigned int, double> m_terme;
+  std::vector<double> m_conditions_initiales;
 };

@@ -28,8 +28,34 @@ int main() {
     EquationClassique* eq2_derive = eq2.derivee();
     std::cout << "Derivee eq2              : "; eq2_derive->afficher();
 
+    // 3. Test Integrer
+    EquationClassique* eq1_int = eq1.integrer();
+    std::cout << "\nIntegrale eq1            : "; eq1_int->afficher();
+
+    // 4. Test Limite (L'Hopital 0/0)
+    auto N = ast_sin(X);
+    auto D = X;
+    EquationClassique eq3(N / D);
+    std::cout << "\nEquation 3 (N/D)         : "; eq3.afficher();
+    EquationClassique* eq3_lim = eq3.limite(0.0);
+    std::cout << "Limite eq3 en x=0        : "; eq3_lim->afficher();
+
+    // 5. Test DL (Taylor)
+    auto eq4_expr = ast_pow(X, 3) + ast_pow(X, 2) + X + 1;
+    EquationClassique eq4(eq4_expr);
+    std::cout << "\nEquation 4               : "; eq4.afficher();
+    EquationClassique* eq4_dl = eq4.DL(0.0, 2);
+    std::cout << "DL de eq4 en x=0 (ord 2) : "; eq4_dl->afficher();
+    
+    // 6. Test Generer points
+    auto points = eq4.genererPointsTrace(0.0, 1.0, 0.1);
+    std::cout << "\nTracé eq4 (nb points)    : " << points.size() << "\n";
+
     delete eq1_derive;
     delete eq2_derive;
+    delete eq1_int;
+    delete eq3_lim;
+    delete eq4_dl;
 
     std::cout << "\n===== FIN DES TESTS =====\n";
     return 0;
