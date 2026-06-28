@@ -70,6 +70,7 @@ public:
      * Utilisation : EquationClassique* eq_int = eq.integrer();
      */
     EquationClassique* integrer() const;
+    double integraleDefinie(double a, double b) const;
 
     /*
      * Nom : limite

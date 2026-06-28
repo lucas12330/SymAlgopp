@@ -72,6 +72,13 @@ EquationClassique* EquationClassique::integrer() const {
     return new EquationClassique(cst(0.0));
 }
 
+double EquationClassique::integraleDefinie(double a, double b) const {
+    EquationClassique* primitive = this->integrer();
+    double result = primitive->eval(b) - primitive->eval(a);
+    delete primitive;
+    return result;
+}
+
 EquationClassique* EquationClassique::limite(double x0) const {
     if (m_racine) {
         ExprPtr limFormelle = m_racine->limite(x0)->simplifier();
