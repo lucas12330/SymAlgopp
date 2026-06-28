@@ -149,6 +149,31 @@ La commande suivante compilera les benchmarks avec le maximum d'optimisations (`
 make bench
 ```
 
+### 3. Résultats des Benchmarks (Benchmark 1)
+
+Les mesures suivantes ont été effectuées sur un processeur Intel Core i5 @ 2.60 GHz sous EndeavourOS (Arch Linux).
+
+#### A. Évaluation et Dérivation (SymAlgo++ vs GiNaC)
+
+| Opération / Scénario | SymAlgo++ | GiNaC | Comparaison |
+| :--- | :--- | :--- | :--- |
+| **Évaluation numérique** ($x=5$) | **~ 260 ns** | ~ 30 376 ns | 🚀 **SymAlgo++ est ~116x plus rapide** |
+| **Dérivation symbolique** ($f'(x)$) | ~ 50 486 ns | **~ 28 534 ns** | ⚠️ GiNaC est ~1.7x plus rapide |
+
+![Comparaison SymAlgo++ vs GiNaC](docs/images/bench_comparison.svg)
+
+* **Analyse** :
+  * **Évaluation** : SymAlgo++ surpasse largement GiNaC pour l'évaluation de valeurs numériques réelles (`double`). GiNaC, conçu pour le calcul exact, traite des objets symboliques lourds, ce qui introduit un surcoût.
+  * **Dérivation** : GiNaC est plus rapide pour la manipulation d'arbre symbolique. SymAlgo++ paie le coût des nombreuses allocations dynamiques (`std::shared_ptr`) lors des copies profondes du nœud d'arbre (`clone()`).
+
+#### B. Scalabilité de l'Équation Différentielle (SymAlgo++)
+
+Mesure du temps de génération de la matrice compagnon d'état selon l'ordre de dérivation $N$ :
+
+![Scalabilité de l'Équation Différentielle](docs/images/bench_ode_scaling.svg)
+
+* **Analyse** : La complexité temporelle augmente de manière strictement linéaire par rapport à l'ordre de l'équation, validant le choix de modélisation utilisant `std::map` et `Eigen::MatrixXd` pour stocker les coefficients et concevoir le système.
+
 ---
 
 ## Organisation du dépôt et conventions
