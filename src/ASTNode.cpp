@@ -67,7 +67,7 @@ void Constante::afficher(std::ostream& os) const { os << m_valeur; }
  * Description : Renvoie un nouveau noeud constante avec la même valeur.
  * Utilisation : ExprPtr copie = c.clone();
  */
-ExprPtr Constante::clone() const { return cst(m_valeur); }
+
 
 /*
  * Nom : estEgal
@@ -120,7 +120,7 @@ void Variable::afficher(std::ostream& os) const { os << m_nom; }
  * Description : Renvoie une copie de la variable avec le même nom.
  * Utilisation : ExprPtr copie = v.clone();
  */
-ExprPtr Variable::clone() const { return var(m_nom); }
+
 
 /*
  * Nom : estEgal
@@ -202,7 +202,7 @@ void Addition::afficher(std::ostream& os) const {
  * Description : Renvoie une copie de l'addition et de ses enfants.
  * Utilisation : ExprPtr copie = add.clone();
  */
-ExprPtr Addition::clone() const { return std::make_shared<Addition>(m_gauche->clone(), m_droite->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -276,7 +276,7 @@ void Soustraction::afficher(std::ostream& os) const {
  * Description : Renvoie une copie de la soustraction et de ses enfants.
  * Utilisation : ExprPtr copie = sub.clone();
  */
-ExprPtr Soustraction::clone() const { return std::make_shared<Soustraction>(m_gauche->clone(), m_droite->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -349,7 +349,7 @@ void Multiplication::afficher(std::ostream& os) const {
  * Description : Renvoie une copie de la multiplication et de ses enfants.
  * Utilisation : ExprPtr copie = mul.clone();
  */
-ExprPtr Multiplication::clone() const { return std::make_shared<Multiplication>(m_gauche->clone(), m_droite->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -420,7 +420,7 @@ void Division::afficher(std::ostream& os) const {
  * Description : Renvoie une copie de la division et de ses enfants.
  * Utilisation : ExprPtr copie = div.clone();
  */
-ExprPtr Division::clone() const { return std::make_shared<Division>(m_gauche->clone(), m_droite->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -496,7 +496,7 @@ void Puissance::afficher(std::ostream& os) const {
  * Description : Renvoie une copie de la puissance et de ses enfants.
  * Utilisation : ExprPtr copie = p.clone();
  */
-ExprPtr Puissance::clone() const { return std::make_shared<Puissance>(m_gauche->clone(), m_droite->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -565,7 +565,7 @@ void Sinus::afficher(std::ostream& os) const {
  * Description : Renvoie une copie du sinus et de son argument.
  * Utilisation : ExprPtr copie = s.clone();
  */
-ExprPtr Sinus::clone() const { return std::make_shared<Sinus>(m_argument->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -625,7 +625,7 @@ void Cosinus::afficher(std::ostream& os) const {
  * Description : Renvoie une copie du cosinus et de son argument.
  * Utilisation : ExprPtr copie = c.clone();
  */
-ExprPtr Cosinus::clone() const { return std::make_shared<Cosinus>(m_argument->clone()); }
+
 
 /*
  * Nom : estEgal
@@ -635,6 +635,44 @@ ExprPtr Cosinus::clone() const { return std::make_shared<Cosinus>(m_argument->cl
 bool Cosinus::estEgal(const ASTNode& autre) const {
     const Cosinus* a = dynamic_cast<const Cosinus*>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
+}
+
+// ============== TANGENTE ==================
+
+Tangente::Tangente(ExprPtr arg) : FonctionUnaire(arg) {}
+
+double Tangente::eval(double x) const { return std::tan(m_argument->eval(x)); }
+
+ExprPtr Tangente::derivee() const {
+    // Dérivée de tan(u) = (1 + tan^2(u)) * u'
+    auto tan_u = ast_tan(m_argument);
+    return (cst(1.0) + ast_pow(tan_u, 2.0)) * m_argument->derivee();
+}
+
+ExprPtr Tangente::simplifier() const {
+    auto arg = m_argument->simplifier();
+    if (arg->estConstante()) return cst(std::tan(arg->getValeurConstante()));
+    return ast_tan(arg);
+}
+
+void Tangente::afficher(std::ostream& os) const {
+    os << "tan("; m_argument->afficher(os); os << ")";
+}
+
+bool Tangente::estEgal(const ASTNode& autre) const {
+    const Tangente* a = dynamic_cast<const Tangente*>(&autre);
+    return a && m_argument->estEgal(*(a->m_argument));
+}
+
+ExprPtr Tangente::integrer() const {
+    if (dynamic_cast<Variable*>(m_argument.get())) {
+        return cst(-1.0) * ast_ln(ast_cos(m_argument)); // -ln(cos(x))
+    }
+    return cst(0.0);
+}
+
+ExprPtr Tangente::limite(double a) const {
+    return ast_tan(m_argument->limite(a));
 }
 
 
@@ -772,6 +810,13 @@ ExprPtr ast_sin(ExprPtr arg) { return std::make_shared<Sinus>(arg); }
  * Utilisation : ExprPtr resultat = ast_cos(e);
  */
 ExprPtr ast_cos(ExprPtr arg) { return std::make_shared<Cosinus>(arg); }
+
+/*
+ * Nom : ast_tan
+ * Description : Helper générant un noeud Tangente.
+ * Utilisation : ExprPtr resultat = ast_tan(e);
+ */
+ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<Tangente>(arg); }
 
 // ============================================================================
 // IMPLÉMENTATION DES LIMITES, INTÉGRALES, DL ET LOGARITHME
@@ -915,7 +960,7 @@ void Exponentielle::afficher(std::ostream& os) const {
     os << "exp("; m_argument->afficher(os); os << ")";
 }
 
-ExprPtr Exponentielle::clone() const { return ast_exp(m_argument->clone()); }
+
 
 bool Exponentielle::estEgal(const ASTNode& autre) const {
     const Exponentielle* a = dynamic_cast<const Exponentielle*>(&autre);
@@ -960,7 +1005,7 @@ void Logarithme::afficher(std::ostream& os) const {
     os << "ln("; m_argument->afficher(os); os << ")";
 }
 
-ExprPtr Logarithme::clone() const { return ast_ln(m_argument->clone()); }
+
 
 bool Logarithme::estEgal(const ASTNode& autre) const {
     const Logarithme* a = dynamic_cast<const Logarithme*>(&autre);

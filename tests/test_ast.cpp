@@ -51,6 +51,15 @@ int main() {
     auto points = eq4.genererPointsTrace(0.0, 1.0, 0.1);
     std::cout << "\nTracé eq4 (nb points)    : " << points.size() << "\n";
 
+    // 7. Test Tangente
+    auto expr_tan = ast_tan(X);
+    EquationClassique eq_tan(expr_tan);
+    std::cout << "\nEquation Tangente        : "; eq_tan.afficher();
+    EquationClassique* eq_tan_derive = eq_tan.derivee();
+    std::cout << "Derivee Tangente         : "; eq_tan_derive->afficher();
+    std::cout << "Eval tan(0)              : " << eq_tan.eval(0.0) << "\n";
+    std::cout << "Eval tan'(0)             : " << eq_tan_derive->eval(0.0) << "\n";
+
     delete eq1_derive;
     delete eq2_derive;
     delete eq1_int;

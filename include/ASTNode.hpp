@@ -53,10 +53,12 @@ public:
     
     /*
      * Nom : clone
-     * Description : Effectue une copie profonde de l'arbre courant.
+     * Description : Renvoie un pointeur partagé vers ce noeud (l'arbre est immuable).
      * Utilisation : ExprPtr copie = noeud->clone();
      */
-    virtual ExprPtr clone() const = 0;
+    virtual ExprPtr clone() const {
+        return std::const_pointer_cast<ASTNode>(shared_from_this());
+    }
 
     /*
      * Nom : integrer
@@ -135,13 +137,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie exacte de cette constante.
-     * Utilisation : ExprPtr copie = c.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si un autre noeud est une constante de même valeur.
@@ -206,13 +202,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie identique de la variable.
-     * Utilisation : ExprPtr copie = v.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si l'autre noeud est une variable avec le même nom.
@@ -277,13 +267,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie de l'addition et de ses deux enfants.
-     * Utilisation : ExprPtr copie = add.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie l'égalité commutative (a+b = a+b ou a+b = b+a).
@@ -333,13 +317,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie de la soustraction et de ses sous-arbres.
-     * Utilisation : ExprPtr copie = sub.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie que le noeud actuel est une soustraction de termes identiques.
@@ -389,13 +367,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie profonde de la multiplication.
-     * Utilisation : ExprPtr copie = mul.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie l'égalité commutative pour la multiplication.
@@ -445,13 +417,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie du noeud et de ses enfants.
-     * Utilisation : ExprPtr copie = div.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si un autre noeud est la même division exacte.
@@ -501,13 +467,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Renvoie une copie de la puissance entière.
-     * Utilisation : ExprPtr copie = p.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si un autre noeud est une puissance avec mêmes base et exposant.
@@ -571,13 +531,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie du noeud sinus.
-     * Utilisation : ExprPtr copie = s.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si un autre noeud est un sinus avec le même argument.
@@ -627,13 +581,7 @@ public:
      */
     void afficher(std::ostream& os) const override;
     
-    /*
-     * Nom : clone
-     * Description : Crée une copie du noeud cosinus.
-     * Utilisation : ExprPtr copie = c.clone();
-     */
-    ExprPtr clone() const override;
-    
+
     /*
      * Nom : estEgal
      * Description : Vérifie si un autre noeud est un cosinus avec le même argument.
@@ -646,6 +594,18 @@ public:
 
 };
 
+class Tangente : public FonctionUnaire {
+public:
+    explicit Tangente(ExprPtr arg);
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    bool estEgal(const ASTNode& autre) const override;
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+};
+
 
 
 class Exponentielle : public FonctionUnaire {
@@ -655,7 +615,7 @@ public:
     ExprPtr derivee() const override;
     ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
-    ExprPtr clone() const override;
+
     bool estEgal(const ASTNode& autre) const override;
     ExprPtr integrer() const override;
     ExprPtr limite(double a) const override;
@@ -668,7 +628,7 @@ public:
     ExprPtr derivee() const override;
     ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
-    ExprPtr clone() const override;
+
     bool estEgal(const ASTNode& autre) const override;
     ExprPtr integrer() const override;
     ExprPtr limite(double a) const override;
@@ -808,6 +768,15 @@ ExprPtr ast_sin(ExprPtr arg);
  * Utilisation : ExprPtr c = ast_cos(expr);
  */
 ExprPtr ast_cos(ExprPtr arg);
+
+/*
+ * Nom : ast_tan
+ * Description : Fonction pour créer le noeud tangente d'une expression.
+ * Utilisation : ExprPtr t = ast_tan(expr);
+ */
+ExprPtr ast_tan(ExprPtr arg);
+
+
 
 
 /*
