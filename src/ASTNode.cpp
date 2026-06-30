@@ -1,6 +1,8 @@
 #include "ASTNode.hpp"
 #include <cmath>
 #include <iostream>
+#include <numeric> // Pour std::gcd
+#include <stdexcept>
 
 /*
  * Nom : extractCoeff
@@ -77,6 +79,46 @@ void Constante::afficher(std::ostream& os) const { os << m_valeur; }
 bool Constante::estEgal(const ASTNode& autre) const {
     return autre.estConstante() && std::abs(autre.getValeurConstante() - m_valeur) < 1e-9;
 }
+
+// ============== FRACTION ==================
+
+Fraction::Fraction(int64_t num, int64_t den) {
+    if (den == 0) {
+        throw std::invalid_argument("Denominateur nul dans une Fraction");
+    }
+    int64_t g = std::gcd(num, den);
+    m_num = num / g;
+    m_den = den / g;
+    if (m_den < 0) {
+        m_num = -m_num;
+        m_den = -m_den;
+    }
+    m_valeur_eval = static_cast<double>(m_num) / static_cast<double>(m_den);
+}
+
+double Fraction::eval(double /*x*/) const { return m_valeur_eval; }
+
+ExprPtr Fraction::derivee() const { return cst(0.0); }
+
+ExprPtr Fraction::simplifier() const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
+
+void Fraction::afficher(std::ostream& os) const {
+    if (m_den == 1) os << m_num;
+    else os << "(" << m_num << "/" << m_den << ")";
+}
+
+bool Fraction::estEgal(const ASTNode& autre) const {
+    if (const Fraction* f = dynamic_cast<const Fraction*>(&autre)) {
+        return m_num == f->m_num && m_den == f->m_den;
+    }
+    if (autre.estConstante()) {
+        return std::abs(autre.getValeurConstante() - m_valeur_eval) < 1e-9;
+    }
+    return false;
+}
+
+ExprPtr Fraction::integrer() const { return frac(m_num, m_den) * var("x"); }
+ExprPtr Fraction::limite(double /*a*/) const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
 
 // ============== VARIABLE ==================
 
@@ -684,6 +726,7 @@ ExprPtr Tangente::limite(double a) const {
  * Utilisation : ExprPtr noeud = cst(3.14);
  */
 ExprPtr cst(double valeur) { return std::make_shared<Constante>(valeur); }
+ExprPtr frac(int64_t num, int64_t den) { return std::make_shared<Fraction>(num, den); }
 
 /*
  * Nom : var

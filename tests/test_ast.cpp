@@ -60,7 +60,17 @@ int main() {
     std::cout << "Eval tan(0)              : " << eq_tan.eval(0.0) << "\n";
     std::cout << "Eval tan'(0)             : " << eq_tan_derive->eval(0.0) << "\n";
 
+    // 8. Test Fractions
+    auto f1 = frac(2, 6); // Devrait être (1/3)
+    auto expr_frac = f1 * X;
+    EquationClassique eq_frac(expr_frac);
+    std::cout << "\nEquation Fraction        : "; eq_frac.afficher();
+    EquationClassique* eq_frac_derive = eq_frac.derivee();
+    std::cout << "Derivee Fraction         : "; eq_frac_derive->afficher();
+    std::cout << "Eval (1/3)*x (x=3)       : " << eq_frac.eval(3.0) << "\n";
+    
     delete eq1_derive;
+    delete eq_frac_derive;
     delete eq2_derive;
     delete eq1_int;
     delete eq3_lim;

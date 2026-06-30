@@ -164,6 +164,36 @@ public:
     double getValeurConstante() const override { return m_valeur; }
 };
 
+
+/*
+ * ============================================================================
+ * CLASSE FRACTION
+ * Représente un nombre rationnel exact A/B
+ * ============================================================================
+ */
+class Fraction : public ASTNode {
+private:
+    int64_t m_num;
+    int64_t m_den;
+    double m_valeur_eval; // Cache pour eval()
+
+public:
+    Fraction(int64_t num, int64_t den);
+
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    bool estEgal(const ASTNode& autre) const override;
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+    
+    bool estConstante() const override { return true; }
+    double getValeurConstante() const override { return m_valeur_eval; }
+    int64_t getNum() const { return m_num; }
+    int64_t getDen() const { return m_den; }
+};
+
 class Variable : public ASTNode {
     std::string m_nom;
 public:
@@ -642,6 +672,7 @@ public:
  * Utilisation : ExprPtr c = cst(5.0);
  */
 ExprPtr cst(double valeur);
+ExprPtr frac(int64_t num, int64_t den = 1);
 
 /*
  * Nom : var
