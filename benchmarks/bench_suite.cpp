@@ -80,6 +80,6 @@ static void BM_SymAlgo_EqDiff_MatriceCompagnon(benchmark::State& state) {
     }
 }
 // Tester pour les ordres 1, 3, 5, 7, 9, 11, 13, 15
-BENCHMARK(BM_SymAlgo_EqDiff_MatriceCompagnon)->DenseRange(1, 15, 2);
+BENCHMARK(BM_SymAlgo_EqDiff_MatriceCompagnon)->DenseRange(1, 30, 2);
 
 BENCHMARK_MAIN();
