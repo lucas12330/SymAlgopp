@@ -51,11 +51,31 @@ int main() {
     auto points = eq4.genererPointsTrace(0.0, 1.0, 0.1);
     std::cout << "\nTracé eq4 (nb points)    : " << points.size() << "\n";
 
+    // 7. Test Tangeante
+    auto eq_tan_expr = ast_tan(X);
+    EquationClassique eq_tan(eq_tan_expr);
+    std::cout << "\nEquation Tangente        : "; eq_tan.afficher();
+    std::cout << "Evaluation tan(0)        : " << eq_tan.eval(0.0) << " (Attendu: 0)\n";
+    
+    EquationClassique* eq_tan_deriv = eq_tan.derivee();
+    std::cout << "Dérivée de tan(x)        : "; eq_tan_deriv->afficher();
+    std::cout << "Eval dérivée(x=0)        : " << eq_tan_deriv->eval(0.0) << " (Attendu: 1)\n";
+    
+    EquationClassique* eq_tan_int = eq_tan.integrer();
+    std::cout << "Intégrale de tan(x)      : "; eq_tan_int->afficher();
+    std::cout << "Eval intégrale(x=0)      : " << eq_tan_int->eval(0.0) << " (Attendu: 0)\n";
+
+    EquationClassique* eq_tan_lim = eq_tan.limite(0.0);
+    std::cout << "Limite de tan(x) en x=0  : "; eq_tan_lim->afficher();
+
     delete eq1_derive;
     delete eq2_derive;
     delete eq1_int;
     delete eq3_lim;
     delete eq4_dl;
+    delete eq_tan_deriv;
+    delete eq_tan_int;
+    delete eq_tan_lim;
 
     std::cout << "\n===== FIN DES TESTS =====\n";
     return 0;

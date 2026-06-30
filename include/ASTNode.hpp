@@ -6,6 +6,11 @@
 class ASTNode;
 using ExprPtr = std::shared_ptr<ASTNode>;
 
+enum class NodeType {
+    Constante, Variable, Addition, Soustraction, Multiplication, Division, Puissance,
+    Sinus, Cosinus, tangeante, Exponentielle, Logarithme
+};
+
 // Classe abstraite de base pour tous les noeuds de l'arbre
 class ASTNode : public std::enable_shared_from_this<ASTNode> {
 public:
@@ -646,6 +651,63 @@ public:
 
 };
 
+class tangeante : public FonctionUnaire {
+    public:
+
+    /*
+     * Nom : tangeante
+     * Description : Construit un noeud pour la fonction tangeante.
+     * Utilisation : tangeante c(expr);
+     */
+    explicit tangeante(ExprPtr arg);
+
+    /*
+     * Nom : eval
+     * Description : Evalue tan(argument).
+     * Utilisation : double val = c.eval(x);
+     */
+    double eval(double x) const override;
+
+    /*
+     * Nom : derivee
+     * Description : La dérivée de tan(u) est u'/(cos u )**2.
+     * Utilisation : ExprPtr d = c.derivee();
+     */
+    ExprPtr derivee() const override;
+
+    /*
+     * Nom : simplifier
+     * Description : Simplifie en évaluant la constante si possible.
+     * Utilisation : ExprPtr simp = c.simplifier();
+     */
+    ExprPtr simplifier() const override;
+
+    /*
+     * Nom : afficher
+     * Description : Affiche sous la forme tan(argument).
+     * Utilisation : c.afficher(std::cout);
+     */
+    void afficher(std::ostream& os) const override;
+
+    /*
+     * Nom : clone
+     * Description : Crée une copie du noeud tangeante.
+     * Utilisation : ExprPtr copie = c.clone();
+     */
+    ExprPtr clone() const override;
+
+    /*
+     * Nom : estEgal
+     * Description : Vérifie si un autre noeud est un cosinus avec le même argument.
+     * Utilisation : bool eq = c.estEgal(autre);
+     */
+    bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
+};
+
 
 
 class Logarithme : public FonctionUnaire {
@@ -795,6 +857,15 @@ ExprPtr ast_sin(ExprPtr arg);
  * Utilisation : ExprPtr c = ast_cos(expr);
  */
 ExprPtr ast_cos(ExprPtr arg);
+
+/*
+ * Nom : ast_tan
+ * Description : Fonction pour créer le noeud tangeante d'une expression.
+ * Utilisation : ExprPtr c = ast_tan(expr);
+ */
+ ExprPtr ast_tan(ExprPtr arg);
+
+
 
 
 /*

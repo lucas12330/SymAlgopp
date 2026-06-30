@@ -637,6 +637,93 @@ bool Cosinus::estEgal(const ASTNode& autre) const {
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
+// ============== Tangeante ==========
+/*
+ * Nom : tangeante
+ * Description : Constructeur de la fonction tangeante avec l'argument.
+ * Utilisation : tangeante c(expr);
+ */
+tangeante::tangeante(ExprPtr arg) : FonctionUnaire(arg) {}
+
+/*
+ * Nom : eval
+ * Description : Evalue tan(argument).
+ * Utilisation : double val = c.eval(x);
+ */
+double tangeante::eval(double x) const { return std::tan(m_argument->eval(x)); }
+
+/*
+ * Nom : derivee
+ * Description : La dérivée de tan(u) est u'/(cos u )**2.
+ * Utilisation : ExprPtr d = c.derivee();
+ */
+ExprPtr tangeante::derivee() const {
+    return m_argument->derivee() / ast_pow(ast_cos(m_argument), 2.0);
+}
+
+/*
+ * Nom : simplifier
+ * Description : Simplifie en évaluant la constante si possible.
+ * Utilisation : ExprPtr simp = c.simplifier();
+ */
+ExprPtr tangeante::simplifier() const {
+    auto arg = m_argument->simplifier();
+    if (arg->estConstante()) return cst(std::tan(arg->getValeurConstante()));
+    return ast_tan(arg);
+}
+
+/*
+ * Nom : afficher
+ * Description : Affiche sous la forme tan(argument).
+ * Utilisation : c.afficher(std::cout);
+ */
+void tangeante::afficher(std::ostream& os) const {
+    os << "tan("; m_argument->afficher(os); os << ")";
+}
+
+/*
+ * Nom : clone
+ * Description : Crée une copie du noeud tangeante.
+ * Utilisation : ExprPtr copie = c.clone();
+ */
+ExprPtr tangeante::clone() const { return std::make_shared<tangeante>(m_argument->clone()); }
+
+/*
+ * Nom : estEgal
+ * Description : Vérifie si un autre noeud est une tangeante avec le même argument.
+ * Utilisation : bool eq = c.estEgal(autre);
+ */
+bool tangeante::estEgal(const ASTNode& autre) const {
+    const tangeante* a = dynamic_cast<const tangeante*>(&autre);
+    return a && m_argument->estEgal(*(a->m_argument));
+}
+
+/*
+ * Nom : integrer
+ * Description : Calcule une primitive de la tangeante si possible (argument variable).
+ * Utilisation : ExprPtr p = c.integrer();
+ */
+ExprPtr tangeante::integrer() const {
+    if (dynamic_cast<Variable*>(m_argument.get())) {
+        return cst(-1.0) * ast_ln(ast_cos(m_argument));
+    }
+    return cst(0.0);
+}
+
+/*
+ * Nom : limite
+ * Description : Calcule la limite de la tangeante.
+ * Utilisation : ExprPtr lim = c.limite(a);
+ */
+ExprPtr tangeante::limite(double a) const {
+    double val_cos = std::cos(m_argument->eval(a));
+    if (std::abs(val_cos) < 1e-9) {
+        return cst(std::numeric_limits<double>::infinity());
+    }
+    return ast_tan(m_argument->limite(a));
+}
+
+
 
 // --- Surcharge d'Opérateurs =---
 
@@ -772,6 +859,13 @@ ExprPtr ast_sin(ExprPtr arg) { return std::make_shared<Sinus>(arg); }
  * Utilisation : ExprPtr resultat = ast_cos(e);
  */
 ExprPtr ast_cos(ExprPtr arg) { return std::make_shared<Cosinus>(arg); }
+
+/*
+ * Nom : ast_tan
+ * Description : Helper générant un noeud tangeante.
+ * Utilisation : ExprPtr resultat = ast_tan(e);
+ */
+ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<tangeante>(arg); }
 
 // ============================================================================
 // IMPLÉMENTATION DES LIMITES, INTÉGRALES, DL ET LOGARITHME
