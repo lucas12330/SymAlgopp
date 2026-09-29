@@ -9,7 +9,7 @@ SymAlgo++ est une bibliothèque C++17 moderne et performante conçue pour repré
 Le projet est structuré autour d'une hiérarchie de classes exploitant le polymorphisme et le C++17 moderne :
 
 * **`Equation`** : Classe abstraite de base définissant l'interface commune de toutes les équations du système.
-  * `eval(double x)` : Évalue l'équation pour une valeur rélle donnée.
+  * `eval(double x)` : Évalue l'équation pour une valeur réelle donnée.
   * `deriveeGenerique()` : Dérivée polymorphe, renvoyée sous forme de `std::unique_ptr<Equation>`. Chaque classe dérivée propose aussi `derivee()`, qui renvoie son propre type par valeur.
 * **`EquationClassique`** (hérite d'`Equation`) : Encapsule un arbre de syntaxe abstraite (`ASTNode`) et fournit des opérations algébriques avancées (dérivation formelle, intégration symbolique, calcul de limites par L'Hôpital, développements limités et tracé adaptatif).
 * **`EquationDifferentielle`** (hérite d'`Equation`) : Représente des équations différentielles linéaires de la forme $\sum a_i y^{(i)} = 0$. Offre à la fois une résolution analytique/littérale exacte et une résolution numérique via Runge-Kutta 4 (RK4) basée sur la matrice compagnon d'état (Eigen).
@@ -30,8 +30,9 @@ Toute la bibliothèque est déclarée dans l'espace de noms `symalgo` (les opér
 
 1. **Nœuds terminaux** :
    * `Constante` : Contient une valeur réelle (`double`).
-   * `Fraction` : Représente un nombre rationnel exact $A/B$ (`int64_t`) avec un cache d'évaluation float haute performance.
-   * `Variable` : Représente l'inconnue symbolique (par défaut `"x"`).
+   * `Fraction` : Représente un nombre rationnel exact $A/B$ (`int64_t`) avec un cache d'évaluation float haute performance. La simplification calcule exactement sur les fractions ($1/3 + 1/6 = 1/2$), avec détection des débordements.
+   * `Variable` : Représente la variable d'évaluation (par défaut `"x"` ; `var("v")` fonctionne de la même façon).
+   * `Parametre` : Constante symbolique sans valeur (ex. les constantes $C_1, C_2$ des solutions d'EDO) : dérivée nulle, évaluation impossible (`std::logic_error`).
 2. **Opérateurs binaires** :
    * `Addition` ($+$)
    * `Soustraction` ($-$)
@@ -44,10 +45,11 @@ Toute la bibliothèque est déclarée dans l'espace de noms `symalgo` (les opér
    * `Tangente` ($\tan$)
    * `Exponentielle` ($\exp$)
    * `Logarithme` ($\ln$)
+4. **Nœuds non évalués** : `IntegraleNonEvaluee` et `LimiteNonEvaluee` représentent une primitive ou une limite que la bibliothèque ne sait pas déterminer. Ils remplacent tout résultat faux (la dérivée d'une intégrale non évaluée redonne l'intégrande ; les évaluer lève `std::logic_error`).
 
 ### Simplification et Fonctions Helpers
 
-Des constructeurs d'aide (`cst`, `frac`, `var`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`) ainsi que des surcharges d'opérateurs arithmétiques permettent une écriture proche des mathématiques :
+Des constructeurs d'aide (`cst`, `frac`, `var`, `param`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`) ainsi que des surcharges d'opérateurs arithmétiques permettent une écriture proche des mathématiques :
 
 ```cpp
 auto X = var("x");
@@ -59,12 +61,13 @@ auto expr = frac(1, 3) * ast_pow(X, 2) + ast_sin(X) + ast_ln(X);
 
 ## ⚡ Fonctionnalités Avancées
 
-* **Intégration Symbolique (`integrer()`)** : Moteur formel de recherche de primitives par reconnaissance de motifs (polynômes, séries trigonométriques, linéarité).
-* **Limites Symboliques (`limite(x0)`)** : Calcul des limites formelles intégrant l'application récursive de la règle de L'Hôpital pour lever les formes indéterminées $0/0$.
-* **Développements Limités (`DL(x0, ordre)`)** : Approximation symbolique de Taylor / Maclaurin à n'importe quel ordre.
+* **Intégration Symbolique (`integrer()`)** : Moteur formel de recherche de primitives par reconnaissance de motifs (polynômes, fonctions usuelles, linéarité, facteurs constants, substitution linéaire $\int f(ax+b)\,dx = F(ax+b)/a$). Hors de ces règles, le résultat est une `IntegraleNonEvaluee`.
+* **Limites (`limite(x0)`)** : Règle de L'Hôpital pour $0/0$ et $\infty/\infty$ (profondeur bornée), formes $0 \cdot \infty$, $1^\infty$, $0^0$, $\infty^0$, signe de l'infini déterminé par le développement du dénominateur. Une limite inexistante (ex. $1/x$ en 0, où les limites à gauche et à droite diffèrent) ou non déterminée est une `LimiteNonEvaluee`.
+* **Développements Limités (`DL(x0, ordre)`)** : Taylor / Maclaurin à n'importe quel ordre, calculé par arithmétique des séries tronquées (technique de la différentiation automatique) : l'ordre 20 de $e^{\sin x}$ s'obtient en quelques dizaines de microsecondes.
 * **Tracé Adaptatif (`genererPointsTrace(xMin, xMax, tolerance)`)** : Génération de courbes par échantillonnage adaptatif récursif, réduisant le nombre de points requis en zone linéaire tout en affinant les zones de forte courbure.
-* **Résolution Littérale d'EDO (`resoudreLitteral()`)** : Résolution formelle exacte des équations différentielles linéaires homogènes à coefficients constants, fournissant la combinaison linéaire des solutions (réelles ou complexes conjuguées).
-* **Solveur Numérique EDO (RK4)** : Simulation numérique temporelle d'ordre 4 basée sur le schéma d'espace d'état et la matrice compagnon (Eigen).
+* **Résolution Littérale d'EDO (`resoudreLitteral()`)** : Résolution formelle exacte des équations différentielles linéaires homogènes à coefficients constants, fournissant la combinaison linéaire des solutions (racines réelles, complexes conjuguées et multiples : $x^k e^{rx}$).
+* **Problème de Cauchy (`resoudreProblemeCauchy()`)** : Solution exacte satisfaisant les conditions initiales, directement évaluable.
+* **Solveur Numérique EDO (RK4)** : Simulation numérique temporelle d'ordre 4 basée sur le schéma d'espace d'état et la matrice compagnon (Eigen) ; chaque pas se réduit à un produit matrice-vecteur précalculé.
 
 ---
 
@@ -146,7 +149,7 @@ Le projet est doté d'un `Makefile` complet et portable :
   ```bash
   make
   ```
-* **Lancer la suite de tests automatisés** :
+* **Lancer la suite de tests automatisés** (mini-framework sans dépendance, `tests/test_framework.hpp` ; code de retour non nul en cas d'échec) :
   ```bash
   make run_tests
   ```
@@ -169,20 +172,21 @@ make bench
 
 ### 2. Résultats des Mesures
 
-Les tests ont été réalisés sur un processeur Intel Core i5 @ 2.60 GHz (EndeavourOS).
+Les mesures ci-dessous (médiane de 3 répétitions) ont été réalisées sur un processeur Intel Celeron N4120 @ 1.10 GHz (Arch Linux, GCC 16, `-O3`).
 
 #### A. Évaluation et Dérivation (SymAlgo++ vs GiNaC)
 
 | Opération / Scénario | SymAlgo++ | GiNaC | Comparaison |
 | :--- | :--- | :--- | :--- |
-| **Évaluation numérique** ($x=5$) | **~ 274 ns** | ~ 33 074 ns | 🚀 **SymAlgo++ est ~120x plus rapide** |
-| **Dérivation symbolique** ($f'(x)$) | ~ 41 696 ns | **~ 28 757 ns** | ⚠️ GiNaC est ~1.45x plus rapide |
+| **Évaluation numérique** ($x=5$) | **~ 143 ns** | ~ 30 641 ns | 🚀 **SymAlgo++ est ~210x plus rapide** |
+| **Dérivation symbolique** ($f'(x)$, simplifiée) | **~ 6 816 ns** | ~ 28 021 ns | 🚀 **SymAlgo++ est ~4x plus rapide** |
 
 ![Comparaison SymAlgo++ vs GiNaC](docs/images/bench_comparison.svg)
 
 * **Analyse** :
-  * **Évaluation** : Grâce au cache de valeurs réelles dans le nœud `Fraction` et au polymorphisme direct, SymAlgo++ offre un débit d'évaluation exceptionnel (~120x supérieur à GiNaC).
-  * **Dérivation** : Les récentes optimisations (`std::enable_shared_from_this`, réutilisation de pointeurs immuables) ont réduit l'écart avec GiNaC de 1.7x à 1.45x.
+  * **Évaluation** : L'évaluation parcourt directement l'arbre en `double` (polymorphisme, aucune allocation), là où GiNaC substitue puis évalue symboliquement.
+  * **Dérivation** : Le partage des sous-arbres immuables (`std::enable_shared_from_this`) évite toute copie. Les anciennes mesures (GiNaC 1.45x plus rapide) étaient faussées : le `Makefile` liait le benchmark à une bibliothèque compilée sans optimisation.
+  * *Comparaison à nuancer* : GiNaC est un système de calcul formel complet (forme canonique, arithmétique exacte généralisée), dont les opérations font davantage de travail.
 
 #### B. Scalabilité EDO (Génération Matrice Compagnon)
 

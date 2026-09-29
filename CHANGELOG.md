@@ -2,7 +2,37 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
-## [Unreleased] - Branche feature/equation-classique
+## [Unreleased] - Branche feature/corrections-robustesse
+
+### Correctifs majeurs (Major Patches)
+* **Constantes d'EDO** : les constantes $C_1, C_2$ de `resoudreLitteral()` étaient des variables (évaluées comme $x$, dérivée 1). Nouveau nœud `Parametre` (helper `param()`).
+* **Intégration** : les primitives non calculables renvoyaient 0 ($\int x \cdot x = 0$, $\int \sin 2x = 0$). Nouveau nœud `IntegraleNonEvaluee`, et règle de substitution linéaire $\int f(ax+b) = F(ax+b)/a$.
+* **Limites** : $x \cdot (1/x)$ en 0 donnait NaN, $-1/x$ en 0 donnait $+\infty$, $\ln$ d'un argument négatif donnait $-\infty$. Formes indéterminées, signe de l'infini et limites inexistantes (`LimiteNonEvaluee`) sont désormais gérés ; récursion de L'Hôpital bornée.
+* **Racines multiples** : $y'' + 2y' + y = 0$ donnait une base dégénérée ($C_1 e^{-x} + C_2 e^{-x}$) au lieu de $(C_1 + C_2 x) e^{-x}$.
+* **Coefficient dominant nul** d'une EDO : division par zéro dans la matrice compagnon.
+* **Simplification** : toute constante inférieure à $10^{-9}$ était considérée nulle ($6.674 \cdot 10^{-11} x \to 0$) ; les fractions perdaient leur exactitude ($1/3 + 1/3 = 0.666667$) ; $0/0$ devenait 0.
+* **Développements limités** : termes d'ordre $\geq 13$ perdus (seuil absolu sur $1/k!$), factorielle débordant à $21!$, NaN silencieux aux points non développables.
+* **Affichage** des équations différentielles : « 1y » pour un coefficient $\pm 1$.
+* **`Makefile`** : bibliothèque compilée sans optimisation (benchmarks faussés), headers non suivis.
+* Nœud créé sur la pile : `std::logic_error` explicite au lieu de `std::bad_weak_ptr`.
+
+### Ajouts (Additions)
+* `EquationDifferentielle::resoudreProblemeCauchy()` : solution exacte avec conditions initiales.
+* `EquationDifferentielle::derivee()` : EDO dont la solution est $y'$.
+* Suite de tests à assertions (`tests/test_framework.hpp`, 63 cas) ; `make run_tests` échoue en cas d'erreur.
+* Cible `make demo` (`bin/demo`).
+
+### Performances
+* `DL()` par arithmétique des séries de Taylor : ordre 10 de $e^{\sin x}$ de 2,9 s à 0,015 ms.
+* RK4 : un pas = un produit matrice-vecteur précalculé (x6 à x8).
+* Dérivation : ~4x plus rapide que GiNaC (mesures refaites avec la bibliothèque optimisée).
+
+### Changements d'API (Breaking Changes)
+* Tout le code est dans `namespace symalgo`.
+* `derivee()`, `integrer()`, `limite()`, `DL()`, `resoudreLitteral()` renvoient un `EquationClassique` **par valeur** (plus de `delete`).
+* `Equation::derivee()` devient `deriveeGenerique()` (renvoie `std::unique_ptr<Equation>`).
+
+## Branche feature/equation-classique
 
 ### Ajouts majeurs (Major Additions)
 * **Intégration Symbolique** : Implémentation d'un moteur de calcul formel d'intégrales par reconnaissance de motifs pour les expressions classiques (`ASTNode::integrer`). Prise en charge des polynômes, fonctions trigonométriques (sinus, cosinus), et de la linéarité.
