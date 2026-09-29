@@ -4,7 +4,9 @@
 
 # Compilateur et options
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17 -Iinclude -Ivendor/eigen
+CXXFLAGS = -Wall -Wextra -std=c++17 -O2 -Iinclude -isystem vendor/eigen
+# Génère un fichier .d par objet pour recompiler quand un header change
+DEPFLAGS = -MMD -MP
 
 # Répertoires
 SRC_DIR = src
@@ -19,20 +21,20 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
 
 # Cibles de tests
-TEST_AST_SRC = $(TEST_DIR)/test_ast.cpp
-TEST_DIFF_SRC = $(TEST_DIR)/test_differentielle.cpp
+TEST_SRCS = $(wildcard $(TEST_DIR)/test_*.cpp)
+TEST_BINS = $(patsubst $(TEST_DIR)/%.cpp,$(BIN_DIR)/%,$(TEST_SRCS))
 
-TEST_AST_BIN = $(BIN_DIR)/test_ast
-TEST_DIFF_BIN = $(BIN_DIR)/test_differentielle
+# Démonstration
+DEMO_BIN = $(BIN_DIR)/demo
 
 # Cibles de benchmark
 BENCH_SRC = $(wildcard $(BENCH_DIR)/*.cpp)
-BENCH_BIN = $(BIN_DIR)/benchmark_suite
+BENCH_BIN = $(BIN_DIR)/bench_suite
 
 .PHONY: all clean run_tests bench
 
 # Cible par défaut
-all: $(TEST_AST_BIN) $(TEST_DIFF_BIN)
+all: $(TEST_BINS) $(DEMO_BIN)
 
 # Création des dossiers
 $(BUILD_DIR) $(BIN_DIR):
@@ -40,30 +42,32 @@ $(BUILD_DIR) $(BIN_DIR):
 
 # Règle pour compiler les fichiers objets de la bibliothèque
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 # Règles pour compiler les tests en liant les objets de la bibliothèque
-$(TEST_AST_BIN): $(TEST_AST_SRC) $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+$(BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(OBJS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@
 
-$(TEST_DIFF_BIN): $(TEST_DIFF_SRC) $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+$(DEMO_BIN): demo.cpp $(OBJS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@
 
-# Lancer tous les tests
-run_tests: all
-	@echo "\n--- EXECUTION DU TEST AST ---"
-	@./$(TEST_AST_BIN)
-	@echo "\n--- EXECUTION DU TEST EQUATION DIFFERENTIELLE ---"
-	@./$(TEST_DIFF_BIN)
+# Lancer tous les tests : s'arrête (code de retour non nul) au premier échec
+run_tests: $(TEST_BINS)
+	@for t in $(TEST_BINS); do \
+		printf '\n--- EXECUTION DE %s ---\n' "$$t"; \
+		./$$t || exit 1; \
+	done
 
 # Règle pour compiler les benchmarks (avec optimisation maximale)
-$(BENCH_BIN): $(BENCH_SRC) $(OBJS) | $(BIN_DIR)
+$(BENCH_BIN): $(BENCH_SRC) $(SRCS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ -lbenchmark -lpthread -lginac -lcln
 
 bench: $(BENCH_BIN)
-	@echo "\n--- EXECUTION DES BENCHMARKS ---"
+	@printf '\n--- EXECUTION DES BENCHMARKS ---\n'
 	@./$(BENCH_BIN)
 
 # Nettoyage
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
+
+-include $(OBJS:.o=.d) $(TEST_BINS:$(BIN_DIR)/%=$(BIN_DIR)/%.d) $(DEMO_BIN).d
