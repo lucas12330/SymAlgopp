@@ -41,12 +41,10 @@ void EquationDifferentielle::afficher() const {
         }
         
         double abs_coeff = std::abs(it->second);
-        if (abs_coeff != 1.0 || it->first == 0) std::cout << abs_coeff;
-        if (abs_coeff != 1.0 && it->first > 0) std::cout << "*";
-        
+        if (abs_coeff != 1.0) std::cout << abs_coeff << "*";
+
         if (it->first == 0) {
-            if (abs_coeff == 1.0) std::cout << "y";
-            else std::cout << "*y";
+            std::cout << "y";
         } else if (it->first == 1) {
             std::cout << "y'";
         } else if (it->first == 2) {
