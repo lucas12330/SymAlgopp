@@ -16,6 +16,7 @@
 #include <map>
 #include <vector>
 #include <Eigen/Dense>
+#include "ASTNode.hpp"
 
 class EquationClassique;
 
@@ -71,11 +72,30 @@ public:
 
   /*
    * Nom : resoudreLitteral
-   * Description : Résout analytiquement l'équation linéaire et retourne la solution formelle.
+   * Description : Résout analytiquement l'équation linéaire et retourne la solution générale,
+   *               combinaison linéaire des solutions de base avec des constantes symboliques
+   *               C1..Cn (paramètres). Les racines multiples du polynôme caractéristique
+   *               donnent les termes x^k e^(rx).
+   * Utilisation : EquationClassique* sol = eq.resoudreLitteral();
    */
   EquationClassique* resoudreLitteral() const;
 
+  /*
+   * Nom : resoudreProblemeCauchy
+   * Description : Solution exacte satisfaisant les conditions initiales en x = 0
+   *               (y(0), y'(0), ... ; les conditions manquantes valent 0). Contrairement à
+   *               resoudreLitteral, le résultat est directement évaluable.
+   * Utilisation : eq.setConditionsInitiales({1.0, 0.0}); EquationClassique* y = eq.resoudreProblemeCauchy();
+   */
+  EquationClassique* resoudreProblemeCauchy() const;
+
 private:
+  /*
+   * Nom : baseDeSolutions
+   * Description : Fonctions de base de l'espace des solutions (une par unité d'ordre).
+   */
+  std::vector<ExprPtr> baseDeSolutions() const;
+
   std::map<unsigned int, double> m_terme;
   std::vector<double> m_conditions_initiales;
 };
