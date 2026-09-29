@@ -198,6 +198,52 @@ TEST_CASE(integrales_fonctions_usuelles) {
     verifierPrimitive(ast_sin(X) / 4.0, {0.2, 1.1});
 }
 
+TEST_CASE(integrales_substitution_lineaire) {
+    verifierPrimitive(ast_sin(cst(2.0) * X), {0.2, 1.1});
+    verifierPrimitive(ast_cos(X / 3.0 + 1.0), {0.2, 1.1});
+    verifierPrimitive(ast_exp(cst(3.0) * X + 1.0), {0.2, 1.1});
+    verifierPrimitive(ast_exp(cst(-0.5) * X), {0.2, 1.1});
+    verifierPrimitive(ast_tan(cst(0.5) * X), {0.2, 1.1});
+    verifierPrimitive(ast_ln(cst(2.0) * X + 1.0), {0.2, 1.1});
+    verifierPrimitive(ast_pow(cst(2.0) * X + 1.0, 3.0), {0.2, 1.1});
+    verifierPrimitive(ast_pow(cst(2.0), X), {0.2, 1.1});
+    verifierPrimitive(ast_pow(cst(2.0), cst(3.0) * X), {0.2, 1.1});
+}
+
+TEST_CASE(integrales_quotients_et_produits) {
+    verifierPrimitive(cst(1.0) / X, {0.2, 1.1});
+    verifierPrimitive(cst(3.0) / (cst(2.0) * X + 1.0), {0.2, 1.1});
+    verifierPrimitive(cst(1.0) / ast_pow(X, 2.0), {0.2, 1.1});
+    verifierPrimitive(X * X, {0.2, 1.1});
+    verifierPrimitive(ast_cos(X) * 4.0, {0.2, 1.1});
+    // Facteur constant composé (ne dépend pas de x)
+    verifierPrimitive(ast_sin(cst(1.0)) * X, {0.2, 1.1});
+}
+
+TEST_CASE(integrale_avec_parametre) {
+    // ∫ C1 * cos(x) dx = C1 * sin(x)
+    CHECK_EQ(texte((param("C1") * ast_cos(X))->integrer()->simplifier()),
+             std::string("C1 * sin(x)"));
+    CHECK_EQ(texte(param("C1")->integrer()->simplifier()), std::string("C1 * x"));
+}
+
+TEST_CASE(integrale_non_evaluee) {
+    // x * sin(x) demanderait une intégration par parties : pas de résultat faux
+    const ExprPtr f = X * ast_sin(X);
+    const ExprPtr F = f->integrer();
+    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>(F) != nullptr);
+    CHECK_EQ(texte(F), std::string("integrale(x * sin(x))"));
+    CHECK_THROWS(F->eval(1.0), std::logic_error);
+    // (∫f)' = f
+    CHECK(F->derivee()->estEgal(*f));
+    // Une somme dont un terme n'est pas intégrable garde le reste calculé
+    const ExprPtr G = (ast_cos(X) + ast_sin(ast_pow(X, 2.0)))->integrer()->simplifier();
+    CHECK_EQ(texte(G), std::string("(sin(x) + integrale(sin((x)^(2))))"));
+    // Plus aucun 0 silencieux
+    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>(ast_exp(ast_pow(X, 2.0))->integrer()) != nullptr);
+    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>((ast_ln(X) / X)->integrer()) != nullptr);
+}
+
 // ============================================================================
 // Limites
 // ============================================================================

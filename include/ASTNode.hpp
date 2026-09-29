@@ -62,19 +62,30 @@ public:
 
     /*
      * Nom : integrer
-     * Description : Calcule la primitive symbolique de l'expression.
+     * Description : Calcule une primitive symbolique de l'expression. Une expression
+     *               indépendante de x s'intègre en c*x ; sinon le calcul est délégué au
+     *               noeud (primitive()). Si aucune règle ne s'applique, renvoie un noeud
+     *               IntegraleNonEvaluee plutôt qu'un résultat faux.
      * Utilisation : ExprPtr p = noeud->integrer();
      */
-    virtual ExprPtr integrer() const = 0;
-    
+    ExprPtr integrer() const;
+
     /*
      * Nom : limite
-     * Description : Calcule la limite symbolique quand x tend vers a.
+     * Description : Calcule la limite quand x tend vers a. Si elle ne peut pas être
+     *               déterminée, renvoie un noeud LimiteNonEvaluee.
      * Utilisation : ExprPtr l = noeud->limite(a);
      */
-    virtual ExprPtr limite(double a) const = 0;
+    ExprPtr limite(double a) const;
 
-    
+    /*
+     * Nom : contientVariable
+     * Description : Indique si l'expression dépend de la variable d'évaluation x.
+     *               Faux pour les constantes numériques et les paramètres symboliques.
+     * Utilisation : bool dep = noeud->contientVariable();
+     */
+    virtual bool contientVariable() const { return false; }
+
     /*
      * Nom : estEgal
      * Description : Compare la structure et le contenu mathématique du noeud avec un autre.
@@ -95,6 +106,32 @@ public:
      * Utilisation : double val = noeud->getValeurConstante();
      */
     virtual double getValeurConstante() const { return 0.0; }
+
+protected:
+    /*
+     * Nom : primitive
+     * Description : Règles d'intégration propres au noeud, appelées par integrer()
+     *               lorsque l'expression dépend de x.
+     */
+    virtual ExprPtr primitive() const = 0;
+
+    /*
+     * Nom : calculerLimite
+     * Description : Règles de calcul de limite propres au noeud, appelées par limite().
+     */
+    virtual ExprPtr calculerLimite(double a) const = 0;
+
+    /*
+     * Nom : integraleNonEvaluee
+     * Description : Renvoie le noeud IntegraleNonEvaluee portant sur ce noeud.
+     */
+    ExprPtr integraleNonEvaluee() const;
+
+    /*
+     * Nom : limiteNonEvaluee
+     * Description : Renvoie le noeud LimiteNonEvaluee portant sur ce noeud au point a.
+     */
+    ExprPtr limiteNonEvaluee(double a) const;
 };
 
 // --- Noeuds Terminaux ---
@@ -145,10 +182,6 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
-    
     /*
      * Nom : estConstante
      * Description : Renvoie systématiquement vrai car ce noeud est une constante.
@@ -162,6 +195,10 @@ public:
      * Utilisation : double val = c.getValeurConstante();
      */
     double getValeurConstante() const override { return m_valeur; }
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 
@@ -185,13 +222,15 @@ public:
     ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-    
+
     bool estConstante() const override { return true; }
     double getValeurConstante() const override { return m_valeur_eval; }
     int64_t getNum() const { return m_num; }
     int64_t getDen() const { return m_den; }
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Variable : public ASTNode {
@@ -240,9 +279,11 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
+    bool contientVariable() const override { return true; }
 
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 /*
@@ -287,10 +328,11 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
     const std::string& getNom() const { return m_nom; }
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 // --- Opérateurs Binaires ---
@@ -306,6 +348,10 @@ public:
      * Utilisation : Appelé par les constructeurs des classes filles.
      */
     OperateurBinaire(ExprPtr gauche, ExprPtr droite);
+
+    bool contientVariable() const override {
+        return m_gauche->contientVariable() || m_droite->contientVariable();
+    }
 };
 
 class Addition : public OperateurBinaire {
@@ -353,9 +399,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Soustraction : public OperateurBinaire {
@@ -403,9 +449,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Multiplication : public OperateurBinaire {
@@ -453,9 +499,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Division : public OperateurBinaire {
@@ -503,9 +549,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Puissance : public OperateurBinaire {
@@ -553,9 +599,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 // --- Fonctions Unaires ---
@@ -570,6 +616,8 @@ public:
      * Utilisation : Appelé par les constructeurs de Sinus, Cosinus, etc.
      */
     explicit FonctionUnaire(ExprPtr arg);
+
+    bool contientVariable() const override { return m_argument->contientVariable(); }
 };
 
 class Sinus : public FonctionUnaire {
@@ -617,9 +665,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Cosinus : public FonctionUnaire {
@@ -667,9 +715,9 @@ public:
      */
     bool estEgal(const ASTNode& autre) const override;
 
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
-
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Tangente : public FonctionUnaire {
@@ -680,8 +728,10 @@ public:
     ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 
@@ -695,8 +745,10 @@ public:
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 class Logarithme : public FonctionUnaire {
@@ -708,8 +760,67 @@ public:
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
-    ExprPtr integrer() const override;
-    ExprPtr limite(double a) const override;
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
+};
+
+// --- Noeuds non évalués ---
+
+/*
+ * ============================================================================
+ * CLASSE INTEGRALENONEVALUEE
+ * Représente la primitive d'une expression qu'aucune règle ne sait intégrer,
+ * au lieu de renvoyer un résultat faux. Sa dérivée redonne l'intégrande
+ * (théorème fondamental de l'analyse) ; l'évaluer lève std::logic_error.
+ * ============================================================================
+ */
+class IntegraleNonEvaluee : public ASTNode {
+    ExprPtr m_integrande;
+public:
+    explicit IntegraleNonEvaluee(ExprPtr integrande);
+
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    bool estEgal(const ASTNode& autre) const override;
+    bool contientVariable() const override { return true; }
+
+    const ExprPtr& getIntegrande() const { return m_integrande; }
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
+};
+
+/*
+ * ============================================================================
+ * CLASSE LIMITENONEVALUEE
+ * Représente une limite qui n'a pas pu être déterminée (forme indéterminée
+ * non résolue, ou limite inexistante comme 1/x en 0). C'est un nombre (s'il
+ * existe) : sa dérivée est nulle ; l'évaluer lève std::logic_error.
+ * ============================================================================
+ */
+class LimiteNonEvaluee : public ASTNode {
+    ExprPtr m_expression;
+    double m_point;
+public:
+    LimiteNonEvaluee(ExprPtr expression, double point);
+
+    double eval(double x) const override;
+    ExprPtr derivee() const override;
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+    bool estEgal(const ASTNode& autre) const override;
+
+    const ExprPtr& getExpression() const { return m_expression; }
+    double getPoint() const { return m_point; }
+
+protected:
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
 };
 
 // --- Fonctions Helpers & Surcharge d'Opérateurs ---

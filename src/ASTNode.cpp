@@ -27,6 +27,59 @@ void extractCoeff(ExprPtr e, double& coeff, ExprPtr& u) {
     u = e;
 }
 
+/*
+ * Nom : coefficientLineaire
+ * Description : Si u est une fonction affine de x (u = a*x + b avec a non nul), renvoie
+ *               vrai et écrit a. Détection par la dérivée : u' doit se simplifier en une
+ *               constante numérique. Sert à la règle d'intégration F(ax+b)/a.
+ * Utilisation : double a; if (coefficientLineaire(u, a)) { ... }
+ */
+static bool coefficientLineaire(const ExprPtr& u, double& a) {
+    if (!u->contientVariable()) return false;
+    const ExprPtr d = u->derivee()->simplifier();
+    if (!d->estConstante()) return false;
+    a = d->getValeurConstante();
+    return a != 0.0 && std::isfinite(a);
+}
+
+/*
+ * Nom : diviserPar
+ * Description : Renvoie e / a sous la forme (1/a) * e, ou e inchangée si a vaut 1.
+ * Utilisation : ExprPtr r = diviserPar(ast_sin(u), 2.0);
+ */
+static ExprPtr diviserPar(const ExprPtr& e, double a) {
+    if (a == 1.0) return e;
+    return cst(1.0 / a) * e;
+}
+
+// ============== ASTNODE ==================
+
+/*
+ * Nom : integrer
+ * Description : Point d'entrée de l'intégration : une expression indépendante de x
+ *               s'intègre en c*x, sinon on applique les règles du noeud.
+ * Utilisation : ExprPtr p = noeud->integrer();
+ */
+ExprPtr ASTNode::integrer() const {
+    if (!contientVariable()) return clone() * var("x");
+    return primitive();
+}
+
+/*
+ * Nom : limite
+ * Description : Point d'entrée du calcul de limite en a.
+ * Utilisation : ExprPtr l = noeud->limite(a);
+ */
+ExprPtr ASTNode::limite(double a) const { return calculerLimite(a); }
+
+ExprPtr ASTNode::integraleNonEvaluee() const {
+    return std::make_shared<IntegraleNonEvaluee>(clone());
+}
+
+ExprPtr ASTNode::limiteNonEvaluee(double a) const {
+    return std::make_shared<LimiteNonEvaluee>(clone(), a);
+}
+
 // ============== CONSTANTE ==================
 
 /*
@@ -117,8 +170,8 @@ bool Fraction::estEgal(const ASTNode& autre) const {
     return false;
 }
 
-ExprPtr Fraction::integrer() const { return frac(m_num, m_den) * var("x"); }
-ExprPtr Fraction::limite(double /*a*/) const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
+ExprPtr Fraction::primitive() const { return frac(m_num, m_den) * var("x"); }
+ExprPtr Fraction::calculerLimite(double /*a*/) const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
 
 // ============== VARIABLE ==================
 
@@ -194,9 +247,9 @@ bool Parametre::estEgal(const ASTNode& autre) const {
     return p != nullptr && p->m_nom == m_nom;
 }
 
-ExprPtr Parametre::integrer() const { return clone() * var("x"); }
+ExprPtr Parametre::primitive() const { return clone() * var("x"); }
 
-ExprPtr Parametre::limite(double /*a*/) const { return clone(); }
+ExprPtr Parametre::calculerLimite(double /*a*/) const { return clone(); }
 
 // ============== OP Binaire Base ==================
 
@@ -730,14 +783,14 @@ bool Tangente::estEgal(const ASTNode& autre) const {
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
-ExprPtr Tangente::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) {
-        return cst(-1.0) * ast_ln(ast_cos(m_argument)); // -ln(cos(x))
-    }
-    return cst(0.0);
+ExprPtr Tangente::primitive() const {
+    double a;
+    // Primitive de tan(u) : -ln(cos(u)), valable là où cos(u) > 0
+    if (coefficientLineaire(m_argument, a)) return diviserPar(cst(-1.0) * ast_ln(ast_cos(m_argument)), a);
+    return integraleNonEvaluee();
 }
 
-ExprPtr Tangente::limite(double a) const {
+ExprPtr Tangente::calculerLimite(double a) const {
     return ast_tan(m_argument->limite(a));
 }
 
@@ -917,54 +970,64 @@ ExprPtr ASTNode::DL(double a, int ordre) const {
 }
 
 // --- Constante ---
-ExprPtr Constante::integrer() const {
+ExprPtr Constante::primitive() const {
     return cst(m_valeur) * var("x");
 }
-ExprPtr Constante::limite(double /*a*/) const {
+ExprPtr Constante::calculerLimite(double /*a*/) const {
     return cst(m_valeur);
 }
 
 // --- Variable ---
-ExprPtr Variable::integrer() const {
+ExprPtr Variable::primitive() const {
     return cst(0.5) * ast_pow(var(m_nom), 2);
 }
-ExprPtr Variable::limite(double a) const {
+ExprPtr Variable::calculerLimite(double a) const {
     return cst(a);
 }
 
 // --- Addition ---
-ExprPtr Addition::integrer() const {
+ExprPtr Addition::primitive() const {
     return m_gauche->integrer() + m_droite->integrer();
 }
-ExprPtr Addition::limite(double a) const {
+ExprPtr Addition::calculerLimite(double a) const {
     return m_gauche->limite(a) + m_droite->limite(a);
 }
 
 // --- Soustraction ---
-ExprPtr Soustraction::integrer() const {
+ExprPtr Soustraction::primitive() const {
     return m_gauche->integrer() - m_droite->integrer();
 }
-ExprPtr Soustraction::limite(double a) const {
+ExprPtr Soustraction::calculerLimite(double a) const {
     return m_gauche->limite(a) - m_droite->limite(a);
 }
 
 // --- Multiplication ---
-ExprPtr Multiplication::integrer() const {
-    if (m_gauche->estConstante()) return m_gauche * m_droite->integrer();
-    if (m_droite->estConstante()) return m_droite * m_gauche->integrer();
-    // Intégration par parties non-gérée
-    return cst(0.0);
+ExprPtr Multiplication::primitive() const {
+    // Linéarité : un facteur indépendant de x sort de l'intégrale
+    if (!m_gauche->contientVariable()) return m_gauche * m_droite->integrer();
+    if (!m_droite->contientVariable()) return m_droite * m_gauche->integrer();
+    if (m_gauche->estEgal(*m_droite)) return ast_pow(m_gauche, 2.0)->integrer();
+    // Intégration par parties non gérée
+    return integraleNonEvaluee();
 }
-ExprPtr Multiplication::limite(double a) const {
+ExprPtr Multiplication::calculerLimite(double a) const {
     return m_gauche->limite(a) * m_droite->limite(a);
 }
 
 // --- Division ---
-ExprPtr Division::integrer() const {
-    if (m_droite->estConstante()) return m_gauche->integrer() / m_droite;
-    return cst(0.0);
+ExprPtr Division::primitive() const {
+    if (!m_droite->contientVariable()) return m_gauche->integrer() / m_droite;
+    if (!m_gauche->contientVariable()) {
+        // c / v^n = c * v^(-n), puis règle des puissances
+        const Puissance* p = dynamic_cast<const Puissance*>(m_droite.get());
+        if (p && !p->m_droite->contientVariable()) {
+            return m_gauche * ast_pow(p->m_gauche, cst(-1.0) * p->m_droite)->integrer();
+        }
+        return m_gauche * ast_pow(m_droite, -1.0)->integrer();
+    }
+    return integraleNonEvaluee();
 }
-ExprPtr Division::limite(double a) const {
+ExprPtr Division::calculerLimite(double a) const {
     double n = m_gauche->eval(a);
     double d = m_droite->eval(a);
     if (std::abs(d) < 1e-9) {
@@ -979,35 +1042,47 @@ ExprPtr Division::limite(double a) const {
 }
 
 // --- Puissance ---
-ExprPtr Puissance::integrer() const {
-    if (m_droite->estConstante() && dynamic_cast<Variable*>(m_gauche.get())) {
-        double n = m_droite->getValeurConstante();
-        if (std::abs(n + 1.0) < 1e-9) {
-            return ast_ln(m_gauche);
+ExprPtr Puissance::primitive() const {
+    double a;
+    // (a*x + b)^n avec n constant : (ax+b)^(n+1) / (a(n+1)), ou ln(ax+b) / a si n = -1
+    if (!m_droite->contientVariable() && coefficientLineaire(m_gauche, a)) {
+        const ExprPtr n = m_droite->simplifier();
+        if (n->estConstante()) {
+            const double nv = n->getValeurConstante();
+            if (std::abs(nv + 1.0) < 1e-12) return diviserPar(ast_ln(m_gauche), a);
+            return ast_pow(m_gauche, cst(nv + 1.0)) / cst(a * (nv + 1.0));
         }
-        return ast_pow(m_gauche, cst(n + 1.0)) / cst(n + 1.0);
     }
-    return cst(0.0);
+    // b^(a*x + c) avec b constant strictement positif et différent de 1 : b^u / (a ln b)
+    if (!m_gauche->contientVariable() && coefficientLineaire(m_droite, a)) {
+        const ExprPtr b = m_gauche->simplifier();
+        if (b->estConstante() && b->getValeurConstante() > 0.0 && b->getValeurConstante() != 1.0) {
+            return ast_pow(m_gauche, m_droite) / cst(a * std::log(b->getValeurConstante()));
+        }
+    }
+    return integraleNonEvaluee();
 }
-ExprPtr Puissance::limite(double a) const {
+ExprPtr Puissance::calculerLimite(double a) const {
     return ast_pow(m_gauche->limite(a), m_droite->limite(a));
 }
 
 // --- Sinus ---
-ExprPtr Sinus::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return cst(-1.0) * ast_cos(m_argument);
-    return cst(0.0);
+ExprPtr Sinus::primitive() const {
+    double a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(cst(-1.0) * ast_cos(m_argument), a);
+    return integraleNonEvaluee();
 }
-ExprPtr Sinus::limite(double a) const {
+ExprPtr Sinus::calculerLimite(double a) const {
     return ast_sin(m_argument->limite(a));
 }
 
 // --- Cosinus ---
-ExprPtr Cosinus::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return ast_sin(m_argument);
-    return cst(0.0);
+ExprPtr Cosinus::primitive() const {
+    double a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_sin(m_argument), a);
+    return integraleNonEvaluee();
 }
-ExprPtr Cosinus::limite(double a) const {
+ExprPtr Cosinus::calculerLimite(double a) const {
     return ast_cos(m_argument->limite(a));
 }
 
@@ -1041,17 +1116,13 @@ bool Exponentielle::estEgal(const ASTNode& autre) const {
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
-ExprPtr Exponentielle::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) return ast_exp(m_argument);
-    double cG; ExprPtr uG;
-    extractCoeff(m_argument, cG, uG);
-    if (dynamic_cast<Variable*>(uG.get()) && cG != 0.0) {
-        return cst(1.0 / cG) * ast_exp(m_argument);
-    }
-    return cst(0.0);
+ExprPtr Exponentielle::primitive() const {
+    double a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_exp(m_argument), a);
+    return integraleNonEvaluee();
 }
 
-ExprPtr Exponentielle::limite(double a) const {
+ExprPtr Exponentielle::calculerLimite(double a) const {
     return ast_exp(m_argument->limite(a));
 }
 
@@ -1086,14 +1157,16 @@ bool Logarithme::estEgal(const ASTNode& autre) const {
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
-ExprPtr Logarithme::integrer() const {
-    if (dynamic_cast<Variable*>(m_argument.get())) {
-        return m_argument * ast_ln(m_argument) - m_argument;
+ExprPtr Logarithme::primitive() const {
+    double a;
+    // Primitive de ln(u) : u ln(u) - u
+    if (coefficientLineaire(m_argument, a)) {
+        return diviserPar(m_argument * ast_ln(m_argument) - m_argument, a);
     }
-    return cst(0.0);
+    return integraleNonEvaluee();
 }
 
-ExprPtr Logarithme::limite(double a) const {
+ExprPtr Logarithme::calculerLimite(double a) const {
     double v = m_argument->eval(a);
     if (v <= 0.0) return cst(-std::numeric_limits<double>::infinity());
     return ast_ln(m_argument->limite(a));
@@ -1102,3 +1175,57 @@ ExprPtr Logarithme::limite(double a) const {
 ExprPtr ast_ln(ExprPtr arg) {
     return std::make_shared<Logarithme>(arg);
 }
+
+// ============== INTEGRALE NON EVALUEE ==================
+
+IntegraleNonEvaluee::IntegraleNonEvaluee(ExprPtr integrande) : m_integrande(std::move(integrande)) {}
+
+double IntegraleNonEvaluee::eval(double) const {
+    throw std::logic_error("Impossible d'evaluer une primitive non calculee symboliquement");
+}
+
+// Théorème fondamental de l'analyse : (∫f)' = f
+ExprPtr IntegraleNonEvaluee::derivee() const { return m_integrande; }
+
+ExprPtr IntegraleNonEvaluee::simplifier() const {
+    return std::make_shared<IntegraleNonEvaluee>(m_integrande->simplifier());
+}
+
+void IntegraleNonEvaluee::afficher(std::ostream& os) const {
+    os << "integrale("; m_integrande->afficher(os); os << ")";
+}
+
+bool IntegraleNonEvaluee::estEgal(const ASTNode& autre) const {
+    const IntegraleNonEvaluee* i = dynamic_cast<const IntegraleNonEvaluee*>(&autre);
+    return i && m_integrande->estEgal(*(i->m_integrande));
+}
+
+ExprPtr IntegraleNonEvaluee::primitive() const { return integraleNonEvaluee(); }
+
+ExprPtr IntegraleNonEvaluee::calculerLimite(double a) const { return limiteNonEvaluee(a); }
+
+// ============== LIMITE NON EVALUEE ==================
+
+LimiteNonEvaluee::LimiteNonEvaluee(ExprPtr expression, double point)
+    : m_expression(std::move(expression)), m_point(point) {}
+
+double LimiteNonEvaluee::eval(double) const {
+    throw std::logic_error("Impossible d'evaluer une limite non determinee");
+}
+
+ExprPtr LimiteNonEvaluee::derivee() const { return cst(0.0); }
+
+ExprPtr LimiteNonEvaluee::simplifier() const { return clone(); }
+
+void LimiteNonEvaluee::afficher(std::ostream& os) const {
+    os << "lim(x->" << m_point << ", "; m_expression->afficher(os); os << ")";
+}
+
+bool LimiteNonEvaluee::estEgal(const ASTNode& autre) const {
+    const LimiteNonEvaluee* l = dynamic_cast<const LimiteNonEvaluee*>(&autre);
+    return l && l->m_point == m_point && m_expression->estEgal(*(l->m_expression));
+}
+
+ExprPtr LimiteNonEvaluee::primitive() const { return clone() * var("x"); }
+
+ExprPtr LimiteNonEvaluee::calculerLimite(double) const { return clone(); }
