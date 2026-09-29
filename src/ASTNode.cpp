@@ -293,7 +293,7 @@ double Fraction::eval(double /*x*/) const { return m_valeur_eval; }
 
 ExprPtr Fraction::derivee() const { return cst(0.0); }
 
-ExprPtr Fraction::simplifier() const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
+ExprPtr Fraction::simplifier() const { return clone(); }
 
 void Fraction::afficher(std::ostream& os) const {
     if (m_den == 1) os << m_num;

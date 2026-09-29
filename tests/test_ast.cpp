@@ -81,6 +81,15 @@ TEST_CASE(fraction_denominateur_nul) {
     CHECK_THROWS(frac(1, 0), std::invalid_argument);
 }
 
+TEST_CASE(noeud_hors_shared_ptr) {
+    // Bug corrigé : levait std::bad_weak_ptr sans explication
+    Constante c(5.0);
+    CHECK_THROWS(c.simplifier(), std::logic_error);
+    // Via les helpers, le partage fonctionne sans copie
+    const ExprPtr e = cst(5.0);
+    CHECK(e->clone().get() == e.get());
+}
+
 TEST_CASE(fraction_dans_expression) {
     EquationClassique eq(frac(2, 6) * X);
     CHECK_NEAR(eq.eval(3.0), 1.0, 1e-15);

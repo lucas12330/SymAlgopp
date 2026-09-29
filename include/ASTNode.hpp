@@ -1,7 +1,8 @@
 #pragma once
 #include <memory>
-#include <string>
 #include <ostream>
+#include <stdexcept>
+#include <string>
 
 class ASTNode;
 using ExprPtr = std::shared_ptr<ASTNode>;
@@ -53,11 +54,19 @@ public:
     
     /*
      * Nom : clone
-     * Description : Renvoie un pointeur partagé vers ce noeud (l'arbre est immuable).
+     * Description : Renvoie un pointeur partagé vers ce noeud (l'arbre est immuable, les
+     *               sous-arbres sont donc partagés sans copie). Les noeuds doivent être
+     *               gérés par un std::shared_ptr (helpers cst(), var(), opérateurs...) :
+     *               un noeud créé sur la pile lève std::logic_error.
      * Utilisation : ExprPtr copie = noeud->clone();
      */
     virtual ExprPtr clone() const {
-        return std::const_pointer_cast<ASTNode>(shared_from_this());
+        ExprPtr soi = std::const_pointer_cast<ASTNode>(weak_from_this().lock());
+        if (!soi) {
+            throw std::logic_error("Noeud d'AST hors d'un std::shared_ptr : creer les noeuds "
+                                   "avec les helpers (cst, var, ast_sin...) ou std::make_shared");
+        }
+        return soi;
     }
 
     /*
@@ -142,7 +151,7 @@ public:
     /*
      * Nom : Constante
      * Description : Constructeur initialisant la constante avec sa valeur numérique.
-     * Utilisation : Constante c(5.0);
+     * Utilisation : ExprPtr c = cst(5.0);
      */
     explicit Constante(double valeur);
     
@@ -239,7 +248,7 @@ public:
     /*
      * Nom : Variable
      * Description : Constructeur d'une variable mathématique avec un nom (par défaut "x").
-     * Utilisation : Variable v("y");
+     * Utilisation : ExprPtr v = var("y");
      */
     explicit Variable(const std::string& nom = "x");
     
@@ -359,7 +368,7 @@ public:
     /*
      * Nom : Addition
      * Description : Construit un noeud d'addition de deux expressions.
-     * Utilisation : Addition add(expr1, expr2);
+     * Utilisation : ExprPtr add = expr1 + expr2;
      */
     Addition(ExprPtr gauche, ExprPtr droite);
     
@@ -409,7 +418,7 @@ public:
     /*
      * Nom : Soustraction
      * Description : Construit un noeud de soustraction.
-     * Utilisation : Soustraction sub(expr1, expr2);
+     * Utilisation : ExprPtr sub = expr1 - expr2;
      */
     Soustraction(ExprPtr gauche, ExprPtr droite);
     
@@ -459,7 +468,7 @@ public:
     /*
      * Nom : Multiplication
      * Description : Construit un noeud de multiplication de deux expressions.
-     * Utilisation : Multiplication mul(expr1, expr2);
+     * Utilisation : ExprPtr mul = expr1 * expr2;
      */
     Multiplication(ExprPtr gauche, ExprPtr droite);
     
@@ -509,7 +518,7 @@ public:
     /*
      * Nom : Division
      * Description : Construit un noeud de division de deux expressions.
-     * Utilisation : Division div(expr1, expr2);
+     * Utilisation : ExprPtr div = expr1 / expr2;
      */
     Division(ExprPtr gauche, ExprPtr droite);
     
@@ -559,7 +568,7 @@ public:
     /*
      * Nom : Puissance
      * Description : Construit un noeud de puissance (base^exposant).
-     * Utilisation : Puissance p(base, exposant);
+     * Utilisation : ExprPtr p = ast_pow(base, exposant);
      */
     Puissance(ExprPtr base, ExprPtr exposant);
     
@@ -625,7 +634,7 @@ public:
     /*
      * Nom : Sinus
      * Description : Construit un noeud pour la fonction sinus.
-     * Utilisation : Sinus s(expr);
+     * Utilisation : ExprPtr s = ast_sin(expr);
      */
     explicit Sinus(ExprPtr arg);
     
@@ -675,7 +684,7 @@ public:
     /*
      * Nom : Cosinus
      * Description : Construit un noeud pour la fonction cosinus.
-     * Utilisation : Cosinus c(expr);
+     * Utilisation : ExprPtr c = ast_cos(expr);
      */
     explicit Cosinus(ExprPtr arg);
     
