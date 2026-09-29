@@ -122,6 +122,32 @@ void EquationDifferentielle::setConditionsInitiales(const std::vector<double>& c
     m_conditions_initiales = ci;
 }
 
+EquationDifferentielle EquationDifferentielle::derivee() const {
+    EquationDifferentielle d = *this;
+    if (m_terme.empty() || m_terme.rbegin()->first == 0) return d; // solution nulle
+
+    const unsigned int n = m_terme.rbegin()->first;
+    const double an = m_terme.rbegin()->second;
+    // Conditions initiales complètes (les manquantes valent 0, comme pour eval)
+    std::vector<double> y0(n, 0.0);
+    for (size_t i = 0; i < std::min<size_t>(n, m_conditions_initiales.size()); ++i) {
+        y0[i] = m_conditions_initiales[i];
+    }
+    // y^(n)(0) = -sum_{i<n} (a_i / a_n) y^(i)(0)
+    double yn = 0.0;
+    for (const auto& [rang, coeff] : m_terme) {
+        if (rang < n) yn -= coeff / an * y0[rang];
+    }
+    std::vector<double> conditions(y0.begin() + 1, y0.end());
+    conditions.push_back(yn);
+    d.m_conditions_initiales = conditions;
+    return d;
+}
+
+std::unique_ptr<Equation> EquationDifferentielle::deriveeGenerique() const {
+    return std::make_unique<EquationDifferentielle>(derivee());
+}
+
 void EquationDifferentielle::afficher() const {
     bool first = true;
     for (auto it = m_terme.rbegin(); it != m_terme.rend(); ++it) {
@@ -198,19 +224,19 @@ std::vector<ExprPtr> EquationDifferentielle::baseDeSolutions() const {
     return base;
 }
 
-EquationClassique* EquationDifferentielle::resoudreLitteral() const {
+EquationClassique EquationDifferentielle::resoudreLitteral() const {
     ExprPtr solution = cst(0.0);
     int indice = 1;
     for (const ExprPtr& phi : baseDeSolutions()) {
         solution = solution + param("C" + std::to_string(indice++)) * phi;
     }
-    return new EquationClassique(solution->simplifier());
+    return EquationClassique(solution->simplifier());
 }
 
-EquationClassique* EquationDifferentielle::resoudreProblemeCauchy() const {
+EquationClassique EquationDifferentielle::resoudreProblemeCauchy() const {
     const std::vector<ExprPtr> base = baseDeSolutions();
     const Eigen::Index n = static_cast<Eigen::Index>(base.size());
-    if (n == 0) return new EquationClassique(cst(0.0));
+    if (n == 0) return EquationClassique(cst(0.0));
 
     // M(i, j) = phi_j^(i)(0) ; les constantes c vérifient M c = (y(0), y'(0), ...)
     Eigen::MatrixXd M(n, n);
@@ -236,7 +262,7 @@ EquationClassique* EquationDifferentielle::resoudreProblemeCauchy() const {
     for (Eigen::Index j = 0; j < n; ++j) {
         if (std::abs(c(j)) > 1e-12 * echelle) solution = solution + cst(c(j)) * base[j];
     }
-    return new EquationClassique(solution->simplifier());
+    return EquationClassique(solution->simplifier());
 }
 
 double EquationDifferentielle::eval(double x) const {

@@ -13,11 +13,16 @@
 #include "Equation.hpp"
 #include "ASTNode.hpp"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 class EquationClassique : public Equation {
 public:
     /*
      * Nom : EquationClassique
-     * Description : Construit l'équation autour de son arborescence.
+     * Description : Construit l'équation autour de son arborescence (non nulle, sinon
+     *               std::invalid_argument).
      * Utilisation : EquationClassique eq(racine_ast);
      */
     explicit EquationClassique(ExprPtr racine);
@@ -45,10 +50,17 @@ public:
     
     /*
      * Nom : derivee
-     * Description : Génère formellement la dérivée et retourne un nouvel objet dérivé alloué.
-     * Utilisation : EquationClassique* eq_derivee = eq.derivee();
+     * Description : Calcule la dérivée formelle (simplifiée) de l'équation.
+     * Utilisation : EquationClassique d = eq.derivee();
      */
-    EquationClassique* derivee() override;
+    EquationClassique derivee() const;
+
+    /*
+     * Nom : deriveeGenerique
+     * Description : Dérivée renvoyée via l'interface polymorphe de Equation.
+     * Utilisation : std::unique_ptr<Equation> d = eq.deriveeGenerique();
+     */
+    std::unique_ptr<Equation> deriveeGenerique() const override;
 
     /*
      * Nom : simplifier
@@ -67,23 +79,31 @@ public:
     /*
      * Nom : integrer
      * Description : Calcule l'intégrale formelle de l'équation.
-     * Utilisation : EquationClassique* eq_int = eq.integrer();
+     * Utilisation : EquationClassique primitive = eq.integrer();
      */
-    EquationClassique* integrer() const;
+    EquationClassique integrer() const;
 
     /*
      * Nom : limite
-     * Description : Calcule la limite symbolique (avec L'Hôpital si besoin).
-     * Utilisation : EquationClassique* eq_lim = eq.limite(x0);
+     * Description : Calcule la limite en x0 (avec L'Hôpital si besoin). Une limite qui n'a
+     *               pas pu être déterminée est représentée par un noeud LimiteNonEvaluee.
+     * Utilisation : EquationClassique l = eq.limite(x0);
      */
-    EquationClassique* limite(double x0) const;
+    EquationClassique limite(double x0) const;
 
     /*
      * Nom : DL
      * Description : Calcule le développement limité de l'équation.
-     * Utilisation : EquationClassique* eq_dl = eq.DL(x0, ordre);
+     * Utilisation : EquationClassique dl = eq.DL(x0, ordre);
      */
-    EquationClassique* DL(double x0, int ordre) const;
+    EquationClassique DL(double x0, int ordre) const;
+
+    /*
+     * Nom : getExpression
+     * Description : Donne accès à l'arbre (AST) de l'équation.
+     * Utilisation : ExprPtr racine = eq.getExpression();
+     */
+    const ExprPtr& getExpression() const { return m_racine; }
 
     /*
      * Nom : genererPointsTrace

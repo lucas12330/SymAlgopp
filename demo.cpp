@@ -18,12 +18,10 @@ void exemple_physique() {
     std::cout << "Evaluation pour v = 10 m/s : " << eq.eval(10.0) << " Joules\n";
     
     // La dérivée de l'énergie cinétique par rapport à la vitesse est la quantité de mouvement (p = m*v)
-    EquationClassique* eq_derivee = eq.derivee();
+    const EquationClassique eq_derivee = eq.derivee();
     std::cout << "Derivee (Quantite de mouvement p = dE/dv) : ";
-    eq_derivee->afficher();
-    std::cout << "Evaluation pour v = 10 m/s : " << eq_derivee->eval(10.0) << " kg.m/s\n\n";
-    
-    delete eq_derivee;
+    eq_derivee.afficher();
+    std::cout << "Evaluation pour v = 10 m/s : " << eq_derivee.eval(10.0) << " kg.m/s\n\n";
 }
 
 // Exemple 2 : Approximation symbolique (Développement limité)
@@ -38,12 +36,10 @@ void exemple_math_dl() {
     f.afficher();
     
     // On demande le DL en 0 à l'ordre 3
-    EquationClassique* dl = f.DL(0.0, 3);
+    const EquationClassique dl = f.DL(0.0, 3);
     std::cout << "Developpement limite en 0 a l'ordre 3 : ";
-    dl->afficher();
-    std::cout << "\n\n";
-    
-    delete dl;
+    dl.afficher();
+    std::cout << "\n";
 }
 
 // Exemple 3 : Équations Différentielles (Ressort avec Frottement)
@@ -64,12 +60,15 @@ void exemple_edo() {
     std::cout << "Position a t=2s (solution numerique RK4) : " << eqRessort.eval(2.0) << " m\n";
     
     // Résolution analytique littérale
-    EquationClassique* eqExact = eqRessort.resoudreLitteral();
-    std::cout << "Solution analytique exacte x(t) = ";
-    eqExact->afficher();
-    std::cout << "\n";
-    
-    delete eqExact;
+    const EquationClassique eqGenerale = eqRessort.resoudreLitteral();
+    std::cout << "Solution analytique generale x(t) = ";
+    eqGenerale.afficher();
+
+    // Solution exacte avec les conditions initiales, comparable a RK4
+    const EquationClassique eqExacte = eqRessort.resoudreProblemeCauchy();
+    std::cout << "Solution exacte avec x(0) = 1, x'(0) = 0 : ";
+    eqExacte.afficher();
+    std::cout << "Position a t=2s (solution exacte)        : " << eqExacte.eval(2.0) << " m\n";
 }
 
 int main() {

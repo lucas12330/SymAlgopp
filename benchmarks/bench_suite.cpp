@@ -42,9 +42,8 @@ static void BM_SymAlgo_Derivee(benchmark::State& state) {
     EquationClassique eq(expr);
 
     for (auto _ : state) {
-        EquationClassique* derivee = eq.derivee();
+        EquationClassique derivee = eq.derivee();
         benchmark::DoNotOptimize(derivee);
-        delete derivee; // On libère la mémoire pour éviter les fuites pendant le bench
     }
 }
 BENCHMARK(BM_SymAlgo_Derivee);

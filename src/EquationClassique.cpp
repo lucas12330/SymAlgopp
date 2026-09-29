@@ -1,12 +1,16 @@
 #include "EquationClassique.hpp"
+#include <cmath>
 #include <iostream>
+#include <stdexcept>
 
 /*
  * Nom : EquationClassique
  * Description : Constructeur de l'équation avec une racine AST spécifique.
  * Utilisation : EquationClassique eq(mon_ast);
  */
-EquationClassique::EquationClassique(ExprPtr racine) : m_racine(racine) {}
+EquationClassique::EquationClassique(ExprPtr racine) : m_racine(std::move(racine)) {
+    if (!m_racine) throw std::invalid_argument("EquationClassique : expression nulle");
+}
 
 /*
  * Nom : EquationClassique
@@ -20,23 +24,19 @@ EquationClassique::EquationClassique() : m_racine(cst(0.0)) {}
  * Description : Calcule la valeur de l'équation en un point x.
  * Utilisation : double y = eq.eval(x);
  */
-double EquationClassique::eval(double x) const {
-    if (m_racine) return m_racine->eval(x);
-    return 0.0;
-}
+double EquationClassique::eval(double x) const { return m_racine->eval(x); }
 
 /*
  * Nom : derivee
- * Description : Calcule la dérivée symbolique de l'équation et renvoie un nouveau pointeur d'EquationClassique.
- * Utilisation : EquationClassique* derivee_eq = eq.derivee();
+ * Description : Calcule la dérivée symbolique simplifiée de l'équation.
+ * Utilisation : EquationClassique d = eq.derivee();
  */
-EquationClassique* EquationClassique::derivee() {
-    if (m_racine) {
-        // Appelle la dérivation symbolique puis simplifie l'expression immédiatement
-        ExprPtr deriveeFormelle = m_racine->derivee()->simplifier();
-        return new EquationClassique(deriveeFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+EquationClassique EquationClassique::derivee() const {
+    return EquationClassique(m_racine->derivee()->simplifier());
+}
+
+std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
+    return std::make_unique<EquationClassique>(derivee());
 }
 
 /*
@@ -44,11 +44,7 @@ EquationClassique* EquationClassique::derivee() {
  * Description : Simplifie l'expression mathématique de l'équation (factorisation, etc.).
  * Utilisation : eq.simplifier();
  */
-void EquationClassique::simplifier() {
-    if (m_racine) {
-        m_racine = m_racine->simplifier();
-    }
-}
+void EquationClassique::simplifier() { m_racine = m_racine->simplifier(); }
 
 /*
  * Nom : afficher
@@ -56,36 +52,36 @@ void EquationClassique::simplifier() {
  * Utilisation : eq.afficher();
  */
 void EquationClassique::afficher() const {
-    if (m_racine) {
-        m_racine->afficher(std::cout);
-        std::cout << " = 0" << std::endl;
-    } else {
-        std::cout << "0 = 0" << std::endl;
-    }
+    m_racine->afficher(std::cout);
+    std::cout << " = 0" << std::endl;
 }
 
-EquationClassique* EquationClassique::integrer() const {
-    if (m_racine) {
-        ExprPtr intFormelle = m_racine->integrer()->simplifier();
-        return new EquationClassique(intFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : integrer
+ * Description : Calcule une primitive symbolique simplifiée (IntegraleNonEvaluee si aucune
+ *               règle ne s'applique).
+ * Utilisation : EquationClassique F = eq.integrer();
+ */
+EquationClassique EquationClassique::integrer() const {
+    return EquationClassique(m_racine->integrer()->simplifier());
 }
 
-EquationClassique* EquationClassique::limite(double x0) const {
-    if (m_racine) {
-        ExprPtr limFormelle = m_racine->limite(x0)->simplifier();
-        return new EquationClassique(limFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : limite
+ * Description : Calcule la limite en x0 (LimiteNonEvaluee si elle n'est pas déterminée).
+ * Utilisation : EquationClassique l = eq.limite(0.0);
+ */
+EquationClassique EquationClassique::limite(double x0) const {
+    return EquationClassique(m_racine->limite(x0)->simplifier());
 }
 
-EquationClassique* EquationClassique::DL(double x0, int ordre) const {
-    if (m_racine) {
-        ExprPtr dlFormelle = m_racine->DL(x0, ordre);
-        return new EquationClassique(dlFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : DL
+ * Description : Développement limité de Taylor en x0 à l'ordre donné.
+ * Utilisation : EquationClassique dl = eq.DL(0.0, 3);
+ */
+EquationClassique EquationClassique::DL(double x0, int ordre) const {
+    return EquationClassique(m_racine->DL(x0, ordre));
 }
 
 void EquationClassique::echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const {

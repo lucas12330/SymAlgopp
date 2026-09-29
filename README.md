@@ -10,7 +10,7 @@ Le projet est structuré autour d'une hiérarchie de classes exploitant le polym
 
 * **`Equation`** : Classe abstraite de base définissant l'interface commune de toutes les équations du système.
   * `eval(double x)` : Évalue l'équation pour une valeur rélle donnée.
-  * `derivee()` : Retourne un pointeur alloué dynamiquement représentant la dérivée symbolique.
+  * `deriveeGenerique()` : Dérivée polymorphe, renvoyée sous forme de `std::unique_ptr<Equation>`. Chaque classe dérivée propose aussi `derivee()`, qui renvoie son propre type par valeur.
 * **`EquationClassique`** (hérite d'`Equation`) : Encapsule un arbre de syntaxe abstraite (`ASTNode`) et fournit des opérations algébriques avancées (dérivation formelle, intégration symbolique, calcul de limites par L'Hôpital, développements limités et tracé adaptatif).
 * **`EquationDifferentielle`** (hérite d'`Equation`) : Représente des équations différentielles linéaires de la forme $\sum a_i y^{(i)} = 0$. Offre à la fois une résolution analytique/littérale exacte et une résolution numérique via Runge-Kutta 4 (RK4) basée sur la matrice compagnon d'état (Eigen).
 
@@ -84,21 +84,17 @@ int main() {
     eq.afficher();
 
     // Calcul de la limite en x = 1 (L'Hôpital) -> 2
-    EquationClassique* eq_lim = eq.limite(1.0);
+    EquationClassique eq_lim = eq.limite(1.0);
     std::cout << "Limite en x->1 : ";
-    eq_lim->afficher();
+    eq_lim.afficher();
 
-    // Dérivation et Intégration d'un polynôme
+    // Dérivation et Intégration d'un polynôme (résultats renvoyés par valeur)
     EquationClassique poly(ast_pow(X, 2) + X * 5 + 6);
-    EquationClassique* poly_der = poly.derivee();
-    EquationClassique* poly_int = poly.integrer();
+    EquationClassique poly_der = poly.derivee();
+    EquationClassique poly_int = poly.integrer();
 
-    std::cout << "Derivee   : "; poly_der->afficher(); // (2*x + 5)
-    std::cout << "Integrale : "; poly_int->afficher(); // (1/3*x^3 + 2.5*x^2 + 6*x)
-
-    delete eq_lim;
-    delete poly_der;
-    delete poly_int;
+    std::cout << "Derivee   : "; poly_der.afficher(); // (2*x + 5)
+    std::cout << "Integrale : "; poly_int.afficher(); // (1/3*x^3 + 2.5*x^2 + 6*x)
     return 0;
 }
 ```
@@ -118,16 +114,18 @@ int main() {
     std::cout << "EDO : ";
     eq.afficher(); // y'' + 4*y = 0
 
-    // Solution littérale analytique exact
-    EquationClassique* sol_litterale = eq.resoudreLitteral();
+    // Solution générale : C1, C2 sont des paramètres symboliques
+    EquationClassique sol_generale = eq.resoudreLitteral();
     std::cout << "Solution analytique : ";
-    sol_litterale->afficher(); // C1*cos(2*x) + C2*sin(2*x)
+    sol_generale.afficher(); // C1*cos(2*x) + C2*sin(2*x)
 
-    // Évaluation numérique via RK4 avec y(0)=1, y'(0)=0
+    // Avec les conditions initiales y(0)=1, y'(0)=0
     eq.setConditionsInitiales({1.0, 0.0});
-    std::cout << "Evaluation RK4 en x=pi/4 : " << eq.eval(3.141592653589793 / 4.0) << std::endl; // ~ 0
+    EquationClassique sol_exacte = eq.resoudreProblemeCauchy();
+    sol_exacte.afficher(); // cos(2*x)
 
-    delete sol_litterale;
+    // Évaluation numérique via RK4
+    std::cout << "Evaluation RK4 en x=pi/4 : " << eq.eval(3.141592653589793 / 4.0) << std::endl; // ~ 0
     return 0;
 }
 ```

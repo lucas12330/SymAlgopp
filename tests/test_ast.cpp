@@ -90,11 +90,15 @@ TEST_CASE(noeud_hors_shared_ptr) {
     CHECK(e->clone().get() == e.get());
 }
 
+TEST_CASE(equation_expression_nulle) {
+    CHECK_THROWS(EquationClassique(nullptr), std::invalid_argument);
+}
+
 TEST_CASE(fraction_dans_expression) {
     EquationClassique eq(frac(2, 6) * X);
     CHECK_NEAR(eq.eval(3.0), 1.0, 1e-15);
-    std::unique_ptr<EquationClassique> d(eq.derivee());
-    CHECK_NEAR(d->eval(42.0), 1.0 / 3.0, 1e-15);
+    const EquationClassique d = eq.derivee();
+    CHECK_NEAR(d.eval(42.0), 1.0 / 3.0, 1e-15);
 }
 
 // ============================================================================
@@ -103,8 +107,8 @@ TEST_CASE(fraction_dans_expression) {
 
 TEST_CASE(derivee_polynome) {
     EquationClassique eq(ast_pow(X, 2) + (X * 5) + 6);
-    std::unique_ptr<EquationClassique> d(eq.derivee());
-    CHECK_NEAR(d->eval(2.0), 9.0, 1e-12);
+    const EquationClassique d = eq.derivee();
+    CHECK_NEAR(d.eval(2.0), 9.0, 1e-12);
 }
 
 TEST_CASE(derivee_comparee_a_la_derivee_numerique) {
@@ -128,9 +132,9 @@ TEST_CASE(derivee_comparee_a_la_derivee_numerique) {
 
 TEST_CASE(derivee_tangente) {
     EquationClassique eq(ast_tan(X));
-    std::unique_ptr<EquationClassique> d(eq.derivee());
+    const EquationClassique d = eq.derivee();
     CHECK_NEAR(eq.eval(0.0), 0.0, 1e-15);
-    CHECK_NEAR(d->eval(0.0), 1.0, 1e-15);
+    CHECK_NEAR(d.eval(0.0), 1.0, 1e-15);
 }
 
 // ============================================================================
@@ -318,8 +322,8 @@ TEST_CASE(limite_continue) {
 
 TEST_CASE(limite_hopital) {
     EquationClassique eq(ast_sin(X) / X);
-    std::unique_ptr<EquationClassique> l(eq.limite(0.0));
-    CHECK_NEAR(l->eval(0.0), 1.0, 1e-12);
+    const EquationClassique l = eq.limite(0.0);
+    CHECK_NEAR(l.eval(0.0), 1.0, 1e-12);
 
     // Exemple du README : (x^2 - 1) / (x - 1) en 1 -> 2
     CHECK_NEAR(((ast_pow(X, 2) - 1.0) / (X - 1.0))->limite(1.0)->simplifier()->eval(0.0),
@@ -408,9 +412,9 @@ TEST_CASE(limite_sans_recursion_infinie) {
 
 TEST_CASE(dl_polynome) {
     EquationClassique eq(ast_pow(X, 3) + ast_pow(X, 2) + X + 1);
-    std::unique_ptr<EquationClassique> dl(eq.DL(0.0, 2));
+    const EquationClassique dl = eq.DL(0.0, 2);
     for (double x : {-0.5, 0.1, 2.0}) {
-        CHECK_NEAR(dl->eval(x), 1.0 + x + x * x, 1e-12);
+        CHECK_NEAR(dl.eval(x), 1.0 + x + x * x, 1e-12);
     }
 }
 

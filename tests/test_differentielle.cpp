@@ -116,11 +116,11 @@ TEST_CASE(rk4_sans_conditions_initiales) {
 
 TEST_CASE(solution_litterale_oscillateur) {
     const auto eq = oscillateurHarmonique();
-    std::unique_ptr<EquationClassique> sol(eq.resoudreLitteral());
-    CHECK_EQ(capturerSortie([&] { sol->afficher(); }),
+    const EquationClassique sol = eq.resoudreLitteral();
+    CHECK_EQ(capturerSortie([&] { sol.afficher(); }),
              std::string("(C1 * cos(2 * x) + C2 * sin(2 * x)) = 0\n"));
     // Les constantes sont des paramètres symboliques : pas d'évaluation silencieuse
-    CHECK_THROWS(sol->eval(1.0), std::logic_error);
+    CHECK_THROWS(sol.eval(1.0), std::logic_error);
 }
 
 namespace {
@@ -138,12 +138,12 @@ EquationDifferentielle depuisCoefficients(const std::vector<double>& c) {
 void verifierSatisfaitEquation(const std::vector<double>& c, const EquationClassique& y) {
     for (double x : {-0.7, 0.4, 1.3}) {
         double somme = 0.0, echelle = 0.0;
-        std::unique_ptr<EquationClassique> d(new EquationClassique(y));
+        EquationClassique d = y;
         for (size_t i = 0; i < c.size(); ++i) {
-            const double v = d->eval(x);
+            const double v = d.eval(x);
             somme += c[i] * v;
             echelle += std::abs(c[i] * v);
-            d.reset(d->derivee());
+            d = d.derivee();
         }
         CHECK_NEAR(somme, 0.0, 1e-9 * std::max(1.0, echelle));
     }
@@ -153,18 +153,18 @@ void verifierSatisfaitEquation(const std::vector<double>& c, const EquationClass
 void verifierCauchy(const std::vector<double>& c, const std::vector<double>& ci) {
     auto eq = depuisCoefficients(c);
     eq.setConditionsInitiales(ci);
-    std::unique_ptr<EquationClassique> y(eq.resoudreProblemeCauchy());
+    const EquationClassique y = eq.resoudreProblemeCauchy();
     for (double x : {0.0, 0.5, 1.0, -0.8}) {
-        const double exacte = y->eval(x);
+        const double exacte = y.eval(x);
         CHECK_NEAR(exacte, eq.eval(x), 1e-6 * std::max(1.0, std::abs(exacte)));
     }
-    verifierSatisfaitEquation(c, *y);
+    verifierSatisfaitEquation(c, y);
 }
 
 std::string solutionGenerale(const std::vector<double>& c) {
     const auto eq = depuisCoefficients(c);
-    std::unique_ptr<EquationClassique> sol(eq.resoudreLitteral());
-    return capturerSortie([&] { sol->afficher(); });
+    const EquationClassique sol = eq.resoudreLitteral();
+    return capturerSortie([&] { sol.afficher(); });
 }
 
 } // namespace
@@ -201,8 +201,8 @@ TEST_CASE(racines_proches_mais_distinctes) {
 TEST_CASE(cauchy_solution_exacte_connue) {
     auto eq = oscillateurHarmonique();
     eq.setConditionsInitiales({1.0, 0.0});
-    std::unique_ptr<EquationClassique> y(eq.resoudreProblemeCauchy());
-    CHECK_EQ(capturerSortie([&] { y->afficher(); }), std::string("cos(2 * x) = 0\n"));
+    const EquationClassique y = eq.resoudreProblemeCauchy();
+    CHECK_EQ(capturerSortie([&] { y.afficher(); }), std::string("cos(2 * x) = 0\n"));
 }
 
 TEST_CASE(annulation_du_terme_dominant) {
@@ -215,6 +215,31 @@ TEST_CASE(annulation_du_terme_dominant) {
     CHECK_EQ(A.rows(), 1);
     CHECK_NEAR(A(0, 0), -2.0, 1e-15);
     CHECK_EQ(capturerSortie([&] { eq.afficher(); }), std::string("y' + 2*y = 0\n"));
+}
+
+TEST_CASE(derivee_de_l_equation_differentielle) {
+    // La dérivée de la solution de Cauchy, calculée par RK4 sur l'EDO dérivée,
+    // doit coïncider avec la dérivée symbolique de la solution exacte
+    for (const auto& c : {std::vector<double>{4.0, 0.2, 1.0}, std::vector<double>{5.0, -2.0, 0.0, 3.0}}) {
+        auto eq = depuisCoefficients(c);
+        eq.setConditionsInitiales({1.0, -0.5, 0.25});
+        const EquationClassique yPrime = eq.resoudreProblemeCauchy().derivee();
+        const EquationDifferentielle dEq = eq.derivee();
+        for (double x : {0.0, 0.6, 1.5}) {
+            CHECK_NEAR(dEq.eval(x), yPrime.eval(x), 1e-6);
+        }
+    }
+}
+
+TEST_CASE(derivee_generique_polymorphe) {
+    auto edo = oscillateurHarmonique();
+    edo.setConditionsInitiales({1.0, 0.0}); // y = cos(2x), y' = -2 sin(2x)
+    const EquationClassique classique(ast_sin(var("x")));
+    const std::vector<const Equation*> equations = {&edo, &classique};
+    const std::unique_ptr<Equation> d0 = equations[0]->deriveeGenerique();
+    const std::unique_ptr<Equation> d1 = equations[1]->deriveeGenerique();
+    CHECK_NEAR(d0->eval(0.3), -2.0 * std::sin(0.6), 1e-7);
+    CHECK_NEAR(d1->eval(0.3), std::cos(0.3), 1e-15);
 }
 
 int main() { return test::executerTous(); }
