@@ -3,6 +3,7 @@
  * @brief Tests unitaires de l'AST et de EquationClassique.
  */
 
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -426,6 +427,64 @@ TEST_CASE(dl_exponentielle_en_1) {
     const double h = 0.1;
     const double attendu = std::exp(1.0) * (1 + h + h * h / 2 + h * h * h / 6 + h * h * h * h / 24);
     CHECK_NEAR(dl->eval(1.0 + h), attendu, 1e-12);
+}
+
+TEST_CASE(dl_precision_ordre_eleve) {
+    // |DL_n(a + h) - f(a + h)| = O(h^(n+1)) : avec h = 0.01 et n = 6, erreur ~1e-14
+    struct Cas { ExprPtr f; double a; };
+    const std::vector<Cas> cas = {
+        {ast_exp(ast_sin(X)), 0.0},
+        {ast_exp(ast_sin(X)), 0.7},
+        {ast_ln(X + 1.0) / (X + 2.0), 0.0},
+        {ast_tan(X) * ast_cos(cst(2.0) * X), 0.3},
+        {ast_pow(X + 1.0, 0.5), 0.0},          // binôme généralisé
+        {ast_pow(X, 3.0) - cst(2.0) * X, 0.0}, // puissance entière en un zéro de la base
+        {ast_pow(X, X), 1.5},                  // u^v par exp(v ln u)
+        {cst(1.0) / (cst(1.0) - X), 0.0},
+        {ast_pow(ast_sin(X), 2.0), 0.0},
+    };
+    const double h = 0.01;
+    for (const auto& c : cas) {
+        const ExprPtr dl = c.f->DL(c.a, 6);
+        CHECK_NEAR(dl->eval(c.a + h), c.f->eval(c.a + h), 1e-11);
+        CHECK_NEAR(dl->eval(c.a - h), c.f->eval(c.a - h), 1e-11);
+    }
+}
+
+TEST_CASE(dl_coefficients_exacts) {
+    // exp : tous les coefficients 1/k! jusqu'à l'ordre 15 (1/13! = 1.6e-10 était perdu)
+    const ExprPtr dl = ast_exp(X)->DL(0.0, 15);
+    const double x = 1.0;
+    double somme = 0.0, terme = 1.0;
+    for (int k = 0; k <= 15; ++k) {
+        somme += terme;
+        terme /= (k + 1);
+    }
+    CHECK_NEAR(dl->eval(x), somme, 1e-15);
+    // Série géométrique : 1 + x + ... + x^5
+    CHECK_EQ(texte((cst(1.0) / (cst(1.0) - X))->DL(0.0, 3)),
+             std::string("(((1 + x) + (x)^(2)) + (x)^(3))"));
+    // sin : les coefficients pairs sont exactement nuls
+    CHECK_EQ(texte(ast_sin(X)->DL(0.0, 4)), std::string("(x + -0.166667 * (x)^(3))"));
+}
+
+TEST_CASE(dl_ordre_eleve_rapide) {
+    // Bug corrigé : l'ordre 10 prenait ~3 s (arbre de dérivées exponentiel)
+    const auto debut = std::chrono::steady_clock::now();
+    const ExprPtr dl = ast_exp(ast_sin(X))->DL(0.0, 20);
+    const double duree = std::chrono::duration<double>(std::chrono::steady_clock::now() - debut).count();
+    CHECK(duree < 0.1);
+    CHECK_NEAR(dl->eval(0.1), std::exp(std::sin(0.1)), 1e-15);
+}
+
+TEST_CASE(dl_cas_limites) {
+    CHECK_THROWS(ast_ln(X)->DL(0.0, 2), std::domain_error);          // ln non défini en 0
+    CHECK_THROWS(ast_pow(X, 0.5)->DL(0.0, 2), std::domain_error);    // sqrt non dérivable en 0
+    CHECK_THROWS(ast_exp(X)->DL(0.0, -1), std::invalid_argument);
+    CHECK_EQ(texte(ast_cos(X)->DL(0.0, 0)), std::string("1"));
+    CHECK_EQ(texte(ast_sin(X)->DL(0.0, 0)), std::string("0"));
+    // Paramètre symbolique : pas de valeur numérique, erreur explicite
+    CHECK_THROWS((param("C1") * ast_sin(X))->DL(0.0, 3), std::logic_error);
 }
 
 // ============================================================================

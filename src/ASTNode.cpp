@@ -1,9 +1,12 @@
 #include "ASTNode.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <numeric> // Pour std::gcd
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace symalgo {
 
@@ -1214,20 +1217,193 @@ ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<Tangente>(arg); }
 
 
 // --- ASTNode : Développement Limité ---
-ExprPtr ASTNode::DL(double a, int ordre) const {
-    ExprPtr result = cst(this->eval(a));
-    ExprPtr deriv = this->clone();
-    long long factorielle = 1;
-    for (int i = 1; i <= ordre; ++i) {
-        deriv = deriv->derivee();
-        factorielle *= i;
-        double coeff = deriv->eval(a) / factorielle;
-        if (std::abs(coeff) > 1e-9) {
-            ExprPtr terme = cst(coeff) * ast_pow(var("x") - a, i);
-            result = result + terme;
-        }
+
+namespace {
+
+using Serie = std::vector<double>;
+
+// Produit de Cauchy tronqué
+Serie produitSeries(const Serie& u, const Serie& v) {
+    Serie w(u.size(), 0.0);
+    for (size_t k = 0; k < w.size(); ++k)
+        for (size_t j = 0; j <= k; ++j) w[k] += u[j] * v[k - j];
+    return w;
+}
+
+/*
+ * Nom : serieTaylor
+ * Description : Coefficients de Taylor de e en a jusqu'à l'ordre n (arithmétique des séries
+ *               tronquées, comme en différentiation automatique) : coût O(n^2) par noeud au
+ *               lieu de la croissance exponentielle des dérivées symboliques successives.
+ *               Renvoie faux si un noeud n'est pas pris en charge (paramètre, noeud non
+ *               évalué, point singulier) ; l'appelant se replie alors sur les dérivées.
+ */
+bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
+    const size_t taille = static_cast<size_t>(n) + 1;
+    w.assign(taille, 0.0);
+    if (e.estConstante()) {
+        w[0] = e.getValeurConstante();
+        return true;
     }
-    return result->simplifier();
+    if (dynamic_cast<const Variable*>(&e)) {
+        w[0] = a;
+        if (n >= 1) w[1] = 1.0;
+        return true;
+    }
+    if (const OperateurBinaire* op = dynamic_cast<const OperateurBinaire*>(&e)) {
+        Serie u, v;
+        if (!serieTaylor(*op->m_gauche, a, n, u) || !serieTaylor(*op->m_droite, a, n, v)) return false;
+        if (dynamic_cast<const Addition*>(op)) {
+            for (size_t k = 0; k < taille; ++k) w[k] = u[k] + v[k];
+        } else if (dynamic_cast<const Soustraction*>(op)) {
+            for (size_t k = 0; k < taille; ++k) w[k] = u[k] - v[k];
+        } else if (dynamic_cast<const Multiplication*>(op)) {
+            w = produitSeries(u, v);
+        } else if (dynamic_cast<const Division*>(op)) {
+            // q = u / v : q_k = (u_k - sum_{j>=1} v_j q_{k-j}) / v_0
+            if (v[0] == 0.0) return false;
+            for (size_t k = 0; k < taille; ++k) {
+                double somme = u[k];
+                for (size_t j = 1; j <= k; ++j) somme -= v[j] * w[k - j];
+                w[k] = somme / v[0];
+            }
+        } else if (dynamic_cast<const Puissance*>(op)) {
+            if (op->m_droite->contientVariable()) {
+                // u^v = exp(v ln u), défini pour u(a) > 0
+                if (u[0] <= 0.0) return false;
+                const ExprPtr forme = ast_exp(op->m_droite * ast_ln(op->m_gauche));
+                return serieTaylor(*forme, a, n, w);
+            }
+            const double p = v[0];
+            if (u[0] != 0.0) {
+                // w = u^p : k u_0 w_k = sum_{j=1..k} (p j - (k - j)) u_j w_{k-j}
+                w[0] = std::pow(u[0], p);
+                if (!std::isfinite(w[0])) return false;
+                for (size_t k = 1; k < taille; ++k) {
+                    double somme = 0.0;
+                    for (size_t j = 1; j <= k; ++j) {
+                        somme += (p * double(j) - double(k - j)) * u[j] * w[k - j];
+                    }
+                    w[k] = somme / (double(k) * u[0]);
+                }
+            } else {
+                // u(a) = 0 : seule une puissance entière positive est développable
+                if (p < 0.0 || std::floor(p) != p) return false;
+                w.assign(taille, 0.0);
+                w[0] = 1.0;
+                if (p > n) {
+                    w[0] = 0.0; // u^p = O((x-a)^p), nul jusqu'à l'ordre n
+                } else {
+                    for (int i = 0; i < static_cast<int>(p); ++i) w = produitSeries(w, u);
+                }
+            }
+        } else {
+            return false;
+        }
+        return true;
+    }
+    if (const FonctionUnaire* f = dynamic_cast<const FonctionUnaire*>(&e)) {
+        Serie u;
+        if (!serieTaylor(*f->m_argument, a, n, u)) return false;
+        if (dynamic_cast<const Exponentielle*>(f)) {
+            // w' = u' w : k w_k = sum_{j=1..k} j u_j w_{k-j}
+            w[0] = std::exp(u[0]);
+            for (size_t k = 1; k < taille; ++k) {
+                double somme = 0.0;
+                for (size_t j = 1; j <= k; ++j) somme += double(j) * u[j] * w[k - j];
+                w[k] = somme / double(k);
+            }
+            return true;
+        }
+        if (dynamic_cast<const Logarithme*>(f)) {
+            // w' u = u' : k u_0 w_k = k u_k - sum_{j=1..k-1} j w_j u_{k-j}
+            if (u[0] <= 0.0) return false;
+            w[0] = std::log(u[0]);
+            for (size_t k = 1; k < taille; ++k) {
+                double somme = double(k) * u[k];
+                for (size_t j = 1; j < k; ++j) somme -= double(j) * w[j] * u[k - j];
+                w[k] = somme / (double(k) * u[0]);
+            }
+            return true;
+        }
+        // sin et cos se calculent ensemble : s' = u' c, c' = -u' s
+        Serie sinus(taille, 0.0), cosinus(taille, 0.0);
+        sinus[0] = std::sin(u[0]);
+        cosinus[0] = std::cos(u[0]);
+        for (size_t k = 1; k < taille; ++k) {
+            double ss = 0.0, sc = 0.0;
+            for (size_t j = 1; j <= k; ++j) {
+                ss += double(j) * u[j] * cosinus[k - j];
+                sc -= double(j) * u[j] * sinus[k - j];
+            }
+            sinus[k] = ss / double(k);
+            cosinus[k] = sc / double(k);
+        }
+        if (dynamic_cast<const Sinus*>(f)) {
+            w = sinus;
+        } else if (dynamic_cast<const Cosinus*>(f)) {
+            w = cosinus;
+        } else if (dynamic_cast<const Tangente*>(f)) {
+            if (std::abs(cosinus[0]) < 1e-15) return false; // pôle de tan
+            for (size_t k = 0; k < taille; ++k) {
+                double somme = sinus[k];
+                for (size_t j = 1; j <= k; ++j) somme -= cosinus[j] * w[k - j];
+                w[k] = somme / cosinus[0];
+            }
+        } else {
+            return false;
+        }
+        return true;
+    }
+    return false; // Parametre, noeuds non évalués...
+}
+
+// Coefficients de Taylor par dérivations symboliques successives (repli)
+Serie serieParDerivation(const ASTNode& e, double a, int n) {
+    Serie c(static_cast<size_t>(n) + 1, 0.0);
+    ExprPtr deriv = e.simplifier();
+    double factorielle = 1.0;
+    for (int k = 0; k <= n; ++k) {
+        if (k > 0) {
+            deriv = deriv->derivee()->simplifier();
+            factorielle *= k;
+        }
+        c[k] = deriv->eval(a) / factorielle;
+    }
+    return c;
+}
+
+} // namespace
+
+/*
+ * Nom : DL
+ * Description : Développement limité (Taylor) en a à l'ordre donné : sum c_k (x - a)^k.
+ *               Lève std::domain_error si la fonction n'est pas développable en a.
+ * Utilisation : ExprPtr dl = expr->DL(0.0, 5);
+ */
+ExprPtr ASTNode::DL(double a, int ordre) const {
+    if (ordre < 0) throw std::invalid_argument("DL : ordre negatif");
+    Serie c;
+    if (!serieTaylor(*this, a, ordre, c)) c = serieParDerivation(*this, a, ordre);
+
+    double echelle = 0.0;
+    for (int k = 0; k <= ordre; ++k) {
+        if (!std::isfinite(c[k])) {
+            throw std::domain_error("DL : la fonction n'est pas developpable a l'ordre " +
+                                    std::to_string(k) + " au point demande");
+        }
+        echelle = std::max(echelle, std::abs(c[k]));
+    }
+    // Les coefficients négligeables devant les autres (résidus d'arrondi, ex. cos(pi/2))
+    // sont omis ; le seuil est relatif car 1/k! devient vite très petit
+    const ExprPtr ecart = (var("x") - a)->simplifier();
+    ExprPtr resultat = nullptr;
+    for (int k = 0; k <= ordre; ++k) {
+        if (std::abs(c[k]) <= 1e-15 * echelle || c[k] == 0.0) continue;
+        const ExprPtr terme = k == 0 ? cst(c[k]) : cst(c[k]) * ast_pow(ecart, k);
+        resultat = resultat ? resultat + terme : terme;
+    }
+    return resultat ? resultat->simplifier() : cst(0.0);
 }
 
 // --- Constante ---
