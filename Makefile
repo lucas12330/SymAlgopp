@@ -29,24 +29,24 @@ TEST_DIFF_BIN = $(BIN_DIR)/test_differentielle
 BENCH_SRC = $(wildcard $(BENCH_DIR)/*.cpp)
 BENCH_BIN = $(BIN_DIR)/benchmark_suite
 
-.PHONY: all clean directories run_tests bench
+.PHONY: all clean run_tests bench
 
 # Cible par défaut
-all: directories $(TEST_AST_BIN) $(TEST_DIFF_BIN)
+all: $(TEST_AST_BIN) $(TEST_DIFF_BIN)
 
-# Création des dossiers temporaires et de sortie
-directories:
-	@mkdir -p $(BUILD_DIR) $(BIN_DIR)
+# Création des dossiers
+$(BUILD_DIR) $(BIN_DIR):
+	mkdir -p $@
 
 # Règle pour compiler les fichiers objets de la bibliothèque
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Règles pour compiler les tests en liant les objets de la bibliothèque
-$(TEST_AST_BIN): $(TEST_AST_SRC) $(OBJS)
+$(TEST_AST_BIN): $(TEST_AST_SRC) $(OBJS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(TEST_DIFF_BIN): $(TEST_DIFF_SRC) $(OBJS)
+$(TEST_DIFF_BIN): $(TEST_DIFF_SRC) $(OBJS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Lancer tous les tests
@@ -57,10 +57,10 @@ run_tests: all
 	@./$(TEST_DIFF_BIN)
 
 # Règle pour compiler les benchmarks (avec optimisation maximale)
-$(BENCH_BIN): $(BENCH_SRC) $(OBJS)
+$(BENCH_BIN): $(BENCH_SRC) $(OBJS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ -lbenchmark -lpthread -lginac -lcln
 
-bench: directories $(BENCH_BIN)
+bench: $(BENCH_BIN)
 	@echo "\n--- EXECUTION DES BENCHMARKS ---"
 	@./$(BENCH_BIN)
 
