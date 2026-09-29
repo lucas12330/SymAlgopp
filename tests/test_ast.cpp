@@ -124,6 +124,38 @@ TEST_CASE(derivee_tangente) {
 }
 
 // ============================================================================
+// Paramètres symboliques (constantes C1, C2...)
+// ============================================================================
+
+TEST_CASE(parametre_derivee_nulle) {
+    const ExprPtr C = param("C1");
+    CHECK_EQ(texte(C->derivee()->simplifier()), std::string("0"));
+    // d/dx (C1 * x) = C1 et non x + C1
+    CHECK_EQ(texte((C * X)->derivee()->simplifier()), std::string("C1"));
+    // d/dx (C1 * sin x) = C1 * cos x
+    CHECK_EQ(texte((C * ast_sin(X))->derivee()->simplifier()), std::string("C1 * cos(x)"));
+}
+
+TEST_CASE(parametre_evaluation_impossible) {
+    CHECK_THROWS(param("C1")->eval(5.0), std::logic_error);
+    CHECK_THROWS((param("C1") * X)->eval(5.0), std::logic_error);
+}
+
+TEST_CASE(parametre_egalite) {
+    CHECK(param("C1")->estEgal(*param("C1")));
+    CHECK(!param("C1")->estEgal(*param("C2")));
+    CHECK(!param("x")->estEgal(*var("x")));
+    CHECK(!var("x")->estEgal(*param("x")));
+}
+
+TEST_CASE(variable_de_nom_quelconque) {
+    // La bibliothèque est à une variable : var("v") est la variable d'évaluation
+    const ExprPtr V = var("v");
+    CHECK_NEAR((cst(5.0) * ast_pow(V, 2))->eval(10.0), 500.0, 1e-12);
+    CHECK_NEAR((cst(5.0) * ast_pow(V, 2))->derivee()->simplifier()->eval(10.0), 100.0, 1e-12);
+}
+
+// ============================================================================
 // Simplification
 // ============================================================================
 

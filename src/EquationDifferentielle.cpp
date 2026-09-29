@@ -94,14 +94,14 @@ EquationClassique* EquationDifferentielle::resoudreLitteral() const {
         
         if (std::abs(lambda.imag()) < 1e-6) {
             std::string c_name = "C" + std::to_string(var_idx++);
-            ExprPtr terme = var(c_name) * ast_exp(cst(lambda.real()) * X);
+            ExprPtr terme = param(c_name) * ast_exp(cst(lambda.real()) * X);
             solution = solution + terme;
         } else {
             if (lambda.imag() > 0) {
                 std::string c_name1 = "C" + std::to_string(var_idx++);
                 std::string c_name2 = "C" + std::to_string(var_idx++);
                 ExprPtr exp_part = ast_exp(cst(lambda.real()) * X);
-                ExprPtr trig_part = var(c_name1) * ast_cos(cst(lambda.imag()) * X) + var(c_name2) * ast_sin(cst(lambda.imag()) * X);
+                ExprPtr trig_part = param(c_name1) * ast_cos(cst(lambda.imag()) * X) + param(c_name2) * ast_sin(cst(lambda.imag()) * X);
                 
                 if (std::abs(lambda.real()) < 1e-6) {
                     solution = solution + trig_part;

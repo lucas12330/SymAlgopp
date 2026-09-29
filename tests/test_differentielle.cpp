@@ -8,6 +8,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 #include "EquationClassique.hpp"
@@ -116,6 +117,8 @@ TEST_CASE(solution_litterale_oscillateur) {
     std::unique_ptr<EquationClassique> sol(eq.resoudreLitteral());
     CHECK_EQ(capturerSortie([&] { sol->afficher(); }),
              std::string("(C1 * cos(2 * x) + C2 * sin(2 * x)) = 0\n"));
+    // Les constantes sont des paramètres symboliques : pas d'évaluation silencieuse
+    CHECK_THROWS(sol->eval(1.0), std::logic_error);
 }
 
 int main() { return test::executerTous(); }

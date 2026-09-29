@@ -174,6 +174,30 @@ bool Variable::estEgal(const ASTNode& autre) const {
     return v != nullptr && v->m_nom == m_nom;
 }
 
+// ============== PARAMETRE ==================
+
+Parametre::Parametre(const std::string& nom) : m_nom(nom) {}
+
+double Parametre::eval(double) const {
+    throw std::logic_error("Impossible d'evaluer le parametre symbolique '" + m_nom +
+                           "' : il n'a pas de valeur numerique");
+}
+
+ExprPtr Parametre::derivee() const { return cst(0.0); }
+
+ExprPtr Parametre::simplifier() const { return clone(); }
+
+void Parametre::afficher(std::ostream& os) const { os << m_nom; }
+
+bool Parametre::estEgal(const ASTNode& autre) const {
+    const Parametre* p = dynamic_cast<const Parametre*>(&autre);
+    return p != nullptr && p->m_nom == m_nom;
+}
+
+ExprPtr Parametre::integrer() const { return clone() * var("x"); }
+
+ExprPtr Parametre::limite(double /*a*/) const { return clone(); }
+
 // ============== OP Binaire Base ==================
 
 /*
@@ -734,6 +758,13 @@ ExprPtr frac(int64_t num, int64_t den) { return std::make_shared<Fraction>(num, 
  * Utilisation : ExprPtr noeud = var("y");
  */
 ExprPtr var(const std::string& nom) { return std::make_shared<Variable>(nom); }
+
+/*
+ * Nom : param
+ * Description : Helper générant un noeud Parametre (constante symbolique).
+ * Utilisation : ExprPtr noeud = param("C1");
+ */
+ExprPtr param(const std::string& nom) { return std::make_shared<Parametre>(nom); }
 
 /*
  * Nom : operator+

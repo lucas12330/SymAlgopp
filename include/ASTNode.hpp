@@ -245,6 +245,54 @@ public:
 
 };
 
+/*
+ * ============================================================================
+ * CLASSE PARAMETRE
+ * Constante symbolique sans valeur numérique (ex : les constantes C1, C2...
+ * des solutions générales d'EDO). Contrairement à Variable, elle ne dépend
+ * pas de x : sa dérivée est nulle. L'évaluer lève std::logic_error.
+ * ============================================================================
+ */
+class Parametre : public ASTNode {
+    std::string m_nom;
+public:
+    /*
+     * Nom : Parametre
+     * Description : Construit une constante symbolique nommée.
+     * Utilisation : ExprPtr c = param("C1");
+     */
+    explicit Parametre(const std::string& nom);
+
+    /*
+     * Nom : eval
+     * Description : Un paramètre n'a pas de valeur numérique : lève std::logic_error.
+     * Utilisation : Appelé indirectement par l'évaluation d'une expression.
+     */
+    double eval(double x) const override;
+
+    /*
+     * Nom : derivee
+     * Description : La dérivée d'une constante symbolique est nulle.
+     * Utilisation : ExprPtr d = p->derivee();
+     */
+    ExprPtr derivee() const override;
+
+    ExprPtr simplifier() const override;
+    void afficher(std::ostream& os) const override;
+
+    /*
+     * Nom : estEgal
+     * Description : Vérifie si l'autre noeud est un paramètre de même nom.
+     * Utilisation : bool eq = p->estEgal(autre);
+     */
+    bool estEgal(const ASTNode& autre) const override;
+
+    ExprPtr integrer() const override;
+    ExprPtr limite(double a) const override;
+
+    const std::string& getNom() const { return m_nom; }
+};
+
 // --- Opérateurs Binaires ---
 
 class OperateurBinaire : public ASTNode {
@@ -680,6 +728,13 @@ ExprPtr frac(int64_t num, int64_t den = 1);
  * Utilisation : ExprPtr v = var("x");
  */
 ExprPtr var(const std::string& nom = "x");
+
+/*
+ * Nom : param
+ * Description : Helper pour créer une constante symbolique (paramètre) nommée.
+ * Utilisation : ExprPtr c1 = param("C1");
+ */
+ExprPtr param(const std::string& nom);
 
 /*
  * Nom : operator+
