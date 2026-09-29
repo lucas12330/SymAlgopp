@@ -268,28 +268,33 @@ EquationClassique EquationDifferentielle::resoudreProblemeCauchy() const {
 }
 
 double EquationDifferentielle::eval(double x) const {
-    unsigned int n = m_terme.empty() ? 0 : m_terme.rbegin()->first;
+    const unsigned int n = m_terme.empty() ? 0 : m_terme.rbegin()->first;
     if (n == 0) return 0.0;
-    
+
     Eigen::VectorXd Y = Eigen::VectorXd::Zero(n);
-    for (size_t i = 0; i < std::min((size_t)n, m_conditions_initiales.size()); ++i) {
+    for (size_t i = 0; i < std::min<size_t>(n, m_conditions_initiales.size()); ++i) {
         Y(i) = m_conditions_initiales[i];
     }
-    
     if (std::abs(x) < 1e-9) return Y(0);
-    
-    Eigen::MatrixXd A = getMatriceCompagnon();
-    int steps = std::max(100, (int)(std::abs(x) / 0.01));
-    double h = x / steps;
-    
-    for (int i = 0; i < steps; ++i) {
-        Eigen::VectorXd k1 = A * Y;
-        Eigen::VectorXd k2 = A * (Y + 0.5 * h * k1);
-        Eigen::VectorXd k3 = A * (Y + 0.5 * h * k2);
-        Eigen::VectorXd k4 = A * (Y + h * k3);
-        Y += (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+
+    const int pas = std::max(100, static_cast<int>(std::abs(x) / 0.01));
+    const double h = x / pas;
+
+    // Pour un système linéaire Y' = A Y, un pas de RK4 vaut exactement Y <- P Y avec
+    // P = I + hA + (hA)^2/2 + (hA)^3/6 + (hA)^4/24 : P est calculée une seule fois, puis
+    // chaque pas se réduit à un produit matrice-vecteur, sans allocation.
+    const Eigen::MatrixXd hA = h * getMatriceCompagnon();
+    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(n, n);
+    Eigen::MatrixXd terme = Eigen::MatrixXd::Identity(n, n);
+    for (int k = 1; k <= 4; ++k) {
+        terme = (terme * hA) / static_cast<double>(k);
+        P += terme;
     }
-    
+    Eigen::VectorXd suivant(n);
+    for (int i = 0; i < pas; ++i) {
+        suivant.noalias() = P * Y;
+        Y.swap(suivant);
+    }
     return Y(0);
 }
 
