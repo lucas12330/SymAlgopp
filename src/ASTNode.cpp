@@ -395,13 +395,6 @@ ExprPtr Constante::simplifier() const { return clone(); }
 void Constante::afficher(std::ostream& os) const { os << m_valeur; }
 
 /*
- * Nom : clone
- * Description : Renvoie un nouveau noeud constante avec la même valeur.
- * Utilisation : ExprPtr copie = c.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est une constante et possède la même valeur aux erreurs flottantes près.
  * Utilisation : bool eq = c.estEgal(autre);
@@ -486,13 +479,6 @@ ExprPtr Variable::simplifier() const { return clone(); }
  * Utilisation : v.afficher(std::cout);
  */
 void Variable::afficher(std::ostream& os) const { os << m_nom; }
-
-/*
- * Nom : clone
- * Description : Renvoie une copie de la variable avec le même nom.
- * Utilisation : ExprPtr copie = v.clone();
- */
-
 
 /*
  * Nom : estEgal
@@ -591,13 +577,6 @@ void Addition::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie de l'addition et de ses enfants.
- * Utilisation : ExprPtr copie = add.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est la même addition (tient compte de la commutativité).
  * Utilisation : bool eq = add.estEgal(autre);
@@ -663,13 +642,6 @@ void Soustraction::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie de la soustraction et de ses enfants.
- * Utilisation : ExprPtr copie = sub.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est la même soustraction exacte.
  * Utilisation : bool eq = sub.estEgal(autre);
@@ -721,13 +693,6 @@ ExprPtr Multiplication::simplifier() const {
 void Multiplication::afficher(std::ostream& os) const {
     m_gauche->afficher(os); os << " * "; m_droite->afficher(os);
 }
-
-/*
- * Nom : clone
- * Description : Renvoie une copie de la multiplication et de ses enfants.
- * Utilisation : ExprPtr copie = mul.clone();
- */
-
 
 /*
  * Nom : estEgal
@@ -802,13 +767,6 @@ void Division::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie de la division et de ses enfants.
- * Utilisation : ExprPtr copie = div.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est la même division exacte.
  * Utilisation : bool eq = div.estEgal(autre);
@@ -874,13 +832,6 @@ void Puissance::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie de la puissance et de ses enfants.
- * Utilisation : ExprPtr copie = p.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est une puissance avec la même base et le même exposant.
  * Utilisation : bool eq = p.estEgal(autre);
@@ -943,13 +894,6 @@ void Sinus::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie du sinus et de son argument.
- * Utilisation : ExprPtr copie = s.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est un sinus avec le même argument exact.
  * Utilisation : bool eq = s.estEgal(autre);
@@ -1003,13 +947,6 @@ void Cosinus::afficher(std::ostream& os) const {
 }
 
 /*
- * Nom : clone
- * Description : Renvoie une copie du cosinus et de son argument.
- * Utilisation : ExprPtr copie = c.clone();
- */
-
-
-/*
  * Nom : estEgal
  * Description : Vérifie si un autre noeud est un cosinus avec le même argument exact.
  * Utilisation : bool eq = c.estEgal(autre);
@@ -1059,7 +996,6 @@ ExprPtr Tangente::calculerLimite(double a) const {
     if (ExprPtr r = limiteUnaire(m_argument, a, tanNum, ast_tan)) return r;
     return limiteNonEvaluee(a);
 }
-
 
 // --- Surcharge d'Opérateurs =---
 
@@ -1214,7 +1150,6 @@ ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<Tangente>(arg); }
 // ============================================================================
 // IMPLÉMENTATION DES LIMITES, INTÉGRALES, DL ET LOGARITHME
 // ============================================================================
-
 
 // --- ASTNode : Développement Limité ---
 
@@ -1647,8 +1582,6 @@ void Exponentielle::afficher(std::ostream& os) const {
     os << "exp("; m_argument->afficher(os); os << ")";
 }
 
-
-
 bool Exponentielle::estEgal(const ASTNode& autre) const {
     const Exponentielle* a = dynamic_cast<const Exponentielle*>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
@@ -1689,8 +1622,6 @@ ExprPtr Logarithme::simplifier() const {
 void Logarithme::afficher(std::ostream& os) const {
     os << "ln("; m_argument->afficher(os); os << ")";
 }
-
-
 
 bool Logarithme::estEgal(const ASTNode& autre) const {
     const Logarithme* a = dynamic_cast<const Logarithme*>(&autre);

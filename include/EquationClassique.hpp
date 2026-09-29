@@ -28,14 +28,14 @@ public:
      * Utilisation : EquationClassique eq(racine_ast);
      */
     explicit EquationClassique(ExprPtr racine);
-    
+
     /*
      * Nom : EquationClassique
      * Description : Constructeur par défaut (initialise à zéro).
      * Utilisation : EquationClassique eq;
      */
     EquationClassique();
-    
+
     /*
      * Nom : ~EquationClassique
      * Description : Destructeur par défaut.
@@ -49,7 +49,7 @@ public:
      * Utilisation : double resultat = eq.eval(valeur);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée formelle (simplifiée) de l'équation.

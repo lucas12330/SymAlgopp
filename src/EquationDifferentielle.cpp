@@ -154,14 +154,14 @@ void EquationDifferentielle::afficher() const {
     bool first = true;
     for (auto it = m_terme.rbegin(); it != m_terme.rend(); ++it) {
         if (it->second == 0.0) continue;
-        
+
         if (!first) {
             if (it->second > 0) std::cout << " + ";
             else std::cout << " - ";
         } else {
             if (it->second < 0) std::cout << "-";
         }
-        
+
         double abs_coeff = std::abs(it->second);
         if (abs_coeff != 1.0) std::cout << abs_coeff << "*";
 
@@ -184,7 +184,7 @@ Eigen::MatrixXd EquationDifferentielle::getMatriceCompagnon() const {
     if (m_terme.empty()) return Eigen::MatrixXd::Zero(1, 1);
     unsigned int n = m_terme.rbegin()->first;
     if (n == 0) return Eigen::MatrixXd::Zero(1, 1);
-    
+
     double an = m_terme.rbegin()->second;
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n, n);
     for (unsigned int i = 0; i < n - 1; ++i) {

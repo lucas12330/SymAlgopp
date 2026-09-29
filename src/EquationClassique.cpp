@@ -106,7 +106,7 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
     // Découpage initial grossier (10 segments) pour éviter de rater les grandes variations
     int segments = 10;
     double pas = (xMax - xMin) / segments;
-    
+
     double currX = xMin;
     double currY = this->eval(currX);
     points.push_back({currX, currY});
@@ -114,14 +114,14 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
     for (int i = 1; i <= segments; ++i) {
         double nextX = xMin + i * pas;
         double nextY = this->eval(nextX);
-        
+
         echantillonnageAdaptatif(currX, currY, nextX, nextY, points, tolerance, 0);
         points.push_back({nextX, nextY});
-        
+
         currX = nextX;
         currY = nextY;
     }
-    
+
     return points;
 }
 

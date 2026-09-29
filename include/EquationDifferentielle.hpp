@@ -61,7 +61,7 @@ public:
    * Utilisation : std::unique_ptr<Equation> d = eq.deriveeGenerique();
    */
   std::unique_ptr<Equation> deriveeGenerique() const override;
-  
+
   /*
    * Nom : ajouterTerme
    * Description : Ajoute un terme à l'équation différentielle selon le rang de dérivation et son coefficient.

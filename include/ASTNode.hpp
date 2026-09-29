@@ -19,42 +19,42 @@ public:
      * Utilisation : Appelé automatiquement à la destruction d'un objet ASTNode.
      */
     virtual ~ASTNode() = default;
-    
+
     /*
      * Nom : eval
      * Description : Evalue l'expression représentée par le noeud pour une valeur donnée.
      * Utilisation : double resultat = noeud->eval(x);
      */
     virtual double eval(double x) const = 0;
-    
+
     /*
      * Nom : DL
      * Description : Calcule le développement limité symbolique de l'expression en a, à l'ordre donné.
      * Utilisation : ExprPtr dl = noeud->DL(a, ordre);
      */
     virtual ExprPtr DL(double a, int ordre) const;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée symbolique de l'expression.
      * Utilisation : ExprPtr d = noeud->derivee();
      */
     virtual ExprPtr derivee() const = 0;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie mathématiquement l'expression de l'arbre.
      * Utilisation : ExprPtr simp = noeud->simplifier();
      */
     virtual ExprPtr simplifier() const = 0;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche le contenu textuel de l'expression sur un flux.
      * Utilisation : noeud->afficher(std::cout);
      */
     virtual void afficher(std::ostream& os) const = 0;
-    
+
     /*
      * Nom : clone
      * Description : Renvoie un pointeur partagé vers ce noeud (l'arbre est immuable, les
@@ -104,14 +104,14 @@ public:
      * Utilisation : bool egal = noeud->estEgal(autre_noeud);
      */
     virtual bool estEgal(const ASTNode& autre) const = 0;
-    
+
     /*
      * Nom : estConstante
      * Description : Indique si le noeud actuel représente une valeur constante mathématique.
      * Utilisation : bool cst = noeud->estConstante();
      */
     virtual bool estConstante() const { return false; }
-    
+
     /*
      * Nom : getValeurConstante
      * Description : Renvoie la valeur numérique du noeud s'il s'agit d'une constante.
@@ -157,35 +157,35 @@ public:
      * Utilisation : ExprPtr c = cst(5.0);
      */
     explicit Constante(double valeur);
-    
+
     /*
      * Nom : eval
      * Description : Renvoie toujours la valeur de la constante, indépendamment de x.
      * Utilisation : double val = c.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : La dérivée d'une constante est toujours zéro.
      * Utilisation : ExprPtr d = c.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie la constante (renvoie une copie d'elle-même).
      * Utilisation : ExprPtr simp = c.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche la valeur de la constante.
      * Utilisation : c.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -200,7 +200,7 @@ public:
      * Utilisation : bool cst = c.estConstante();
      */
     bool estConstante() const override { return true; }
-    
+
     /*
      * Nom : getValeurConstante
      * Description : Renvoie la valeur numérique exacte de cette constante.
@@ -212,7 +212,6 @@ protected:
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
-
 
 /*
  * ============================================================================
@@ -254,35 +253,35 @@ public:
      * Utilisation : ExprPtr v = var("y");
      */
     explicit Variable(const std::string& nom = "x");
-    
+
     /*
      * Nom : eval
      * Description : Renvoie la valeur x passée en paramètre (valeur de la variable).
      * Utilisation : double val = v.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : La dérivée de x par rapport à x est 1.
      * Utilisation : ExprPtr d = v.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Renvoie la variable elle-même (pas de simplification possible).
      * Utilisation : ExprPtr simp = v.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche le nom textuel de la variable.
      * Utilisation : v.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -353,7 +352,7 @@ class OperateurBinaire : public ASTNode {
 public:
     ExprPtr m_gauche;
     ExprPtr m_droite;
-    
+
     /*
      * Nom : OperateurBinaire
      * Description : Constructeur de base pour tous les opérateurs prenant deux opérandes.
@@ -374,35 +373,35 @@ public:
      * Utilisation : ExprPtr add = expr1 + expr2;
      */
     Addition(ExprPtr gauche, ExprPtr droite);
-    
+
     /*
      * Nom : eval
      * Description : Evalue la somme des deux sous-arbres pour une valeur de x.
      * Utilisation : double val = add.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée d'une addition (u + v)' = u' + v'.
      * Utilisation : ExprPtr d = add.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie les zéros et regroupe les termes similaires de l'addition.
      * Utilisation : ExprPtr simp = add.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche l'addition au format (gauche + droite).
      * Utilisation : add.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -424,35 +423,35 @@ public:
      * Utilisation : ExprPtr sub = expr1 - expr2;
      */
     Soustraction(ExprPtr gauche, ExprPtr droite);
-    
+
     /*
      * Nom : eval
      * Description : Evalue la différence gauche - droite.
      * Utilisation : double val = sub.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée d'une soustraction (u - v)' = u' - v'.
      * Utilisation : ExprPtr d = sub.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie les zéros, constantes et annule (a - a).
      * Utilisation : ExprPtr simp = sub.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche la soustraction au format (gauche - droite).
      * Utilisation : sub.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -474,35 +473,35 @@ public:
      * Utilisation : ExprPtr mul = expr1 * expr2;
      */
     Multiplication(ExprPtr gauche, ExprPtr droite);
-    
+
     /*
      * Nom : eval
      * Description : Evalue le produit des deux sous-arbres pour x.
      * Utilisation : double val = mul.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée d'un produit (uv)' = u'v + uv'.
      * Utilisation : ExprPtr d = mul.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie les multiplications par 0 ou 1 et associe les constantes.
      * Utilisation : ExprPtr simp = mul.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche le produit au format gauche * droite sans parenthèses.
      * Utilisation : mul.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -524,35 +523,35 @@ public:
      * Utilisation : ExprPtr div = expr1 / expr2;
      */
     Division(ExprPtr gauche, ExprPtr droite);
-    
+
     /*
      * Nom : eval
      * Description : Evalue le quotient (gauche / droite).
      * Utilisation : double val = div.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée d'un quotient (u/v)' = (u'v - uv') / v^2.
      * Utilisation : ExprPtr d = div.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie les divisions par 1 et les termes identiques.
      * Utilisation : ExprPtr simp = div.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche la division au format (gauche / droite).
      * Utilisation : div.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -574,35 +573,35 @@ public:
      * Utilisation : ExprPtr p = ast_pow(base, exposant);
      */
     Puissance(ExprPtr base, ExprPtr exposant);
-    
+
     /*
      * Nom : eval
      * Description : Evalue (gauche) élevé à la puissance (droite).
      * Utilisation : double val = p.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : Calcule la dérivée pour un exposant constant (u^n)' = n*u^{n-1}*u'.
      * Utilisation : ExprPtr d = p.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie les puissances 0 et 1.
      * Utilisation : ExprPtr simp = p.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche la puissance au format (base)^(exposant).
      * Utilisation : p.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -621,7 +620,7 @@ protected:
 class FonctionUnaire : public ASTNode {
 public:
     ExprPtr m_argument;
-    
+
     /*
      * Nom : FonctionUnaire
      * Description : Constructeur de base pour les fonctions mathématiques à un paramètre (ex: sin, cos).
@@ -640,35 +639,35 @@ public:
      * Utilisation : ExprPtr s = ast_sin(expr);
      */
     explicit Sinus(ExprPtr arg);
-    
+
     /*
      * Nom : eval
      * Description : Evalue sin(argument).
      * Utilisation : double val = s.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : La dérivée de sin(u) est cos(u)*u'.
      * Utilisation : ExprPtr d = s.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie en évaluant la constante si possible.
      * Utilisation : ExprPtr simp = s.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche sous la forme sin(argument).
      * Utilisation : s.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -690,35 +689,35 @@ public:
      * Utilisation : ExprPtr c = ast_cos(expr);
      */
     explicit Cosinus(ExprPtr arg);
-    
+
     /*
      * Nom : eval
      * Description : Evalue cos(argument).
      * Utilisation : double val = c.eval(x);
      */
     double eval(double x) const override;
-    
+
     /*
      * Nom : derivee
      * Description : La dérivée de cos(u) est -sin(u)*u'.
      * Utilisation : ExprPtr d = c.derivee();
      */
     ExprPtr derivee() const override;
-    
+
     /*
      * Nom : simplifier
      * Description : Simplifie en évaluant la constante si possible.
      * Utilisation : ExprPtr simp = c.simplifier();
      */
     ExprPtr simplifier() const override;
-    
+
     /*
      * Nom : afficher
      * Description : Affiche sous la forme cos(argument).
      * Utilisation : c.afficher(std::cout);
      */
     void afficher(std::ostream& os) const override;
-    
+
 
     /*
      * Nom : estEgal
@@ -745,8 +744,6 @@ protected:
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
-
-
 
 class Exponentielle : public FonctionUnaire {
 public:
@@ -984,9 +981,6 @@ ExprPtr ast_cos(ExprPtr arg);
  * Utilisation : ExprPtr t = ast_tan(expr);
  */
 ExprPtr ast_tan(ExprPtr arg);
-
-
-
 
 /*
  * Nom : ast_exp
