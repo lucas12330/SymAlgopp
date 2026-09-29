@@ -189,6 +189,60 @@ TEST_CASE(simplification_elements_neutres) {
     CHECK_EQ(texte(ast_exp(ast_ln(X))->simplifier()), std::string("x"));
 }
 
+TEST_CASE(simplification_petites_constantes) {
+    // Bug corrigé : toute constante < 1e-9 était traitée comme nulle
+    const double G = 6.674e-11;
+    const ExprPtr e = (cst(G) * X)->simplifier();
+    CHECK_NEAR(e->eval(2.0), 2.0 * G, 1e-25);
+    CHECK_NEAR((X * cst(1e-12))->simplifier()->eval(1.0), 1e-12, 1e-27);
+}
+
+TEST_CASE(simplification_repli_des_constantes) {
+    CHECK_EQ(texte((cst(2.0) * (cst(3.0) * X))->simplifier()), std::string("6 * x"));
+    CHECK_EQ(texte(((cst(2.0) * X) * cst(3.0))->simplifier()), std::string("6 * x"));
+    CHECK_EQ(texte((X * (cst(3.0) * ast_sin(X)))->simplifier()), std::string("3 * x * sin(x)"));
+    CHECK_EQ(texte(((cst(6.0) * X) / 3.0)->simplifier()), std::string("2 * x"));
+    CHECK_EQ(texte((cst(0.0) - X)->simplifier()), std::string("-1 * x"));
+    // Primitive de sin(2x) : plus de « 0.5 * -1 * cos(2 * x) »
+    CHECK_EQ(texte(ast_sin(cst(2.0) * X)->integrer()->simplifier()), std::string("-0.5 * cos(2 * x)"));
+}
+
+TEST_CASE(simplification_puissances) {
+    CHECK_EQ(texte((X * X)->simplifier()), std::string("(x)^(2)"));
+    CHECK_EQ(texte((ast_pow(X, 2.0) * X)->simplifier()), std::string("(x)^(3)"));
+    CHECK_EQ(texte((ast_pow(X, 2.0) * ast_pow(X, -2.0))->simplifier()), std::string("1"));
+    CHECK_EQ(texte((ast_sin(X) * ast_sin(X))->simplifier()), std::string("(sin(x))^(2)"));
+}
+
+TEST_CASE(fractions_arithmetique_exacte) {
+    // Bug corrigé : 1/3 + 1/3 donnait 0.666667 (exactitude perdue)
+    CHECK_EQ(texte((frac(1, 3) + frac(1, 3))->simplifier()), std::string("(2/3)"));
+    CHECK_EQ(texte((frac(1, 3) + frac(1, 6))->simplifier()), std::string("(1/2)"));
+    CHECK_EQ(texte((frac(1, 3) - frac(1, 3))->simplifier()), std::string("0"));
+    CHECK_EQ(texte((frac(2, 3) * frac(3, 4))->simplifier()), std::string("(1/2)"));
+    CHECK_EQ(texte((frac(2, 3) / frac(4, 9))->simplifier()), std::string("(3/2)"));
+    CHECK_EQ(texte((frac(1, 3) * cst(2.0))->simplifier()), std::string("(2/3)"));
+    CHECK_EQ(texte((frac(1, 3) * X + frac(1, 6) * X)->simplifier()), std::string("(1/2) * x"));
+    // Entre deux Constante, le calcul reste en double
+    CHECK_NEAR((cst(1.0) / cst(3.0))->simplifier()->eval(0.0), 1.0 / 3.0, 1e-16);
+    // Constante non entière avec une fraction : double
+    CHECK_NEAR((frac(1, 3) + cst(0.5))->simplifier()->eval(0.0), 1.0 / 3.0 + 0.5, 1e-15);
+}
+
+TEST_CASE(fractions_debordement) {
+    // Le produit déborderait int64 : repli en double plutôt qu'un résultat faux
+    const int64_t grand = int64_t(1) << 40;
+    const ExprPtr r = (frac(1, grand) * frac(1, grand))->simplifier();
+    CHECK_NEAR(r->eval(0.0), 1.0 / (double(grand) * double(grand)), 1e-40);
+}
+
+TEST_CASE(simplification_division_par_zero_conservee) {
+    // 0/0 ne doit pas devenir 0
+    const ExprPtr e = (cst(0.0) / cst(0.0))->simplifier();
+    CHECK(std::isnan(e->eval(0.0)));
+    CHECK(std::isinf((X / cst(0.0))->simplifier()->eval(1.0)));
+}
+
 // ============================================================================
 // Intégration
 // ============================================================================

@@ -5,28 +5,160 @@
 #include <numeric> // Pour std::gcd
 #include <stdexcept>
 
+namespace {
+
 /*
- * Nom : extractCoeff
- * Description : Helper interne pour la factorisation de type a*U + b*U. Modifie coeff et u passés en référence.
- * Utilisation : double c; ExprPtr u; extractCoeff(expr, c, u);
+ * Nom : extraireCoefficient
+ * Description : Décompose e en coeff * u (coeff constante, 1 par défaut), pour la
+ *               factorisation a*U + b*U = (a+b)*U. Le coefficient reste un noeud afin
+ *               de préserver l'exactitude des fractions.
+ * Utilisation : ExprPtr c, u; extraireCoefficient(expr, c, u);
  */
-void extractCoeff(ExprPtr e, double& coeff, ExprPtr& u) {
-    auto mult = std::dynamic_pointer_cast<Multiplication>(e);
-    if (mult) {
-        if (mult->m_gauche->estConstante()) {
-            coeff = mult->m_gauche->getValeurConstante();
-            u = mult->m_droite;
+void extraireCoefficient(const ExprPtr& e, ExprPtr& coeff, ExprPtr& u) {
+    if (const Multiplication* m = dynamic_cast<const Multiplication*>(e.get())) {
+        if (m->m_gauche->estConstante()) {
+            coeff = m->m_gauche;
+            u = m->m_droite;
             return;
         }
-        if (mult->m_droite->estConstante()) {
-            coeff = mult->m_droite->getValeurConstante();
-            u = mult->m_gauche;
+        if (m->m_droite->estConstante()) {
+            coeff = m->m_droite;
+            u = m->m_gauche;
             return;
         }
     }
-    coeff = 1.0;
+    coeff = cst(1.0);
     u = e;
 }
+
+// Vrai si e est une constante valant exactement v
+bool estValeur(const ExprPtr& e, double v) {
+    return e->estConstante() && e->getValeurConstante() == v;
+}
+
+bool estFraction(const ExprPtr& e) { return dynamic_cast<const Fraction*>(e.get()) != nullptr; }
+
+/*
+ * Nom : commeRationnel
+ * Description : Écrit n/d si la constante e est un rationnel représentable exactement :
+ *               une Fraction, ou une Constante entière (|v| <= 2^53).
+ */
+bool commeRationnel(const ExprPtr& e, int64_t& n, int64_t& d) {
+    if (const Fraction* f = dynamic_cast<const Fraction*>(e.get())) {
+        n = f->getNum();
+        d = f->getDen();
+        return true;
+    }
+    if (const Constante* c = dynamic_cast<const Constante*>(e.get())) {
+        const double v = c->getValeurConstante();
+        if (std::floor(v) == v && std::abs(v) <= 9007199254740992.0) {
+            n = static_cast<int64_t>(v);
+            d = 1;
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Nom : plierConstantes
+ * Description : Calcule g op d pour deux constantes (op parmi + - * /). Le calcul est exact
+ *               (résultat Fraction) dès qu'une Fraction est en jeu et que les deux opérandes
+ *               sont rationnels, sauf débordement de int64 ; sinon il se fait en double.
+ * Utilisation : ExprPtr r = plierConstantes(frac(1, 3), frac(1, 6), '+'); // (1/2)
+ */
+ExprPtr plierConstantes(const ExprPtr& g, const ExprPtr& d, char op) {
+    int64_t n1, d1, n2, d2;
+    if ((estFraction(g) || estFraction(d)) && commeRationnel(g, n1, d1) && commeRationnel(d, n2, d2)) {
+        int64_t n = 0, q = 1, t1 = 0, t2 = 0;
+        bool debordement = false;
+        switch (op) {
+            case '+':
+            case '-':
+                debordement = __builtin_mul_overflow(n1, d2, &t1) || __builtin_mul_overflow(n2, d1, &t2) ||
+                              __builtin_mul_overflow(d1, d2, &q) ||
+                              (op == '+' ? __builtin_add_overflow(t1, t2, &n) : __builtin_sub_overflow(t1, t2, &n));
+                break;
+            case '*':
+                debordement = __builtin_mul_overflow(n1, n2, &n) || __builtin_mul_overflow(d1, d2, &q);
+                break;
+            default: // '/'
+                debordement = n2 == 0 || __builtin_mul_overflow(n1, d2, &n) || __builtin_mul_overflow(d1, n2, &q);
+                break;
+        }
+        if (!debordement) return frac(n, q);
+    }
+    const double a = g->getValeurConstante();
+    const double b = d->getValeurConstante();
+    switch (op) {
+        case '+': return cst(a + b);
+        case '-': return cst(a - b);
+        case '*': return cst(a * b);
+        default: return cst(a / b);
+    }
+}
+
+// Écrit e = base^exposant (u seul vaut u^1)
+void baseEtExposant(const ExprPtr& e, ExprPtr& base, ExprPtr& exposant) {
+    if (const Puissance* p = dynamic_cast<const Puissance*>(e.get())) {
+        base = p->m_gauche;
+        exposant = p->m_droite;
+        return;
+    }
+    base = e;
+    exposant = cst(1.0);
+}
+
+ExprPtr combinerPuissance(const ExprPtr& b, const ExprPtr& p);
+
+/*
+ * Nom : combinerProduit
+ * Description : Simplifie g * d, g et d étant déjà simplifiés : repli des constantes (qui
+ *               sont regroupées à gauche : c1 * (c2 * u) = (c1 c2) * u), éléments neutre et
+ *               absorbant, et u^a * u^b = u^(a+b).
+ */
+ExprPtr combinerProduit(ExprPtr g, ExprPtr d) {
+    if (d->estConstante() && !g->estConstante()) std::swap(g, d);
+    if (g->estConstante()) {
+        if (d->estConstante()) return plierConstantes(g, d, '*');
+        if (estValeur(g, 0.0)) return cst(0.0);
+        if (estValeur(g, 1.0)) return d;
+        const Multiplication* m = dynamic_cast<const Multiplication*>(d.get());
+        if (m && m->m_gauche->estConstante()) {
+            return combinerProduit(plierConstantes(g, m->m_gauche, '*'), m->m_droite);
+        }
+        return std::make_shared<Multiplication>(g, d);
+    }
+    // Les constantes remontent à gauche : u * (c * v) = c * (u * v)
+    if (const Multiplication* m = dynamic_cast<const Multiplication*>(d.get()); m && m->m_gauche->estConstante()) {
+        return combinerProduit(m->m_gauche, combinerProduit(g, m->m_droite));
+    }
+    if (const Multiplication* m = dynamic_cast<const Multiplication*>(g.get()); m && m->m_gauche->estConstante()) {
+        return combinerProduit(m->m_gauche, combinerProduit(m->m_droite, d));
+    }
+    ExprPtr bg, eg, bd, ed;
+    baseEtExposant(g, bg, eg);
+    baseEtExposant(d, bd, ed);
+    if (eg->estConstante() && ed->estConstante() && bg->estEgal(*bd)) {
+        return combinerPuissance(bg, plierConstantes(eg, ed, '+'));
+    }
+    return std::make_shared<Multiplication>(g, d);
+}
+
+/*
+ * Nom : combinerPuissance
+ * Description : Simplifie b^p, b et p étant déjà simplifiés.
+ */
+ExprPtr combinerPuissance(const ExprPtr& b, const ExprPtr& p) {
+    if (b->estConstante() && p->estConstante()) return cst(std::pow(b->getValeurConstante(), p->getValeurConstante()));
+    if (estValeur(p, 0.0)) return cst(1.0);
+    if (estValeur(p, 1.0)) return b;
+    if (estValeur(b, 0.0)) return cst(0.0);
+    if (estValeur(b, 1.0)) return cst(1.0);
+    return ast_pow(b, p);
+}
+
+} // namespace
 
 /*
  * Nom : coefficientLineaire
@@ -429,21 +561,18 @@ ExprPtr Addition::derivee() const { return m_gauche->derivee() + m_droite->deriv
  * Utilisation : ExprPtr simp = add.simplifier();
  */
 ExprPtr Addition::simplifier() const {
-    auto g = m_gauche->simplifier();
-    auto d = m_droite->simplifier();
-    if (g->estConstante() && d->estConstante()) return cst(g->getValeurConstante() + d->getValeurConstante());
-    if (g->estConstante() && g->getValeurConstante() == 0.0) return d;
-    if (d->estConstante() && d->getValeurConstante() == 0.0) return g;
-    
+    const ExprPtr g = m_gauche->simplifier();
+    const ExprPtr d = m_droite->simplifier();
+    if (g->estConstante() && d->estConstante()) return plierConstantes(g, d, '+');
+    if (estValeur(g, 0.0)) return d;
+    if (estValeur(d, 0.0)) return g;
+
     // Factorisation a*U + b*U = (a+b)*U
-    double cG, cD;
-    ExprPtr uG, uD;
-    extractCoeff(g, cG, uG);
-    extractCoeff(d, cD, uD);
-    if (uG->estEgal(*uD)) {
-        return cst(cG + cD) * uG;
-    }
-    
+    ExprPtr cG, cD, uG, uD;
+    extraireCoefficient(g, cG, uG);
+    extraireCoefficient(d, cD, uD);
+    if (uG->estEgal(*uD)) return combinerProduit(plierConstantes(cG, cD, '+'), uG);
+
     return std::make_shared<Addition>(g, d);
 }
 
@@ -504,20 +633,18 @@ ExprPtr Soustraction::derivee() const { return m_gauche->derivee() - m_droite->d
  * Utilisation : ExprPtr simp = sub.simplifier();
  */
 ExprPtr Soustraction::simplifier() const {
-    auto g = m_gauche->simplifier();
-    auto d = m_droite->simplifier();
-    if (g->estConstante() && d->estConstante()) return cst(g->getValeurConstante() - d->getValeurConstante());
-    if (d->estConstante() && d->getValeurConstante() == 0.0) return g;
-    
-    double cG, cD;
-    ExprPtr uG, uD;
-    extractCoeff(g, cG, uG);
-    extractCoeff(d, cD, uD);
-    if (uG->estEgal(*uD)) {
-        if (std::abs(cG - cD) < 1e-9) return cst(0.0);
-        return cst(cG - cD) * uG;
-    }
-    
+    const ExprPtr g = m_gauche->simplifier();
+    const ExprPtr d = m_droite->simplifier();
+    if (g->estConstante() && d->estConstante()) return plierConstantes(g, d, '-');
+    if (estValeur(d, 0.0)) return g;
+    if (estValeur(g, 0.0)) return combinerProduit(cst(-1.0), d);
+
+    // Factorisation a*U - b*U = (a-b)*U
+    ExprPtr cG, cD, uG, uD;
+    extraireCoefficient(g, cG, uG);
+    extraireCoefficient(d, cD, uD);
+    if (uG->estEgal(*uD)) return combinerProduit(plierConstantes(cG, cD, '-'), uG);
+
     return std::make_shared<Soustraction>(g, d);
 }
 
@@ -578,20 +705,7 @@ ExprPtr Multiplication::derivee() const {
  * Utilisation : ExprPtr simp = mul.simplifier();
  */
 ExprPtr Multiplication::simplifier() const {
-    auto g = m_gauche->simplifier();
-    auto d = m_droite->simplifier();
-    if (g->estConstante() && d->estConstante()) return cst(g->getValeurConstante() * d->getValeurConstante());
-    if (g->estConstante()) {
-        if (std::abs(g->getValeurConstante()) < 1e-9) return cst(0.0);
-        if (std::abs(g->getValeurConstante() - 1.0) < 1e-9) return d;
-    }
-    if (d->estConstante()) {
-        if (std::abs(d->getValeurConstante()) < 1e-9) return cst(0.0);
-        if (std::abs(d->getValeurConstante() - 1.0) < 1e-9) return g;
-        // Place toujours la constante à gauche
-        return std::make_shared<Multiplication>(d, g); 
-    }
-    return std::make_shared<Multiplication>(g, d);
+    return combinerProduit(m_gauche->simplifier(), m_droite->simplifier());
 }
 
 /*
@@ -655,12 +769,20 @@ ExprPtr Division::derivee() const { // (u'v - uv') / v^2
  * Utilisation : ExprPtr simp = div.simplifier();
  */
 ExprPtr Division::simplifier() const {
-    auto g = m_gauche->simplifier();
-    auto d = m_droite->simplifier();
-    if (g->estConstante() && d->estConstante() && d->getValeurConstante() != 0.0) 
-        return cst(g->getValeurConstante() / d->getValeurConstante());
-    if (g->estConstante() && g->getValeurConstante() == 0.0) return cst(0.0);
-    if (d->estConstante() && d->getValeurConstante() == 1.0) return g;
+    const ExprPtr g = m_gauche->simplifier();
+    const ExprPtr d = m_droite->simplifier();
+    if (d->estConstante()) {
+        if (estValeur(d, 0.0)) return std::make_shared<Division>(g, d); // division par zéro conservée
+        if (g->estConstante()) return plierConstantes(g, d, '/');
+        if (estValeur(d, 1.0)) return g;
+        // (c * u) / k = (c/k) * u
+        const Multiplication* m = dynamic_cast<const Multiplication*>(g.get());
+        if (m && m->m_gauche->estConstante()) {
+            return combinerProduit(plierConstantes(m->m_gauche, d, '/'), m->m_droite);
+        }
+        return std::make_shared<Division>(g, d);
+    }
+    if (estValeur(g, 0.0)) return cst(0.0);
     if (g->estEgal(*d)) return cst(1.0);
     return std::make_shared<Division>(g, d);
 }
@@ -734,14 +856,7 @@ ExprPtr Puissance::derivee() const {
  * Utilisation : ExprPtr simp = p.simplifier();
  */
 ExprPtr Puissance::simplifier() const {
-    auto b = m_gauche->simplifier();
-    auto p = m_droite->simplifier();
-    if (b->estConstante() && p->estConstante()) return cst(std::pow(b->getValeurConstante(), p->getValeurConstante()));
-    if (p->estConstante() && p->getValeurConstante() == 0.0) return cst(1.0);
-    if (p->estConstante() && p->getValeurConstante() == 1.0) return b;
-    if (b->estConstante() && b->getValeurConstante() == 0.0) return cst(0.0);
-    if (b->estConstante() && b->getValeurConstante() == 1.0) return cst(1.0);
-    return ast_pow(b, p);
+    return combinerPuissance(m_gauche->simplifier(), m_droite->simplifier());
 }
 
 /*
