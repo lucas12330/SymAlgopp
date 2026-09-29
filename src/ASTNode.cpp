@@ -1,6 +1,7 @@
 #include "ASTNode.hpp"
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <numeric> // Pour std::gcd
 #include <stdexcept>
 
@@ -51,6 +52,145 @@ static ExprPtr diviserPar(const ExprPtr& e, double a) {
     if (a == 1.0) return e;
     return cst(1.0 / a) * e;
 }
+
+// ============== OUTILS POUR LES LIMITES ==================
+
+namespace {
+
+constexpr double INFINI = std::numeric_limits<double>::infinity();
+constexpr double NAN_LIMITE = std::numeric_limits<double>::quiet_NaN();
+
+// Profondeur maximale des réécritures récursives (L'Hôpital, 0·∞, 1^∞...)
+constexpr int PROFONDEUR_MAX_REECRITURE = 8;
+thread_local int g_profondeurReecriture = 0;
+
+struct GardeProfondeur {
+    GardeProfondeur() { ++g_profondeurReecriture; }
+    ~GardeProfondeur() { --g_profondeurReecriture; }
+    GardeProfondeur(const GardeProfondeur&) = delete;
+    GardeProfondeur& operator=(const GardeProfondeur&) = delete;
+};
+
+bool reecriturePossible() { return g_profondeurReecriture < PROFONDEUR_MAX_REECRITURE; }
+
+// Seuil en dessous duquel une limite numérique est considérée comme nulle
+// (absorbe les résidus d'arrondi comme sin(pi) = 1.2e-16)
+bool estNul(double v) { return std::abs(v) < 1e-12; }
+
+enum class GenreLimite { Nombre, Symbolique, NonEvaluee };
+
+/*
+ * Nom : analyserLimite
+ * Description : Classe le résultat d'un calcul de limite : nombre (fini ou infini, écrit
+ *               dans v), expression symbolique (paramètres) ou limite non déterminée.
+ */
+GenreLimite analyserLimite(const ExprPtr& limite, double& v) {
+    if (dynamic_cast<const LimiteNonEvaluee*>(limite.get())) return GenreLimite::NonEvaluee;
+    const ExprPtr s = limite->simplifier();
+    if (dynamic_cast<const LimiteNonEvaluee*>(s.get())) return GenreLimite::NonEvaluee;
+    if (s->estConstante()) {
+        v = s->getValeurConstante();
+        return std::isnan(v) ? GenreLimite::NonEvaluee : GenreLimite::Nombre;
+    }
+    return GenreLimite::Symbolique;
+}
+
+// Constante v, ou nullptr si v n'est pas un nombre (forme indéterminée)
+ExprPtr nombreOuNul(double v) { return std::isnan(v) ? nullptr : cst(v); }
+
+// Vrai si le résultat d'une réécriture est une limite déterminée
+bool estDeterminee(const ExprPtr& limite) {
+    double v;
+    return analyserLimite(limite, v) != GenreLimite::NonEvaluee;
+}
+
+/*
+ * Nom : premierTermeNonNul
+ * Description : Ordre k et signe du premier terme non nul du développement de Taylor de f
+ *               en a (f(a) étant nul). Au voisinage de a, f(x) ~ f^(k)(a)/k! (x-a)^k :
+ *               k pair => f garde le même signe des deux côtés de a, k impair => il change.
+ */
+bool premierTermeNonNul(const ExprPtr& f, double a, int& ordre, double& signe) {
+    ExprPtr d = f;
+    for (int k = 1; k <= PROFONDEUR_MAX_REECRITURE; ++k) {
+        d = d->derivee()->simplifier();
+        double v;
+        try {
+            v = d->eval(a);
+        } catch (const std::logic_error&) {
+            return false; // paramètre symbolique : signe inconnu
+        }
+        if (!std::isfinite(v)) return false;
+        if (!estNul(v)) {
+            ordre = k;
+            signe = v > 0.0 ? 1.0 : -1.0;
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Nom : limiteUnaire
+ * Description : Limite de f(u) : f appliquée à la limite de l'argument u. Renvoie nullptr
+ *               si elle n'est pas déterminée.
+ */
+ExprPtr limiteUnaire(const ExprPtr& argument, double a,
+                     double (*fNum)(double), ExprPtr (*fSym)(ExprPtr)) {
+    double u;
+    const ExprPtr L = argument->limite(a);
+    switch (analyserLimite(L, u)) {
+        case GenreLimite::Nombre: return nombreOuNul(fNum(u));
+        case GenreLimite::Symbolique: return fSym(L);
+        case GenreLimite::NonEvaluee: break;
+    }
+    return nullptr;
+}
+
+/*
+ * Nom : commeQuotient
+ * Description : Si e est un quotient (Division, ou puissance d'exposant constant négatif),
+ *               renvoie vrai et écrit son numérateur et son dénominateur.
+ */
+bool commeQuotient(const ExprPtr& e, ExprPtr& num, ExprPtr& den) {
+    if (const Division* d = dynamic_cast<const Division*>(e.get())) {
+        num = d->m_gauche;
+        den = d->m_droite;
+        return true;
+    }
+    const Puissance* p = dynamic_cast<const Puissance*>(e.get());
+    if (p && !p->m_droite->contientVariable()) {
+        const ExprPtr n = p->m_droite->simplifier();
+        if (n->estConstante() && n->getValeurConstante() < 0.0) {
+            num = cst(1.0);
+            den = ast_pow(p->m_gauche, cst(-n->getValeurConstante()));
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Nom : limiteParQuotientUnique
+ * Description : Réécrit g op d (produit ou quotient) comme une seule fraction
+ *               (ex. x * (1/x) -> x / x) puis en calcule la limite. Utile quand un
+ *               facteur n'a pas de limite propre alors que l'ensemble en a une.
+ *               Renvoie nullptr si la réécriture est impossible ou n'aboutit pas.
+ */
+ExprPtr limiteParQuotientUnique(const ExprPtr& g, const ExprPtr& d, bool estDivision, double a) {
+    ExprPtr ng = g, dg = cst(1.0), nd = d, dd = cst(1.0);
+    const bool qg = commeQuotient(g, ng, dg);
+    const bool qd = commeQuotient(d, nd, dd);
+    if ((!qg && !qd) || !reecriturePossible()) return nullptr;
+    GardeProfondeur garde;
+    // (ng/dg) * (nd/dd) = (ng nd) / (dg dd) ; (ng/dg) / (nd/dd) = (ng dd) / (dg nd)
+    const ExprPtr num = estDivision ? ng * dd : ng * nd;
+    const ExprPtr den = estDivision ? dg * nd : dg * dd;
+    const ExprPtr r = (num->simplifier() / den->simplifier())->limite(a);
+    return estDeterminee(r) ? r : nullptr;
+}
+
+} // namespace
 
 // ============== ASTNODE ==================
 
@@ -171,7 +311,7 @@ bool Fraction::estEgal(const ASTNode& autre) const {
 }
 
 ExprPtr Fraction::primitive() const { return frac(m_num, m_den) * var("x"); }
-ExprPtr Fraction::calculerLimite(double /*a*/) const { return std::const_pointer_cast<ASTNode>(shared_from_this()); }
+ExprPtr Fraction::calculerLimite(double /*a*/) const { return clone(); }
 
 // ============== VARIABLE ==================
 
@@ -578,6 +718,9 @@ ExprPtr Puissance::derivee() const {
         if (n == 0) return cst(0.0);
         return cst(n) * ast_pow(m_gauche, cst(n - 1)) * m_gauche->derivee();
     }
+    if (!m_droite->contientVariable()) { // exposant symbolique (paramètre) : même règle
+        return m_droite * ast_pow(m_gauche, m_droite - 1.0) * m_gauche->derivee();
+    }
     // Cas general : (u^v)' = u^v * (v' * ln(u) + v * u' / u)
     auto ln_u = ast_ln(m_gauche);
     auto terme1 = m_droite->derivee() * ln_u;
@@ -791,7 +934,10 @@ ExprPtr Tangente::primitive() const {
 }
 
 ExprPtr Tangente::calculerLimite(double a) const {
-    return ast_tan(m_argument->limite(a));
+    // Aux pôles (cos(u) = 0), tan tend vers +inf d'un côté et -inf de l'autre
+    auto tanNum = [](double u) { return estNul(std::cos(u)) ? NAN_LIMITE : std::tan(u); };
+    if (ExprPtr r = limiteUnaire(m_argument, a, tanNum, ast_tan)) return r;
+    return limiteNonEvaluee(a);
 }
 
 
@@ -990,7 +1136,16 @@ ExprPtr Addition::primitive() const {
     return m_gauche->integrer() + m_droite->integrer();
 }
 ExprPtr Addition::calculerLimite(double a) const {
-    return m_gauche->limite(a) + m_droite->limite(a);
+    double g = 0.0, d = 0.0;
+    const ExprPtr Lg = m_gauche->limite(a);
+    const ExprPtr Ld = m_droite->limite(a);
+    const GenreLimite tg = analyserLimite(Lg, g);
+    const GenreLimite td = analyserLimite(Ld, d);
+    if (tg == GenreLimite::NonEvaluee || td == GenreLimite::NonEvaluee) return limiteNonEvaluee(a);
+    if (tg == GenreLimite::Symbolique || td == GenreLimite::Symbolique) return Lg + Ld;
+    // +inf + -inf donne NaN : forme indéterminée non résolue
+    if (ExprPtr r = nombreOuNul(g + d)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Soustraction ---
@@ -998,7 +1153,15 @@ ExprPtr Soustraction::primitive() const {
     return m_gauche->integrer() - m_droite->integrer();
 }
 ExprPtr Soustraction::calculerLimite(double a) const {
-    return m_gauche->limite(a) - m_droite->limite(a);
+    double g = 0.0, d = 0.0;
+    const ExprPtr Lg = m_gauche->limite(a);
+    const ExprPtr Ld = m_droite->limite(a);
+    const GenreLimite tg = analyserLimite(Lg, g);
+    const GenreLimite td = analyserLimite(Ld, d);
+    if (tg == GenreLimite::NonEvaluee || td == GenreLimite::NonEvaluee) return limiteNonEvaluee(a);
+    if (tg == GenreLimite::Symbolique || td == GenreLimite::Symbolique) return Lg - Ld;
+    if (ExprPtr r = nombreOuNul(g - d)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Multiplication ---
@@ -1011,7 +1174,34 @@ ExprPtr Multiplication::primitive() const {
     return integraleNonEvaluee();
 }
 ExprPtr Multiplication::calculerLimite(double a) const {
-    return m_gauche->limite(a) * m_droite->limite(a);
+    double g = 0.0, d = 0.0;
+    const ExprPtr Lg = m_gauche->limite(a);
+    const ExprPtr Ld = m_droite->limite(a);
+    const GenreLimite tg = analyserLimite(Lg, g);
+    const GenreLimite td = analyserLimite(Ld, d);
+    if (tg == GenreLimite::NonEvaluee || td == GenreLimite::NonEvaluee) {
+        if (ExprPtr r = limiteParQuotientUnique(m_gauche, m_droite, false, a)) return r;
+        return limiteNonEvaluee(a);
+    }
+    if (tg == GenreLimite::Symbolique || td == GenreLimite::Symbolique) return Lg * Ld;
+
+    const bool zeroFoisInfini = (estNul(g) && std::isinf(d)) || (std::isinf(g) && estNul(d));
+    if (!zeroFoisInfini) {
+        if (ExprPtr r = nombreOuNul(g * d)) return r;
+        return limiteNonEvaluee(a);
+    }
+    // Forme 0 * inf : d'abord sous forme de fraction unique, puis z * w = z / (1/w)
+    // (forme 0/0), sinon w / (1/z) (forme inf/inf)
+    if (ExprPtr r = limiteParQuotientUnique(m_gauche, m_droite, false, a)) return r;
+    if (!reecriturePossible()) return limiteNonEvaluee(a);
+    GardeProfondeur garde;
+    const ExprPtr z = estNul(g) ? m_gauche : m_droite;
+    const ExprPtr w = estNul(g) ? m_droite : m_gauche;
+    ExprPtr r = (z / (cst(1.0) / w))->limite(a);
+    if (estDeterminee(r)) return r;
+    r = (w / (cst(1.0) / z))->limite(a);
+    if (estDeterminee(r)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Division ---
@@ -1028,17 +1218,37 @@ ExprPtr Division::primitive() const {
     return integraleNonEvaluee();
 }
 ExprPtr Division::calculerLimite(double a) const {
-    double n = m_gauche->eval(a);
-    double d = m_droite->eval(a);
-    if (std::abs(d) < 1e-9) {
-        if (std::abs(n) < 1e-9) {
-            // L'Hôpital : lim N/D = lim N'/D'
-            return (m_gauche->derivee() / m_droite->derivee())->limite(a);
-        } else {
-            return cst(std::numeric_limits<double>::infinity());
-        }
+    double n = 0.0, d = 0.0;
+    const ExprPtr Ln = m_gauche->limite(a);
+    const ExprPtr Ld = m_droite->limite(a);
+    const GenreLimite tn = analyserLimite(Ln, n);
+    const GenreLimite td = analyserLimite(Ld, d);
+    if (tn == GenreLimite::NonEvaluee || td == GenreLimite::NonEvaluee) {
+        if (ExprPtr r = limiteParQuotientUnique(m_gauche, m_droite, true, a)) return r;
+        return limiteNonEvaluee(a);
     }
-    return m_gauche->limite(a) / m_droite->limite(a);
+    if (tn == GenreLimite::Symbolique || td == GenreLimite::Symbolique) return Ln / Ld;
+
+    const bool zeroSurZero = estNul(n) && estNul(d);
+    const bool infiniSurInfini = std::isinf(n) && std::isinf(d);
+    if (zeroSurZero || infiniSurInfini) {
+        // Règle de L'Hôpital : lim N/D = lim N'/D'
+        if (!reecriturePossible()) return limiteNonEvaluee(a);
+        GardeProfondeur garde;
+        const ExprPtr r = (m_gauche->derivee()->simplifier() / m_droite->derivee()->simplifier())->limite(a);
+        return estDeterminee(r) ? r : limiteNonEvaluee(a);
+    }
+    if (estNul(d)) {
+        // c / 0 : l'infini n'a un signe défini que si D garde le même signe des deux côtés
+        int ordre;
+        double signeD;
+        if (premierTermeNonNul(m_droite, a, ordre, signeD) && ordre % 2 == 0) {
+            return cst((n > 0.0 ? 1.0 : -1.0) * signeD * INFINI);
+        }
+        return limiteNonEvaluee(a); // limites à gauche et à droite différentes
+    }
+    if (ExprPtr r = nombreOuNul(n / d)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Puissance ---
@@ -1063,7 +1273,41 @@ ExprPtr Puissance::primitive() const {
     return integraleNonEvaluee();
 }
 ExprPtr Puissance::calculerLimite(double a) const {
-    return ast_pow(m_gauche->limite(a), m_droite->limite(a));
+    double b = 0.0, e = 0.0;
+    const ExprPtr Lb = m_gauche->limite(a);
+    const ExprPtr Le = m_droite->limite(a);
+    const GenreLimite tb = analyserLimite(Lb, b);
+    const GenreLimite te = analyserLimite(Le, e);
+
+    // u^v = exp(v ln u) : lève les formes 1^inf, 0^0 et inf^0 quand l'exposant dépend de x
+    auto parExponentielle = [&]() -> ExprPtr {
+        if (!m_droite->contientVariable() || !reecriturePossible()) return nullptr;
+        GardeProfondeur garde;
+        const ExprPtr r = ast_exp(m_droite * ast_ln(m_gauche))->limite(a);
+        return estDeterminee(r) ? r : nullptr;
+    };
+
+    if (tb == GenreLimite::NonEvaluee || te == GenreLimite::NonEvaluee) {
+        if (ExprPtr r = parExponentielle()) return r;
+        return limiteNonEvaluee(a);
+    }
+    if (tb == GenreLimite::Symbolique || te == GenreLimite::Symbolique) return ast_pow(Lb, Le);
+
+    const bool indeterminee = (b == 1.0 && std::isinf(e)) || (estNul(b) && estNul(e)) ||
+                              (std::isinf(b) && estNul(e));
+    if (indeterminee && m_droite->contientVariable()) {
+        if (ExprPtr r = parExponentielle()) return r;
+        return limiteNonEvaluee(a);
+    }
+    if (estNul(b) && e < 0.0) {
+        // 0^(-n) = 1 / 0^n : le signe de l'infini dépend du côté
+        if (!reecriturePossible()) return limiteNonEvaluee(a);
+        GardeProfondeur garde;
+        const ExprPtr r = (cst(1.0) / ast_pow(m_gauche, (cst(-1.0) * m_droite)->simplifier()))->limite(a);
+        return estDeterminee(r) ? r : limiteNonEvaluee(a);
+    }
+    if (ExprPtr r = nombreOuNul(std::pow(b, e))) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Sinus ---
@@ -1073,7 +1317,9 @@ ExprPtr Sinus::primitive() const {
     return integraleNonEvaluee();
 }
 ExprPtr Sinus::calculerLimite(double a) const {
-    return ast_sin(m_argument->limite(a));
+    // sin(+-inf) donne NaN : pas de limite
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::sin(u); }, ast_sin)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // --- Cosinus ---
@@ -1083,7 +1329,8 @@ ExprPtr Cosinus::primitive() const {
     return integraleNonEvaluee();
 }
 ExprPtr Cosinus::calculerLimite(double a) const {
-    return ast_cos(m_argument->limite(a));
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::cos(u); }, ast_cos)) return r;
+    return limiteNonEvaluee(a);
 }
 
 // ============== EXPONENTIELLE ==================
@@ -1123,7 +1370,9 @@ ExprPtr Exponentielle::primitive() const {
 }
 
 ExprPtr Exponentielle::calculerLimite(double a) const {
-    return ast_exp(m_argument->limite(a));
+    // exp(+inf) = +inf, exp(-inf) = 0
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::exp(u); }, ast_exp)) return r;
+    return limiteNonEvaluee(a);
 }
 
 ExprPtr ast_exp(ExprPtr arg) {
@@ -1167,9 +1416,10 @@ ExprPtr Logarithme::primitive() const {
 }
 
 ExprPtr Logarithme::calculerLimite(double a) const {
-    double v = m_argument->eval(a);
-    if (v <= 0.0) return cst(-std::numeric_limits<double>::infinity());
-    return ast_ln(m_argument->limite(a));
+    // ln(u) -> -inf quand u -> 0 ; hors du domaine (u < 0) la limite n'existe pas
+    auto lnNum = [](double u) { return estNul(u) ? -INFINI : std::log(u); };
+    if (ExprPtr r = limiteUnaire(m_argument, a, lnNum, ast_ln)) return r;
+    return limiteNonEvaluee(a);
 }
 
 ExprPtr ast_ln(ExprPtr arg) {

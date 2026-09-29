@@ -3,6 +3,7 @@
  * @brief Tests unitaires de l'AST et de EquationClassique.
  */
 
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -263,6 +264,79 @@ TEST_CASE(limite_hopital) {
     // (1 - cos x) / x^2 en 0 -> 1/2 (L'Hôpital appliqué deux fois)
     CHECK_NEAR(((cst(1.0) - ast_cos(X)) / ast_pow(X, 2))->limite(0.0)->simplifier()->eval(0.0),
                0.5, 1e-12);
+}
+
+namespace {
+
+// Valeur numérique d'une limite déterminée
+double valeurLimite(const ExprPtr& f, double a) { return f->limite(a)->simplifier()->eval(0.0); }
+
+bool limiteNonDeterminee(const ExprPtr& f, double a) {
+    return std::dynamic_pointer_cast<LimiteNonEvaluee>(f->limite(a)->simplifier()) != nullptr;
+}
+
+const double INF = std::numeric_limits<double>::infinity();
+
+} // namespace
+
+TEST_CASE(limite_zero_fois_infini) {
+    // Bug corrigé : donnait NaN
+    CHECK_NEAR(valeurLimite(X * (cst(1.0) / X), 0.0), 1.0, 1e-12);
+    CHECK_NEAR(valeurLimite(ast_sin(X) * (cst(1.0) / X), 0.0), 1.0, 1e-12);
+}
+
+TEST_CASE(limite_signe_de_l_infini) {
+    CHECK_EQ(valeurLimite(cst(1.0) / ast_pow(X, 2.0), 0.0), INF);
+    CHECK_EQ(valeurLimite(cst(-1.0) / ast_pow(X, 2.0), 0.0), -INF);
+    CHECK_EQ(valeurLimite(cst(1.0) / ast_pow(X - 2.0, 4.0), 2.0), INF);
+    CHECK_EQ(valeurLimite(cst(3.0) / (cst(1.0) - ast_cos(X)), 0.0), INF);
+    CHECK_EQ(valeurLimite(ast_pow(X, -2.0), 0.0), INF);
+}
+
+TEST_CASE(limite_inexistante) {
+    // Bug corrigé : -1/x en 0 donnait +inf ; à gauche -inf, à droite +inf
+    CHECK(limiteNonDeterminee(cst(-1.0) / X, 0.0));
+    CHECK(limiteNonDeterminee(cst(1.0) / X, 0.0));
+    CHECK(limiteNonDeterminee(ast_pow(X, -1.0), 0.0));
+    CHECK(limiteNonDeterminee(ast_tan(X), 3.14159265358979323846 / 2.0));
+    CHECK(limiteNonDeterminee(ast_sin(cst(1.0) / X), 0.0));
+    CHECK_THROWS(((cst(1.0) / X)->limite(0.0)->eval(0.0)), std::logic_error);
+}
+
+TEST_CASE(limite_logarithme) {
+    CHECK_EQ(valeurLimite(ast_ln(X), 0.0), -INF);
+    CHECK_NEAR(valeurLimite(ast_ln(X), 1.0), 0.0, 1e-15);
+    // Bug corrigé : ln d'un argument négatif donnait -inf
+    CHECK(limiteNonDeterminee(ast_ln(X - 2.0), 1.0));
+}
+
+TEST_CASE(limite_hopital_avances) {
+    // Résidu d'arrondi : sin(pi) ne vaut pas exactement 0 en double
+    const double pi = 3.14159265358979323846;
+    CHECK_NEAR(valeurLimite(ast_sin(X) / (X - pi), pi), -1.0, 1e-12);
+    CHECK_NEAR(valeurLimite((ast_exp(X) - 1.0) / X, 0.0), 1.0, 1e-12);
+    CHECK_NEAR(valeurLimite((X - ast_sin(X)) / ast_pow(X, 3.0), 0.0), 1.0 / 6.0, 1e-12);
+    CHECK_NEAR(valeurLimite(ast_ln(X) / (X - 1.0), 1.0), 1.0, 1e-12);
+}
+
+TEST_CASE(limite_formes_exponentielles) {
+    // (1 + x)^(1/x) -> e (forme 1^inf)
+    CHECK_NEAR(valeurLimite(ast_pow(X + 1.0, cst(1.0) / X), 0.0), std::exp(1.0), 1e-12);
+    // (1 + 2x)^(3/x) -> e^6
+    CHECK_NEAR(valeurLimite(ast_pow(cst(2.0) * X + 1.0, cst(3.0) / X), 0.0), std::exp(6.0), 1e-9);
+}
+
+TEST_CASE(limite_avec_parametre) {
+    // Les paramètres symboliques traversent le calcul
+    CHECK_EQ(texte((param("C1") * X + 1.0)->limite(2.0)->simplifier()),
+             std::string("(2 * C1 + 1)"));
+}
+
+TEST_CASE(limite_sans_recursion_infinie) {
+    // L'Hôpital tournerait en rond (exp(1/x) sur x) : la profondeur est bornée
+    const ExprPtr f = ast_exp(cst(-1.0) / ast_pow(X, 2.0)) / ast_pow(X, 2.0);
+    const ExprPtr l = f->limite(0.0);
+    CHECK(l != nullptr);
 }
 
 // ============================================================================
