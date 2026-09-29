@@ -21,6 +21,8 @@
 #include <memory>
 #include <vector>
 
+namespace symalgo {
+
 class EquationDifferentielle : public Equation {
 public:
   /*
@@ -116,3 +118,5 @@ private:
   std::map<unsigned int, double> m_terme;
   std::vector<double> m_conditions_initiales;
 };
+
+} // namespace symalgo

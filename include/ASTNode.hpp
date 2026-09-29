@@ -1,8 +1,11 @@
 #pragma once
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <stdexcept>
 #include <string>
+
+namespace symalgo {
 
 class ASTNode;
 using ExprPtr = std::shared_ptr<ASTNode>;
@@ -998,3 +1001,5 @@ ExprPtr ast_exp(ExprPtr arg);
  * Utilisation : ExprPtr l = ast_ln(expr);
  */
 ExprPtr ast_ln(ExprPtr arg);
+
+} // namespace symalgo

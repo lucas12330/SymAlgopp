@@ -17,6 +17,8 @@
 #include "EquationDifferentielle.hpp"
 #include "test_framework.hpp"
 
+using namespace symalgo;
+
 namespace {
 
 // Capture ce qu'une fonction écrit sur std::cout

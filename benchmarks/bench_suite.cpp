@@ -4,6 +4,8 @@
 #include "EquationDifferentielle.hpp"
 #include "ASTNode.hpp"
 
+using namespace symalgo;
+
 // ---------------------------------------------------------
 // 1. Benchmark: Evaluation d'Equations Classiques
 // ---------------------------------------------------------

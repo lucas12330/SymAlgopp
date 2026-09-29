@@ -14,6 +14,8 @@
 #include "EquationClassique.hpp"
 #include "test_framework.hpp"
 
+using namespace symalgo;
+
 namespace {
 
 // Représentation textuelle d'une expression (via afficher)

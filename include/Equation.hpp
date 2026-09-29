@@ -15,6 +15,8 @@
 
 #include <memory>
 
+namespace symalgo {
+
 class Equation {
 public:
   /*
@@ -47,3 +49,5 @@ public:
    */
   virtual std::unique_ptr<Equation> deriveeGenerique() const = 0;
 };
+
+} // namespace symalgo

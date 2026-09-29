@@ -24,6 +24,8 @@ La manipulation symbolique repose sur la classe abstraite `ASTNode` bénéfician
 using ExprPtr = std::shared_ptr<ASTNode>;
 ```
 
+Toute la bibliothèque est déclarée dans l'espace de noms `symalgo` (les opérateurs `+ - * /` sur `ExprPtr` sont trouvés automatiquement par ADL).
+
 ### Nœuds disponibles dans l'AST
 
 1. **Nœuds terminaux** :
@@ -74,6 +76,8 @@ auto expr = frac(1, 3) * ast_pow(X, 2) + ast_sin(X) + ast_ln(X);
 #include "EquationClassique.hpp"
 #include "ASTNode.hpp"
 
+using namespace symalgo;
+
 int main() {
     auto X = var("x");
     // (x^2 - 1) / (x - 1)
@@ -104,6 +108,8 @@ int main() {
 #include <iostream>
 #include "EquationDifferentielle.hpp"
 #include "EquationClassique.hpp"
+
+using namespace symalgo;
 
 int main() {
     // Oscillateur Harmonique : y'' + 4y = 0

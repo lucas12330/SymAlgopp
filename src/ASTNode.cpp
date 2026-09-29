@@ -5,6 +5,8 @@
 #include <numeric> // Pour std::gcd
 #include <stdexcept>
 
+namespace symalgo {
+
 namespace {
 
 /*
@@ -1210,8 +1212,6 @@ ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<Tangente>(arg); }
 // IMPLÉMENTATION DES LIMITES, INTÉGRALES, DL ET LOGARITHME
 // ============================================================================
 
-#include <cmath>
-#include <limits>
 
 // --- ASTNode : Développement Limité ---
 ExprPtr ASTNode::DL(double a, int ordre) const {
@@ -1594,3 +1594,5 @@ bool LimiteNonEvaluee::estEgal(const ASTNode& autre) const {
 ExprPtr LimiteNonEvaluee::primitive() const { return clone() * var("x"); }
 
 ExprPtr LimiteNonEvaluee::calculerLimite(double) const { return clone(); }
+
+} // namespace symalgo

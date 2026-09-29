@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+namespace symalgo {
+
 class EquationClassique : public Equation {
 public:
     /*
@@ -116,3 +118,5 @@ private:
     ExprPtr m_racine;
     void echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const;
 };
+
+} // namespace symalgo

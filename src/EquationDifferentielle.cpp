@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 
+namespace symalgo {
+
 namespace {
 
 // Racine du polynôme caractéristique avec sa multiplicité
@@ -290,3 +292,5 @@ double EquationDifferentielle::eval(double x) const {
     
     return Y(0);
 }
+
+} // namespace symalgo

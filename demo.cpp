@@ -4,6 +4,8 @@
 #include "EquationDifferentielle.hpp"
 #include "ASTNode.hpp"
 
+using namespace symalgo;
+
 // Exemple 1 : Utilisation des expressions symboliques classiques (Physique)
 void exemple_physique() {
     std::cout << "--- 1. Exemple Physique : Energie Cinetique ---\n";

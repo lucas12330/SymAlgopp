@@ -3,6 +3,8 @@
 #include <iostream>
 #include <stdexcept>
 
+namespace symalgo {
+
 /*
  * Nom : EquationClassique
  * Description : Constructeur de l'équation avec une racine AST spécifique.
@@ -122,3 +124,5 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
     
     return points;
 }
+
+} // namespace symalgo
