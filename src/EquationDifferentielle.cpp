@@ -87,6 +87,12 @@ std::vector<RacineCaracteristique> regrouperRacines(const std::vector<double>& c
         const double seuil = 1e-9 * std::max(1.0, std::abs(moyenne));
         if (std::abs(moyenne.imag()) < seuil) moyenne.imag(0.0);
         if (std::abs(moyenne.real()) < seuil) moyenne.real(0.0);
+        // Une partie entière à l'arrondi près devient exacte (exp(-x) plutôt que exp(-1.0000000000000002*x))
+        auto arrondirEntier = [](double v) {
+            const double r = std::round(v);
+            return std::abs(v - r) < 1e-12 * std::max(1.0, std::abs(v)) ? r : v;
+        };
+        moyenne = {arrondirEntier(moyenne.real()), arrondirEntier(moyenne.imag())};
         resultat.push_back({moyenne, m});
     }
     return resultat;
@@ -100,7 +106,7 @@ ExprPtr puissanceDeX(const ExprPtr& X, int k) {
 }
 
 // Produit des facteurs non nuls
-ExprPtr produit(std::initializer_list<ExprPtr> facteurs) {
+ExprPtr produitNonNuls(std::initializer_list<ExprPtr> facteurs) {
     ExprPtr r = nullptr;
     for (const ExprPtr& f : facteurs) {
         if (f) r = r ? r * f : f;
@@ -216,10 +222,10 @@ std::vector<ExprPtr> EquationDifferentielle::baseDeSolutions() const {
         for (int k = 0; k < r.multiplicite; ++k) {
             // Racine de multiplicité m : x^k e^(alpha x) [cos(beta x), sin(beta x)], k < m
             if (beta == 0.0) {
-                base.push_back(produit({puissanceDeX(X, k), exponentielle}));
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle}));
             } else {
-                base.push_back(produit({puissanceDeX(X, k), exponentielle, ast_cos(cst(beta) * X)}));
-                base.push_back(produit({puissanceDeX(X, k), exponentielle, ast_sin(cst(beta) * X)}));
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle, ast_cos(cst(beta) * X)}));
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle, ast_sin(cst(beta) * X)}));
             }
         }
     }

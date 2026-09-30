@@ -120,7 +120,7 @@ TEST_CASE(solution_litterale_oscillateur) {
     const auto eq = oscillateurHarmonique();
     const EquationClassique sol = eq.resoudreLitteral();
     CHECK_EQ(capturerSortie([&] { sol.afficher(); }),
-             std::string("(C1 * cos(2 * x) + C2 * sin(2 * x)) = 0\n"));
+             std::string("C1*cos(2*x) + C2*sin(2*x) = 0\n"));
     // Les constantes sont des paramètres symboliques : pas d'évaluation silencieuse
     CHECK_THROWS(sol.eval(1.0), std::logic_error);
 }
@@ -174,9 +174,9 @@ std::string solutionGenerale(const std::vector<double>& c) {
 TEST_CASE(racine_double_solution_generale) {
     // y'' + 2y' + y = 0 : r = -1 double => (C1 + C2 x) e^(-x). Bug corrigé : C1 e^-x + C2 e^-x
     CHECK_EQ(solutionGenerale({1.0, 2.0, 1.0}),
-             std::string("(C1 * exp(-1 * x) + C2 * x * exp(-1 * x)) = 0\n"));
+             std::string("C1*exp(-x) + C2*x*exp(-x) = 0\n"));
     // y'' = 0 : r = 0 double => C1 + C2 x
-    CHECK_EQ(solutionGenerale({0.0, 0.0, 1.0}), std::string("(C1 + C2 * x) = 0\n"));
+    CHECK_EQ(solutionGenerale({0.0, 0.0, 1.0}), std::string("C2*x + C1 = 0\n"));
 }
 
 TEST_CASE(cauchy_racines_simples) {
@@ -204,7 +204,7 @@ TEST_CASE(cauchy_solution_exacte_connue) {
     auto eq = oscillateurHarmonique();
     eq.setConditionsInitiales({1.0, 0.0});
     const EquationClassique y = eq.resoudreProblemeCauchy();
-    CHECK_EQ(capturerSortie([&] { y.afficher(); }), std::string("cos(2 * x) = 0\n"));
+    CHECK_EQ(capturerSortie([&] { y.afficher(); }), std::string("cos(2*x) = 0\n"));
 }
 
 TEST_CASE(annulation_du_terme_dominant) {

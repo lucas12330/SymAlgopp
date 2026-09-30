@@ -77,13 +77,26 @@ public:
      * Nom : versDouble
      * Description : Valeur approchée en double.
      */
-    double versDouble() const;
+    double versDouble() const {
+        if (m_forme == Forme::Petit && m_petit.den == 1) return static_cast<double>(m_petit.num); // cas courant
+        return versDoubleGeneral();
+    }
 
     /*
      * Nom : versEntier
      * Description : Écrit la valeur si c'est un entier exact tenant sur 64 bits.
      */
-    bool versEntier(long long& n) const;
+    bool versEntier(long long& n) const {
+        if (m_forme != Forme::Petit || m_petit.den != 1) return false;
+        n = m_petit.num;
+        return true;
+    }
+
+    /*
+     * Nom : versFraction
+     * Description : Écrit num/den si c'est un rationnel exact tenant sur 64 bits.
+     */
+    bool versFraction(long long& num, long long& den) const;
 
     /*
      * Nom : numerateur / denominateur
@@ -146,6 +159,7 @@ private:
         Grand* m_grand;
     };
 
+    double versDoubleGeneral() const;
     static Nombre depuisGrand(Grand&& g); // redescend en Petit si possible
     Grand versGrand() const;
     void liberer() noexcept;

@@ -42,6 +42,10 @@ void verifierPrimitive(const ExprPtr& f, const std::vector<double>& points) {
 
 const ExprPtr X = var("x");
 
+// Vrai si e est un noeud de type T (comme<T> sur une référence : jamais sur un temporaire)
+template <class T>
+bool estDeType(const ExprPtr& e) { return comme<T>(e) != nullptr; }
+
 } // namespace
 
 // ============================================================================
@@ -70,17 +74,19 @@ TEST_CASE(eval_fonctions_usuelles) {
 
 TEST_CASE(fraction_reduction_et_signe) {
     const ExprPtr ef = frac(2, 6);
-    const Fraction* f = comme<Fraction>(ef);
+    const Constante* f = comme<Constante>(ef);
     CHECK(f != nullptr);
-    CHECK_EQ(f->getNum(), 1);
-    CHECK_EQ(f->getDen(), 3);
-    CHECK_EQ(texte(frac(2, 6)), std::string("(1/3)"));
+    CHECK_EQ(f->getNombre().numerateur(), std::string("1"));
+    CHECK_EQ(f->getNombre().denominateur(), std::string("3"));
+    CHECK_EQ(texte(frac(2, 6)), std::string("1/3"));
 
     const ExprPtr eg = frac(1, -2);
-    const Fraction* g = comme<Fraction>(eg);
-    CHECK_EQ(g->getNum(), -1);
-    CHECK_EQ(g->getDen(), 2);
-    CHECK_NEAR(g->eval(0.0), -0.5, 1e-15);
+    CHECK_EQ(texte(eg), std::string("-1/2"));
+    CHECK_NEAR(eg->eval(0.0), -0.5, 1e-15);
+    // cst() d'une valeur entière est exact, sinon réel
+    const ExprPtr deux = cst(2.0), demi = cst(0.5);
+    CHECK(comme<Constante>(deux)->getNombre().estExact());
+    CHECK(!comme<Constante>(demi)->getNombre().estExact());
 }
 
 TEST_CASE(fraction_denominateur_nul) {
@@ -109,29 +115,26 @@ TEST_CASE(equation_expression_nulle) {
 
 TEST_CASE(types_des_noeuds) {
     const ExprPtr x = var("x");
-    CHECK(comme<Constante>(cst(1.0)) != nullptr);
-    CHECK(comme<Fraction>(frac(1, 3)) != nullptr);
-    CHECK(comme<Variable>(x) != nullptr);
-    CHECK(comme<Parametre>(param("C")) != nullptr);
-    CHECK(comme<Addition>(x + x) != nullptr);
-    CHECK(comme<Soustraction>(x - x) != nullptr);
-    CHECK(comme<Multiplication>(x * x) != nullptr);
-    CHECK(comme<Division>(x / x) != nullptr);
-    CHECK(comme<Puissance>(ast_pow(x, 2.0)) != nullptr);
-    CHECK(comme<Sinus>(ast_sin(x)) != nullptr);
-    CHECK(comme<Cosinus>(ast_cos(x)) != nullptr);
-    CHECK(comme<Tangente>(ast_tan(x)) != nullptr);
-    CHECK(comme<Exponentielle>(ast_exp(x)) != nullptr);
-    CHECK(comme<Logarithme>(ast_ln(x)) != nullptr);
+    CHECK(estDeType<Constante>(cst(1.0)));
+    CHECK(estDeType<Constante>(frac(1, 3)));
+    CHECK(estDeType<Variable>(x));
+    CHECK(estDeType<Parametre>(param("C")));
+    CHECK(estDeType<Somme>(x + 1.0));
+    CHECK(estDeType<Produit>(x * ast_sin(x)));
+    CHECK(estDeType<Produit>(cst(2.0) * x));
+    CHECK(estDeType<Puissance>(ast_pow(x, 2.0)));
+    CHECK(estDeType<Sinus>(ast_sin(x)));
+    CHECK(estDeType<Cosinus>(ast_cos(x)));
+    CHECK(estDeType<Tangente>(ast_tan(x)));
+    CHECK(estDeType<Exponentielle>(ast_exp(x)));
+    CHECK(estDeType<Logarithme>(ast_ln(x)));
     // Groupes
-    CHECK(comme<OperateurBinaire>(x * x) != nullptr);
-    CHECK(comme<OperateurBinaire>(ast_sin(x)) == nullptr);
-    CHECK(comme<FonctionUnaire>(ast_ln(x)) != nullptr);
-    CHECK(comme<FonctionUnaire>(x) == nullptr);
+    CHECK(estDeType<FonctionUnaire>(ast_ln(x)));
+    CHECK(!estDeType<FonctionUnaire>(x));
     // Mauvais type
-    CHECK(comme<Sinus>(ast_cos(x)) == nullptr);
-    CHECK(comme<Constante>(frac(1, 3)) == nullptr);
-    CHECK(comme<Sinus>(ExprPtr()) == nullptr);
+    CHECK(!estDeType<Sinus>(ast_cos(x)));
+    const ExprPtr vide;
+    CHECK(!estDeType<Sinus>(vide));
 }
 
 TEST_CASE(hash_consing_expressions_uniques) {
@@ -157,6 +160,65 @@ TEST_CASE(hash_consing_liberation) {
     }
     // Tous les noeuds créés dans le bloc ont été libérés et retirés de la table
     CHECK_EQ(nombreNoeudsVivants(), avant);
+}
+
+// ============================================================================
+// Forme canonique
+// ============================================================================
+
+TEST_CASE(forme_canonique_commutativite) {
+    const ExprPtr x = var("x"), y = var("y");
+    // Égalité mathématique = même pointeur, quel que soit l'ordre d'écriture
+    CHECK((x + y).get() == (y + x).get());
+    CHECK((x * ast_sin(x)).get() == (ast_sin(x) * x).get());
+    CHECK(((x + 1.0) + y).get() == (x + (y + 1.0)).get());
+    CHECK((x * (y * 2.0)).get() == ((cst(2.0) * x) * y).get());
+    CHECK((x - y).get() != (y - x).get());
+}
+
+TEST_CASE(forme_canonique_collecte) {
+    const ExprPtr x = var("x");
+    CHECK_EQ(texte(x + x + x), std::string("3*x"));
+    CHECK_EQ(texte(x - x), std::string("0"));
+    CHECK_EQ(texte(cst(2.0) * ast_sin(x) - ast_sin(x) * 2.0), std::string("0"));
+    // Les 100 termes de sum (i x^(i mod 7) + i sin x) se regroupent en 8
+    ExprPtr somme_ = cst(0.0);
+    for (int i = 1; i <= 50; ++i) somme_ = somme_ + cst(i) * ast_pow(x, i % 7) + cst(i) * ast_sin(x);
+    const Somme* s = comme<Somme>(somme_);
+    CHECK(s != nullptr);
+    CHECK_EQ(s->getTermes().size(), std::size_t(7)); // x..x^6 et sin(x) ; x^0 dans la constante
+    CHECK_EQ(texte(somme_), std::string("189*x^6 + 182*x^5 + 175*x^4 + 168*x^3 + 161*x^2 + 204*x + 1275*sin(x) + 196"));
+}
+
+TEST_CASE(forme_canonique_puissances) {
+    const ExprPtr x = var("x");
+    CHECK_EQ(texte(x * ast_pow(x, 2.0) * ast_pow(x, -3.0)), std::string("1"));
+    CHECK_EQ(texte(ast_pow(ast_pow(x, 2.0), 3.0)), std::string("x^6"));
+    CHECK_EQ(texte(ast_pow(cst(2.0) * x, 2.0)), std::string("4*x^2"));
+    CHECK_EQ(texte(ast_pow(cst(2.0), cst(100.0))), std::string("1267650600228229401496703205376"));
+    CHECK_EQ(texte(ast_pow(frac(4, 9), frac(1, 2))), std::string("2/3"));
+    CHECK_EQ(texte(ast_pow(cst(2.0), frac(1, 2))), std::string("2^(1/2)")); // irrationnel : reste exact
+    CHECK_EQ(texte(ast_pow(x, frac(1, 2)) * ast_pow(x, frac(1, 2))), std::string("x"));
+}
+
+TEST_CASE(forme_canonique_distribution_et_quotients) {
+    const ExprPtr x = var("x");
+    CHECK_EQ(texte(cst(2.0) * (x + 1.0)), std::string("2*x + 2"));
+    CHECK_EQ(texte(-(x - 3.0)), std::string("-x + 3"));
+    CHECK_EQ(texte(ast_sin(x) / x), std::string("sin(x)/x"));
+    CHECK_EQ(texte(cst(3.0) / (cst(2.0) * x + 1.0)), std::string("3/(2*x + 1)"));
+    CHECK_EQ(texte((x + 1.0) / (x + 1.0)), std::string("1"));
+    CHECK_EQ(texte(ast_pow(x, 3.0) / 3.0), std::string("x^3/3"));
+    CHECK_EQ(texte(ast_exp(ast_ln(x))), std::string("x"));
+    CHECK_EQ(texte(ast_ln(ast_exp(x))), std::string("x"));
+}
+
+TEST_CASE(limites_resolues_par_la_forme_canonique) {
+    const ExprPtr x = var("x");
+    // Limites connues jusque-là non déterminées
+    CHECK_NEAR((x * ast_ln(x))->limite(0.0)->eval(0.0), 0.0, 1e-12);
+    CHECK_NEAR(ast_pow(x, x)->limite(0.0)->eval(0.0), 1.0, 1e-12);
+    CHECK_NEAR((ast_pow(x, 2.0) * ast_ln(x))->limite(0.0)->eval(0.0), 0.0, 1e-12);
 }
 
 TEST_CASE(simplification_memorisee) {
@@ -236,7 +298,7 @@ TEST_CASE(parametre_derivee_nulle) {
     // d/dx (C1 * x) = C1 et non x + C1
     CHECK_EQ(texte((C * X)->derivee()->simplifier()), std::string("C1"));
     // d/dx (C1 * sin x) = C1 * cos x
-    CHECK_EQ(texte((C * ast_sin(X))->derivee()->simplifier()), std::string("C1 * cos(x)"));
+    CHECK_EQ(texte((C * ast_sin(X))->derivee()->simplifier()), std::string("C1*cos(x)"));
 }
 
 TEST_CASE(parametre_evaluation_impossible) {
@@ -267,7 +329,7 @@ TEST_CASE(simplification_factorisation) {
     eq.simplifier();
     CHECK_NEAR(eq.eval(1.0), 5.0 * std::sin(1.0), 1e-15);
     CHECK_EQ(texte((cst(2) * ast_sin(X) + cst(3) * ast_sin(X))->simplifier()),
-             std::string("5 * sin(x)"));
+             std::string("5*sin(x)"));
 }
 
 TEST_CASE(simplification_elements_neutres) {
@@ -291,31 +353,31 @@ TEST_CASE(simplification_petites_constantes) {
 }
 
 TEST_CASE(simplification_repli_des_constantes) {
-    CHECK_EQ(texte((cst(2.0) * (cst(3.0) * X))->simplifier()), std::string("6 * x"));
-    CHECK_EQ(texte(((cst(2.0) * X) * cst(3.0))->simplifier()), std::string("6 * x"));
-    CHECK_EQ(texte((X * (cst(3.0) * ast_sin(X)))->simplifier()), std::string("3 * x * sin(x)"));
-    CHECK_EQ(texte(((cst(6.0) * X) / 3.0)->simplifier()), std::string("2 * x"));
-    CHECK_EQ(texte((cst(0.0) - X)->simplifier()), std::string("-1 * x"));
+    CHECK_EQ(texte((cst(2.0) * (cst(3.0) * X))->simplifier()), std::string("6*x"));
+    CHECK_EQ(texte(((cst(2.0) * X) * cst(3.0))->simplifier()), std::string("6*x"));
+    CHECK_EQ(texte((X * (cst(3.0) * ast_sin(X)))->simplifier()), std::string("3*x*sin(x)"));
+    CHECK_EQ(texte(((cst(6.0) * X) / 3.0)->simplifier()), std::string("2*x"));
+    CHECK_EQ(texte((cst(0.0) - X)->simplifier()), std::string("-x"));
     // Primitive de sin(2x) : plus de « 0.5 * -1 * cos(2 * x) »
-    CHECK_EQ(texte(ast_sin(cst(2.0) * X)->integrer()->simplifier()), std::string("-0.5 * cos(2 * x)"));
+    CHECK_EQ(texte(ast_sin(cst(2.0) * X)->integrer()->simplifier()), std::string("-cos(2*x)/2"));
 }
 
 TEST_CASE(simplification_puissances) {
-    CHECK_EQ(texte((X * X)->simplifier()), std::string("(x)^(2)"));
-    CHECK_EQ(texte((ast_pow(X, 2.0) * X)->simplifier()), std::string("(x)^(3)"));
+    CHECK_EQ(texte((X * X)->simplifier()), std::string("x^2"));
+    CHECK_EQ(texte((ast_pow(X, 2.0) * X)->simplifier()), std::string("x^3"));
     CHECK_EQ(texte((ast_pow(X, 2.0) * ast_pow(X, -2.0))->simplifier()), std::string("1"));
-    CHECK_EQ(texte((ast_sin(X) * ast_sin(X))->simplifier()), std::string("(sin(x))^(2)"));
+    CHECK_EQ(texte((ast_sin(X) * ast_sin(X))->simplifier()), std::string("sin(x)^2"));
 }
 
 TEST_CASE(fractions_arithmetique_exacte) {
     // Bug corrigé : 1/3 + 1/3 donnait 0.666667 (exactitude perdue)
-    CHECK_EQ(texte((frac(1, 3) + frac(1, 3))->simplifier()), std::string("(2/3)"));
-    CHECK_EQ(texte((frac(1, 3) + frac(1, 6))->simplifier()), std::string("(1/2)"));
+    CHECK_EQ(texte((frac(1, 3) + frac(1, 3))->simplifier()), std::string("2/3"));
+    CHECK_EQ(texte((frac(1, 3) + frac(1, 6))->simplifier()), std::string("1/2"));
     CHECK_EQ(texte((frac(1, 3) - frac(1, 3))->simplifier()), std::string("0"));
-    CHECK_EQ(texte((frac(2, 3) * frac(3, 4))->simplifier()), std::string("(1/2)"));
-    CHECK_EQ(texte((frac(2, 3) / frac(4, 9))->simplifier()), std::string("(3/2)"));
-    CHECK_EQ(texte((frac(1, 3) * cst(2.0))->simplifier()), std::string("(2/3)"));
-    CHECK_EQ(texte((frac(1, 3) * X + frac(1, 6) * X)->simplifier()), std::string("(1/2) * x"));
+    CHECK_EQ(texte((frac(2, 3) * frac(3, 4))->simplifier()), std::string("1/2"));
+    CHECK_EQ(texte((frac(2, 3) / frac(4, 9))->simplifier()), std::string("3/2"));
+    CHECK_EQ(texte((frac(1, 3) * cst(2.0))->simplifier()), std::string("2/3"));
+    CHECK_EQ(texte((frac(1, 3) * X + frac(1, 6) * X)->simplifier()), std::string("x/2"));
     // Entre deux Constante, le calcul reste en double
     CHECK_NEAR((cst(1.0) / cst(3.0))->simplifier()->eval(0.0), 1.0 / 3.0, 1e-16);
     // Constante non entière avec une fraction : double
@@ -380,8 +442,8 @@ TEST_CASE(integrales_quotients_et_produits) {
 TEST_CASE(integrale_avec_parametre) {
     // ∫ C1 * cos(x) dx = C1 * sin(x)
     CHECK_EQ(texte((param("C1") * ast_cos(X))->integrer()->simplifier()),
-             std::string("C1 * sin(x)"));
-    CHECK_EQ(texte(param("C1")->integrer()->simplifier()), std::string("C1 * x"));
+             std::string("C1*sin(x)"));
+    CHECK_EQ(texte(param("C1")->integrer()->simplifier()), std::string("C1*x"));
 }
 
 TEST_CASE(integrale_non_evaluee) {
@@ -389,16 +451,18 @@ TEST_CASE(integrale_non_evaluee) {
     const ExprPtr f = X * ast_sin(X);
     const ExprPtr F = f->integrer();
     CHECK(comme<IntegraleNonEvaluee>(F) != nullptr);
-    CHECK_EQ(texte(F), std::string("integrale(x * sin(x))"));
+    CHECK_EQ(texte(F), std::string("integrale(x*sin(x))"));
     CHECK_THROWS(F->eval(1.0), std::logic_error);
     // (∫f)' = f
     CHECK(F->derivee()->estEgal(*f));
     // Une somme dont un terme n'est pas intégrable garde le reste calculé
     const ExprPtr G = (ast_cos(X) + ast_sin(ast_pow(X, 2.0)))->integrer()->simplifier();
-    CHECK_EQ(texte(G), std::string("(sin(x) + integrale(sin((x)^(2))))"));
+    CHECK_EQ(texte(G), std::string("sin(x) + integrale(sin(x^2))"));
     // Plus aucun 0 silencieux
-    CHECK(comme<IntegraleNonEvaluee>(ast_exp(ast_pow(X, 2.0))->integrer()) != nullptr);
-    CHECK(comme<IntegraleNonEvaluee>((ast_ln(X) / X)->integrer()) != nullptr);
+    const ExprPtr i1 = ast_exp(ast_pow(X, 2.0))->integrer();
+    const ExprPtr i2 = (ast_ln(X) / X)->integrer();
+    CHECK(comme<IntegraleNonEvaluee>(i1) != nullptr);
+    CHECK(comme<IntegraleNonEvaluee>(i2) != nullptr);
 }
 
 // ============================================================================
@@ -428,7 +492,8 @@ namespace {
 double valeurLimite(const ExprPtr& f, double a) { return f->limite(a)->simplifier()->eval(0.0); }
 
 bool limiteNonDeterminee(const ExprPtr& f, double a) {
-    return comme<LimiteNonEvaluee>(f->limite(a)->simplifier()) != nullptr;
+    const ExprPtr l = f->limite(a)->simplifier();
+    return comme<LimiteNonEvaluee>(l) != nullptr;
 }
 
 const double INF = std::numeric_limits<double>::infinity();
@@ -485,7 +550,7 @@ TEST_CASE(limite_formes_exponentielles) {
 TEST_CASE(limite_avec_parametre) {
     // Les paramètres symboliques traversent le calcul
     CHECK_EQ(texte((param("C1") * X + 1.0)->limite(2.0)->simplifier()),
-             std::string("(2 * C1 + 1)"));
+             std::string("2*C1 + 1"));
 }
 
 TEST_CASE(limite_sans_recursion_infinie) {
@@ -549,9 +614,9 @@ TEST_CASE(dl_coefficients_exacts) {
     CHECK_NEAR(dl->eval(x), somme, 1e-15);
     // Série géométrique : 1 + x + ... + x^5
     CHECK_EQ(texte((cst(1.0) / (cst(1.0) - X))->DL(0.0, 3)),
-             std::string("(((1 + x) + (x)^(2)) + (x)^(3))"));
+             std::string("x^3 + x^2 + x + 1"));
     // sin : les coefficients pairs sont exactement nuls
-    CHECK_EQ(texte(ast_sin(X)->DL(0.0, 4)), std::string("(x + -0.166667 * (x)^(3))"));
+    CHECK_EQ(texte(ast_sin(X)->DL(0.0, 4)), std::string("-0.166667*x^3 + x"));
 }
 
 TEST_CASE(dl_ordre_eleve_rapide) {

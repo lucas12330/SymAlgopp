@@ -227,7 +227,7 @@ int Nombre::signe() const {
 
 bool Nombre::estFini() const { return m_forme != Forme::Reel || std::isfinite(m_reel); }
 
-double Nombre::versDouble() const {
+double Nombre::versDoubleGeneral() const {
     switch (m_forme) {
         case Forme::Petit:
             return m_petit.den == 1 ? static_cast<double>(m_petit.num)
@@ -237,9 +237,10 @@ double Nombre::versDouble() const {
     }
 }
 
-bool Nombre::versEntier(long long& n) const {
-    if (m_forme != Forme::Petit || m_petit.den != 1) return false;
-    n = m_petit.num;
+bool Nombre::versFraction(long long& num, long long& den) const {
+    if (m_forme != Forme::Petit) return false;
+    num = m_petit.num;
+    den = m_petit.den;
     return true;
 }
 
@@ -260,6 +261,14 @@ std::string Nombre::denominateur() const {
 Nombre Nombre::operator+(const Nombre& b) const {
     if (m_forme == Forme::Reel || b.m_forme == Forme::Reel) return reel(versDouble() + b.versDouble());
     if (m_forme == Forme::Petit && b.m_forme == Forme::Petit) {
+        // Chemins rapides : élément neutre, entiers (aucun pgcd nécessaire)
+        if (b.m_petit.num == 0) return *this;
+        if (m_petit.num == 0) return b;
+        std::int64_t entier;
+        if (m_petit.den == 1 && b.m_petit.den == 1 && additionner(m_petit.num, b.m_petit.num, entier) &&
+            entier != INT64_MIN_) {
+            return Nombre(entier);
+        }
         // a/p + c/q = (a (q/g) + c (p/g)) / (p (q/g)) avec g = pgcd(p, q)
         const std::int64_t g = std::gcd(m_petit.den, b.m_petit.den);
         std::int64_t t1, t2, n, d;
@@ -291,6 +300,14 @@ Nombre Nombre::operator-(const Nombre& b) const { return *this + (-b); }
 Nombre Nombre::operator*(const Nombre& b) const {
     if (m_forme == Forme::Reel || b.m_forme == Forme::Reel) return reel(versDouble() * b.versDouble());
     if (m_forme == Forme::Petit && b.m_forme == Forme::Petit) {
+        // Chemins rapides : élément neutre, entiers (aucun pgcd nécessaire)
+        if (b.m_petit.num == 1 && b.m_petit.den == 1) return *this;
+        if (m_petit.num == 1 && m_petit.den == 1) return b;
+        std::int64_t entier;
+        if (m_petit.den == 1 && b.m_petit.den == 1 && multiplier(m_petit.num, b.m_petit.num, entier) &&
+            entier != INT64_MIN_) {
+            return Nombre(entier);
+        }
         // Réduction croisée : le résultat est directement irréductible
         const std::int64_t g1 = std::gcd(m_petit.num, b.m_petit.den);
         const std::int64_t g2 = std::gcd(b.m_petit.num, m_petit.den);
