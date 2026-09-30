@@ -38,6 +38,10 @@ EquationClassique::EquationClassique(const std::string& texte, const OptionsLect
  * Utilisation : double y = eq.eval(x);
  */
 double EquationClassique::eval(double x) const {
+    if (m_racine->plusieursVariables()) {
+        throw std::logic_error("eval(x) : l'expression '" + m_racine->texte() +
+                               "' a plusieurs variables, utiliser eval({{\"x\", ...}, ...})");
+    }
     if (m_ponctuelCompile) return m_programme->evaluer(x);
     if (m_evaluations < SEUIL_COMPILATION && ++m_evaluations == SEUIL_COMPILATION) {
         // Assez d'évaluations pour compiler ; le programme n'est utilisé point par point
@@ -55,6 +59,28 @@ double EquationClassique::eval(double x) const {
  */
 std::vector<double> EquationClassique::eval(const std::vector<double>& xs) const { return programme().evaluer(xs); }
 
+/*
+ * Nom : eval (plusieurs variables)
+ * Description : Évaluation avec une valeur par variable, par un programme compilé une fois.
+ * Utilisation : double z = eq.eval({{"x", 1.0}, {"y", 2.0}});
+ */
+double EquationClassique::eval(const Valeurs& valeurs) const {
+    if (!m_programmeMulti) {
+        const std::vector<ExprPtr> vars = symalgo::variables(m_racine);
+        m_nomsMulti.clear();
+        for (const ExprPtr& v : vars) m_nomsMulti.push_back(static_cast<const Variable&>(*v).getNom());
+        m_programmeMulti = std::make_shared<const ProgrammeEvaluation>(std::vector<ExprPtr>{m_racine}, vars);
+    }
+    std::vector<double> point;
+    point.reserve(m_nomsMulti.size());
+    for (const std::string& nom : m_nomsMulti) {
+        const auto it = valeurs.find(nom);
+        if (it == valeurs.end()) throw std::invalid_argument("eval : pas de valeur pour la variable '" + nom + "'");
+        point.push_back(it->second);
+    }
+    return m_programmeMulti->evaluerEn(point)[0];
+}
+
 const ProgrammeEvaluation& EquationClassique::programme() const {
     if (!m_programme) m_programme = std::make_shared<const ProgrammeEvaluation>(m_racine);
     return *m_programme;
@@ -69,6 +95,16 @@ EquationClassique EquationClassique::derivee() const {
     return EquationClassique(m_racine->derivee()->simplifier());
 }
 
+EquationClassique EquationClassique::derivee(const std::string& variable) const {
+    return EquationClassique(m_racine->derivee(variable)->simplifier());
+}
+
+std::vector<EquationClassique> EquationClassique::gradient() const {
+    std::vector<EquationClassique> g;
+    for (const ExprPtr& d : symalgo::gradient(m_racine)) g.emplace_back(d);
+    return g;
+}
+
 std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
     return std::make_unique<EquationClassique>(derivee());
 }
@@ -81,6 +117,7 @@ std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
 void EquationClassique::simplifier() {
     m_racine = m_racine->simplifier();
     m_programme.reset(); // le programme compilé correspondait à l'ancienne expression
+    m_programmeMulti.reset();
     m_evaluations = 0;
     m_ponctuelCompile = false;
 }

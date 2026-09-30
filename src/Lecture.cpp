@@ -343,6 +343,9 @@ private:
         const std::string_view nom(m_texte.data() + octet, courant().longueur);
         ++m_indice;
         if (nom == m_options.variable) return var(m_options.variable);
+        for (const std::string& autre : m_options.autresVariables) {
+            if (nom == autre) return var(autre);
+        }
 
         struct Fonction {
             const char* nom;

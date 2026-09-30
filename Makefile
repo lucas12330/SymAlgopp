@@ -55,10 +55,10 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 
 # Règles pour compiler les tests en liant les objets de la bibliothèque
 $(BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(filter %.cpp %.o,$^) -o $@ $(LDLIBS)
 
 $(DEMO_BIN): demo.cpp $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(filter %.cpp %.o,$^) -o $@ $(LDLIBS)
 
 # Lancer tous les tests : s'arrête (code de retour non nul) au premier échec
 run_tests: $(TEST_BINS)
@@ -76,7 +76,7 @@ $(SAN_BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(SAN_BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(SAN_BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(SAN_OBJS) | $(SAN_BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) $(filter %.cpp %.o,$^) -o $@ $(LDLIBS)
 
 check: $(SAN_TEST_BINS)
 	@for t in $(SAN_TEST_BINS); do \

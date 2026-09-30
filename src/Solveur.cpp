@@ -526,10 +526,19 @@ double brent(Fonction f, double a, double b, double fa, double fb) {
     return b;
 }
 
+// Le solveur ne traite qu'une inconnue : les autres identifiants doivent être des paramètres
+void exigerUneVariable(const ExprPtr& e) {
+    if (e->plusieursVariables()) {
+        throw std::invalid_argument("resoudre : l'expression '" + e->texte() +
+                                    "' a plusieurs variables (une seule inconnue est admise)");
+    }
+}
+
 } // namespace
 
 Solutions resoudre(const ExprPtr& gauche, const ExprPtr& droite) {
     const ExprPtr f = gauche - droite;
+    exigerUneVariable(f);
     const ExprPtr x = trouverVariable(f);
     Solutions s;
     if (!x) {
@@ -550,6 +559,7 @@ Solutions resoudre(const ExprPtr& gauche, const ExprPtr& droite) {
 Solutions resoudre(const ExprPtr& expression) { return resoudre(expression, nombre(Nombre(0))); }
 
 Solutions resoudreNumerique(const ExprPtr& f, double a, double b) {
+    exigerUneVariable(f);
     Solutions s;
     s.complet = false;
     if (!(a < b)) return s;
@@ -603,6 +613,7 @@ Solutions resoudreNumerique(const ExprPtr& f, double a, double b) {
 }
 
 Solutions resoudreSurIntervalle(const ExprPtr& expression, double a, double b) {
+    exigerUneVariable(expression);
     const Solutions exactes = resoudre(expression);
     Solutions s;
     s.complet = exactes.complet;

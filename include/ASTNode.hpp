@@ -37,9 +37,15 @@ using ExprPtr = Ref<ASTNode>;
 
 /*
  * Nom : CacheDerivees
- * Description : Dérivées déjà calculées pendant un appel à derivee(), par noeud.
+ * Description : État d'un appel à derivee() : dérivées déjà calculées par noeud (les
+ *               sous-expressions partagées ne sont dérivées qu'une fois) et variable par
+ *               rapport à laquelle on dérive (identifiant interne ; 0 = l'unique variable de
+ *               l'expression, quel que soit son nom).
  */
-using CacheDerivees = std::unordered_map<const ASTNode*, ExprPtr>;
+struct CacheDerivees {
+    std::unordered_map<const ASTNode*, ExprPtr> memo;
+    std::uint16_t cible = 0;
+};
 
 /*
  * Nom : TypeNoeud
@@ -175,12 +181,25 @@ public:
 
     /*
      * Nom : derivee
-     * Description : Dérivée symbolique (sous forme canonique). Les sous-expressions partagées
-     *               ne sont dérivées qu'une fois par appel.
+     * Description : Dérivée symbolique (sous forme canonique) par rapport à l'unique variable
+     *               de l'expression. Les sous-expressions partagées ne sont dérivées qu'une
+     *               fois par appel. Lève std::invalid_argument si l'expression a plusieurs
+     *               variables (utiliser la dérivée partielle).
      * Utilisation : ExprPtr d = expr->derivee();
      */
     ExprPtr derivee() const;
     ExprPtr derivee(CacheDerivees& cache) const;
+
+    /*
+     * Nom : derivee (partielle)
+     * Description : Dérivée partielle par rapport à la variable donnée (noeud Variable ou son
+     *               nom) : les autres variables sont traitées comme des constantes. Lève
+     *               std::invalid_argument si ce n'est pas une variable.
+     * Utilisation : ExprPtr dfdy = f->derivee(var("y"));
+     *               ExprPtr dfdy = f->derivee("y");
+     */
+    ExprPtr derivee(const ExprPtr& variable) const;
+    ExprPtr derivee(const std::string& variable) const;
 
     /*
      * Nom : simplifier
@@ -232,9 +251,34 @@ public:
 
     /*
      * Nom : contientVariable
-     * Description : Indique si l'expression dépend de la variable d'évaluation.
+     * Description : Indique si l'expression contient au moins une variable.
      */
-    bool contientVariable() const { return m_contientVariable; }
+    bool contientVariable() const { return m_variable != AUCUNE_VARIABLE; }
+
+    /*
+     * Nom : plusieursVariables
+     * Description : Indique si l'expression contient au moins deux variables distinctes
+     *               (v(x, y)) : les opérations à une variable (intégrale, limite, DL,
+     *               résolution, évaluation en un réel) ne s'y appliquent pas.
+     */
+    bool plusieursVariables() const { return m_variable == PLUSIEURS_VARIABLES; }
+
+    /*
+     * Nom : identifiantVariable
+     * Description : Identifiant interne de l'unique variable de l'expression, ou
+     *               AUCUNE_VARIABLE / PLUSIEURS_VARIABLES.
+     */
+    std::uint16_t identifiantVariable() const { return m_variable; }
+
+    static constexpr std::uint16_t AUCUNE_VARIABLE = 0;
+    static constexpr std::uint16_t PLUSIEURS_VARIABLES = 0xFFFF;
+
+    // Identifiant interne (stable pendant toute l'exécution) d'un nom de variable
+    static std::uint16_t identifiantDe(const std::string& nom);
+    // Variable d'un noeud dont les enfants ont les variables a et b
+    static std::uint16_t fusionner(std::uint16_t a, std::uint16_t b) {
+        return a == AUCUNE_VARIABLE ? b : (b == AUCUNE_VARIABLE || a == b) ? a : PLUSIEURS_VARIABLES;
+    }
 
     /*
      * Nom : estConstante / getValeurConstante
@@ -244,7 +288,7 @@ public:
     double getValeurConstante() const;
 
 protected:
-    ASTNode(TypeNoeud type, bool contientVariable) : m_type(type), m_contientVariable(contientVariable) {}
+    ASTNode(TypeNoeud type, std::uint16_t variable) : m_type(type), m_variable(variable) {}
 
     virtual ExprPtr calculerDerivee(CacheDerivees& cache) const = 0;
     virtual ExprPtr calculerSimplification() const = 0;
@@ -262,7 +306,7 @@ protected:
 
 private:
     TypeNoeud m_type;
-    bool m_contientVariable;
+    std::uint16_t m_variable; // AUCUNE_VARIABLE, identifiant de l'unique variable, ou PLUSIEURS_VARIABLES
     std::size_t m_hash = 0;
     // Mémo de simplifier() : m_estSimplifie si le noeud est sa propre forme simplifiée,
     // sinon m_formeSimplifiee une fois calculée (elle ne peut pas contenir ce noeud)

@@ -58,7 +58,9 @@ ExprPtr Constante::calculerSimplification() const { return clone(); }
 ExprPtr Constante::primitive() const { return clone() * var("x"); }
 
 double Variable::eval(double x) const { return x; }
-ExprPtr Variable::calculerDerivee(CacheDerivees&) const { return un(); }
+ExprPtr Variable::calculerDerivee(CacheDerivees& cache) const {
+    return cache.cible == 0 || cache.cible == identifiantVariable() ? un() : nombre(Nombre(0));
+}
 ExprPtr Variable::calculerSimplification() const { return clone(); }
 ExprPtr Variable::primitive() const { return frac(1, 2) * ast_pow(clone(), 2.0); }
 

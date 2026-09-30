@@ -14,6 +14,7 @@
 #include "ASTNode.hpp"
 #include "Evaluateur.hpp"
 #include "Lecture.hpp"
+#include "Multivariable.hpp"
 #include "Solveur.hpp"
 
 #include <cstddef>
@@ -74,11 +75,33 @@ public:
     std::vector<double> eval(const std::vector<double>& xs) const;
 
     /*
+     * Nom : eval (plusieurs variables)
+     * Description : Évalue l'expression de plusieurs variables avec les valeurs données
+     *               (voir Multivariable.hpp) ; le programme compilé est conservé. Lève
+     *               std::invalid_argument si une variable n'a pas de valeur.
+     * Utilisation : double z = eq.eval({{"x", 1.0}, {"y", 2.0}});
+     */
+    double eval(const Valeurs& valeurs) const;
+
+    /*
      * Nom : derivee
-     * Description : Calcule la dérivée formelle (simplifiée) de l'équation.
+     * Description : Calcule la dérivée formelle (simplifiée) de l'équation. Pour une
+     *               expression à plusieurs variables, dérivée partielle par rapport à la
+     *               variable nommée (derivee() seule lève std::invalid_argument).
      * Utilisation : EquationClassique d = eq.derivee();
+     *               EquationClassique dy = eq.derivee("y");
      */
     EquationClassique derivee() const;
+    EquationClassique derivee(const std::string& variable) const;
+
+    /*
+     * Nom : variables / gradient
+     * Description : Variables de l'expression (triées par nom) et dérivées partielles par
+     *               rapport à chacune d'elles, dans le même ordre.
+     * Utilisation : std::vector<EquationClassique> g = eq.gradient();
+     */
+    std::vector<ExprPtr> variables() const { return symalgo::variables(m_racine); }
+    std::vector<EquationClassique> gradient() const;
 
     /*
      * Nom : deriveeGenerique
@@ -175,6 +198,8 @@ private:
 
     ExprPtr m_racine;
     mutable std::shared_ptr<const ProgrammeEvaluation> m_programme; // compilé à la demande
+    mutable std::shared_ptr<const ProgrammeEvaluation> m_programmeMulti; // entrées = variables()
+    mutable std::vector<std::string> m_nomsMulti;
     mutable unsigned m_evaluations = 0;
     mutable bool m_ponctuelCompile = false; // l'évaluation ponctuelle passe par le programme
     void echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const;

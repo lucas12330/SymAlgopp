@@ -35,10 +35,34 @@ public:
     explicit ProgrammeEvaluation(const ExprPtr& expression);
 
     /*
+     * Nom : ProgrammeEvaluation (plusieurs variables, plusieurs sorties)
+     * Description : Compile ensemble plusieurs expressions de plusieurs variables : les
+     *               sous-expressions communes (typiquement celles d'un gradient ou d'une
+     *               hessienne) ne sont calculées qu'une fois. entrees[i] donne l'ordre des
+     *               variables ; une variable de l'expression absente de la liste donne un
+     *               programme invalide. Lève std::invalid_argument si une entrée n'est pas
+     *               une variable ou apparaît deux fois.
+     * Utilisation : ProgrammeEvaluation g(gradient(f), {var("x"), var("y")});
+     *               std::vector<double> dfdxdy = g.evaluerEn({1.0, 2.0});
+     */
+    ProgrammeEvaluation(const std::vector<ExprPtr>& expressions, const std::vector<ExprPtr>& entrees);
+
+    /*
      * Nom : evaluer
-     * Description : Valeur de l'expression en x.
+     * Description : Valeur de l'expression en x (programme à une variable et une sortie :
+     *               sinon std::logic_error).
      */
     double evaluer(double x) const;
+
+    /*
+     * Nom : evaluerEn
+     * Description : Valeurs des sorties au point donné (une valeur par entrée, dans l'ordre
+     *               de la liste des entrées). Lève std::invalid_argument si le nombre de
+     *               valeurs est incorrect.
+     * Utilisation : p.evaluerEn(valeurs.data(), sorties.data());
+     */
+    void evaluerEn(const double* valeurs, double* sorties) const;
+    std::vector<double> evaluerEn(const std::vector<double>& valeurs) const;
 
     /*
      * Nom : evaluer (par blocs)
@@ -48,6 +72,8 @@ public:
     void evaluer(const double* xs, double* ys, std::size_t n) const;
     std::vector<double> evaluer(const std::vector<double>& xs) const;
 
+    std::size_t nombreEntrees() const { return m_nombreEntrees; }
+    std::size_t nombreSorties() const { return m_resultats.size(); }
     bool estValide() const { return m_erreur.empty(); }
     std::size_t nombreInstructions() const { return m_instructions.size(); }
     std::size_t nombreRegistres() const { return m_nombreRegistres; }
@@ -64,7 +90,7 @@ public:
 private:
     enum class Code : std::uint8_t {
         Constante,  // r = valeur
-        Variable,   // r = x
+        Variable,   // r = entrée numéro `entier`
         Axpy,       // r = a + valeur * b   (terme d'une somme)
         Echelle,    // r = valeur * a
         Produit,    // r = a * b
@@ -90,9 +116,12 @@ private:
     };
 
     void verifierValidite() const;
+    // Exécute le programme pour un point ; r doit contenir m_nombreRegistres valeurs
+    void executer(const double* entrees, double* r) const;
 
     std::vector<Instruction> m_instructions;
-    std::uint32_t m_resultat = 0;
+    std::vector<std::uint32_t> m_resultats; // registre de chaque sortie
+    std::uint32_t m_nombreEntrees = 1;
     std::uint32_t m_nombreRegistres = 0;
     std::string m_erreur; // raison de l'invalidité, vide si le programme est valide
     double m_gainPartage = 1.0;

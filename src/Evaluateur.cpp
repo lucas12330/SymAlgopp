@@ -25,19 +25,47 @@ class CompilateurExpression {
 public:
     explicit CompilateurExpression(ProgrammeEvaluation& programme) : m_programme(programme) {}
 
+    // Une seule variable, quel que soit son nom (les expressions à plusieurs variables sont refusées)
     void compiler(const ExprPtr& racine) {
+        m_uneVariable = true;
+        compiler(std::vector<ExprPtr>{racine});
+    }
+
+    // Les variables sont les entrées, numérotées dans l'ordre de la liste
+    void compiler(const std::vector<ExprPtr>& racines, const std::vector<ExprPtr>& entrees) {
+        for (std::size_t i = 0; i < entrees.size(); ++i) {
+            const Variable* v = comme<Variable>(entrees[i]);
+            if (!v) throw std::invalid_argument("ProgrammeEvaluation : une entree n'est pas une variable");
+            if (!m_entrees.emplace(v->identifiantVariable(), i).second) {
+                throw std::invalid_argument("ProgrammeEvaluation : variable '" + v->getNom() + "' en double");
+            }
+        }
+        m_programme.m_nombreEntrees = static_cast<std::uint32_t>(entrees.size());
+        compiler(racines);
+    }
+
+private:
+    void compiler(const std::vector<ExprPtr>& racines) {
         try {
-            const std::uint32_t resultat = valeur(*racine);
-            allouerRegistres(resultat);
+            std::vector<std::uint32_t> resultats;
+            for (const ExprPtr& racine : racines) {
+                if (m_uneVariable && racine->plusieursVariables()) {
+                    throw std::logic_error("Impossible d'evaluer en un seul reel l'expression '" + racine->texte() +
+                                           "' : elle a plusieurs variables");
+                }
+                resultats.push_back(valeur(*racine));
+            }
+            allouerRegistres(resultats);
             std::unordered_map<const ASTNode*, double> visites;
-            m_programme.m_gainPartage = nombreVisites(*racine, visites) / static_cast<double>(m_ssa.size());
+            double total = 0.0;
+            for (const ExprPtr& racine : racines) total += nombreVisites(*racine, visites);
+            m_programme.m_gainPartage = total / static_cast<double>(m_ssa.size());
         } catch (const std::logic_error& e) {
             m_programme.m_instructions.clear();
             m_programme.m_erreur = e.what();
         }
     }
 
-private:
     using Instruction = ProgrammeEvaluation::Instruction;
     using Code = ProgrammeEvaluation::Code;
 
@@ -76,7 +104,19 @@ private:
         std::uint32_t v = 0;
         switch (n.type()) {
             case TypeNoeud::Constante: v = constante(n.getValeurConstante()); break;
-            case TypeNoeud::Variable: v = emettre(Instruction{Code::Variable}); break;
+            case TypeNoeud::Variable: {
+                Instruction ins{Code::Variable};
+                if (!m_uneVariable) {
+                    const auto it = m_entrees.find(n.identifiantVariable());
+                    if (it == m_entrees.end()) {
+                        throw std::logic_error("Impossible d'evaluer la variable '" + static_cast<const Variable&>(n).getNom() +
+                                               "' : elle n'a pas de valeur");
+                    }
+                    ins.entier = static_cast<long long>(it->second);
+                }
+                v = emettre(ins);
+                break;
+            }
             case TypeNoeud::Somme: {
                 const Somme& s = static_cast<const Somme&>(n);
                 bool premier = s.getConstante().estZero();
@@ -198,7 +238,7 @@ private:
      *               dans le registre d'un opérande qui meurt est sûr, car chaque instruction
      *               lit ses opérandes avant d'écrire (y compris élément par élément).
      */
-    void allouerRegistres(std::uint32_t resultat) {
+    void allouerRegistres(const std::vector<std::uint32_t>& resultats) {
         const std::size_t n = m_ssa.size();
         std::vector<std::size_t> derniereUtilisation(n, 0);
         for (std::size_t i = 0; i < n; ++i) {
@@ -206,7 +246,7 @@ private:
             if (k >= 1) derniereUtilisation[m_ssa[i].a] = i;
             if (k >= 2) derniereUtilisation[m_ssa[i].b] = i;
         }
-        derniereUtilisation[resultat] = std::numeric_limits<std::size_t>::max();
+        for (const std::uint32_t resultat : resultats) derniereUtilisation[resultat] = std::numeric_limits<std::size_t>::max();
 
         std::vector<std::uint32_t> registre(n, 0), libres;
         std::uint32_t nombreRegistres = 0;
@@ -227,11 +267,13 @@ private:
             registre[i] = ins.destination;
             m_programme.m_instructions.push_back(ins);
         }
-        m_programme.m_resultat = registre[resultat];
+        for (const std::uint32_t resultat : resultats) m_programme.m_resultats.push_back(registre[resultat]);
         m_programme.m_nombreRegistres = nombreRegistres;
     }
 
     ProgrammeEvaluation& m_programme;
+    bool m_uneVariable = false; // toute variable est l'entrée 0
+    std::unordered_map<std::uint16_t, std::size_t> m_entrees; // identifiant de variable -> entrée
     std::vector<Instruction> m_ssa;
     std::unordered_map<const ASTNode*, std::uint32_t> m_memo;
 };
@@ -240,25 +282,20 @@ ProgrammeEvaluation::ProgrammeEvaluation(const ExprPtr& expression) {
     CompilateurExpression(*this).compiler(expression);
 }
 
+ProgrammeEvaluation::ProgrammeEvaluation(const std::vector<ExprPtr>& expressions, const std::vector<ExprPtr>& entrees) {
+    CompilateurExpression(*this).compiler(expressions, entrees);
+}
+
 void ProgrammeEvaluation::verifierValidite() const {
     if (!m_erreur.empty()) throw std::logic_error(m_erreur);
 }
 
-double ProgrammeEvaluation::evaluer(double x) const {
-    verifierValidite();
-    constexpr std::size_t REGISTRES_SUR_PILE = 64;
-    double pile[REGISTRES_SUR_PILE] = {}; // toujours écrit avant lecture (ordre des instructions)
-    std::vector<double> tas;
-    double* r = pile;
-    if (m_nombreRegistres > REGISTRES_SUR_PILE) {
-        tas.resize(m_nombreRegistres);
-        r = tas.data();
-    }
+void ProgrammeEvaluation::executer(const double* entrees, double* r) const {
     for (const Instruction& ins : m_instructions) {
         double& d = r[ins.destination];
         switch (ins.code) {
             case Code::Constante: d = ins.valeur; break;
-            case Code::Variable: d = x; break;
+            case Code::Variable: d = entrees[ins.entier]; break;
             case Code::Axpy: d = r[ins.a] + ins.valeur * r[ins.b]; break;
             case Code::Echelle: d = ins.valeur * r[ins.a]; break;
             case Code::Produit: d = r[ins.a] * r[ins.b]; break;
@@ -274,11 +311,54 @@ double ProgrammeEvaluation::evaluer(double x) const {
             case Code::ArcTangente: d = std::atan(r[ins.a]); break;
         }
     }
-    return r[m_resultat];
+}
+
+double ProgrammeEvaluation::evaluer(double x) const {
+    verifierValidite();
+    if (m_nombreEntrees != 1 || m_resultats.size() != 1) {
+        throw std::logic_error("evaluer(x) : le programme a plusieurs entrees ou plusieurs sorties, utiliser evaluerEn");
+    }
+    constexpr std::size_t REGISTRES_SUR_PILE = 64;
+    double pile[REGISTRES_SUR_PILE] = {}; // toujours écrit avant lecture (ordre des instructions)
+    std::vector<double> tas;
+    double* r = pile;
+    if (m_nombreRegistres > REGISTRES_SUR_PILE) {
+        tas.resize(m_nombreRegistres);
+        r = tas.data();
+    }
+    executer(&x, r);
+    return r[m_resultats[0]];
+}
+
+void ProgrammeEvaluation::evaluerEn(const double* valeurs, double* sorties) const {
+    verifierValidite();
+    constexpr std::size_t REGISTRES_SUR_PILE = 64;
+    double pile[REGISTRES_SUR_PILE] = {};
+    std::vector<double> tas;
+    double* r = pile;
+    if (m_nombreRegistres > REGISTRES_SUR_PILE) {
+        tas.resize(m_nombreRegistres);
+        r = tas.data();
+    }
+    executer(valeurs, r);
+    for (std::size_t i = 0; i < m_resultats.size(); ++i) sorties[i] = r[m_resultats[i]];
+}
+
+std::vector<double> ProgrammeEvaluation::evaluerEn(const std::vector<double>& valeurs) const {
+    if (valeurs.size() != m_nombreEntrees) {
+        throw std::invalid_argument("evaluerEn : " + std::to_string(m_nombreEntrees) + " valeur(s) attendue(s), " +
+                                    std::to_string(valeurs.size()) + " recue(s)");
+    }
+    std::vector<double> sorties(m_resultats.size());
+    evaluerEn(valeurs.data(), sorties.data());
+    return sorties;
 }
 
 void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) const {
     verifierValidite();
+    if (m_nombreEntrees != 1 || m_resultats.size() != 1) {
+        throw std::logic_error("evaluer(xs) : le programme a plusieurs entrees ou plusieurs sorties, utiliser evaluerEn");
+    }
     constexpr std::size_t BLOC = 256;
     std::vector<double> registres(static_cast<std::size_t>(m_nombreRegistres) * BLOC);
     for (std::size_t debut = 0; debut < n; debut += BLOC) {
@@ -345,7 +425,7 @@ void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) c
                     break;
             }
         }
-        const double* resultat = &registres[m_resultat * BLOC];
+        const double* resultat = &registres[m_resultats[0] * BLOC];
         std::copy(resultat, resultat + m, ys + debut);
     }
 }
