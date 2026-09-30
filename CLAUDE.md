@@ -20,7 +20,11 @@
   ```bash
   make run_tests
   ```
-* **Exécuter les benchmarks comparatifs (-O3 / Google Benchmark / GiNaC)** :
+* **Exécuter les tests sous AddressSanitizer + UBSan** (à lancer avant chaque commit touchant la mémoire) :
+  ```bash
+  make check
+  ```
+* **Exécuter les benchmarks comparatifs (-O3 / Google Benchmark / GiNaC)** — résultats consignés dans `benchmarks/RESULTATS.md` :
   ```bash
   make bench
   ```
@@ -31,6 +35,8 @@
 * **Exécution directe des binaires individuels** :
   * `./bin/test_ast` : Tests unitaires de l'Arbre de Syntaxe Abstraite (AST).
   * `./bin/test_differentielle` : Tests des équations différentielles (matrice compagnon, RK4, solutions littérale et de Cauchy).
+  * `./bin/test_nombre` : Tests des nombres exacts (`Nombre`, repli GMP).
+  * `./bin/test_evaluateur` : Tests de l'évaluation compilée.
   * `./bin/demo` : Programme de démonstration.
   * `./bin/bench_suite` : Exécutable du benchmark de performance.
 
@@ -46,33 +52,33 @@ Le projet repose sur la Programmation Orientée Objet et le polymorphisme C++17.
 
 2. **`EquationClassique`** (`include/EquationClassique.hpp`, `src/EquationClassique.cpp`) :
    * Wrapper orienté objet autour de la racine d'un AST (`ExprPtr`).
-   * Méthodes clés (résultats renvoyés **par valeur**, jamais de `new`) : `eval()`, `derivee()`, `simplifier()`, `integrer()`, `limite(x0)` (L'Hôpital, formes indéterminées), `DL(x0, ordre)` (Taylor par arithmétique des séries), `genererPointsTrace(xMin, xMax, tolerance)` (échantillonnage adaptatif), `getExpression()`.
+   * Méthodes clés (résultats renvoyés **par valeur**, jamais de `new`) : `eval(x)` (compilé automatiquement si le partage le rend rentable), `eval(xs)` (tableau, évaluation compilée par blocs), `derivee()`, `simplifier()`, `integrer()`, `limite(x0)`, `DL(x0, ordre)`, `genererPointsTrace(xMin, xMax, tolerance)`, `getExpression()`.
 
 3. **`EquationDifferentielle`** (`include/EquationDifferentielle.hpp`, `src/EquationDifferentielle.cpp`) :
    * Représentation linéaire d'EDO : $\sum a_i y^{(i)} = 0$.
    * Méthodes clés : `ajouterTerme(rang, coeff)`, `setConditionsInitiales(ci)`, `getMatriceCompagnon()` (Eigen state-space matrix), `resoudreLitteral()` (solution générale avec paramètres C1..Cn, racines multiples gérées), `resoudreProblemeCauchy()` (solution exacte avec conditions initiales), `derivee()` (EDO dont la solution est y'), `eval(x)` (solveur numérique RK4).
 
-4. **`ASTNode`** (`include/ASTNode.hpp`, `src/ASTNode.cpp`) :
-   * Heritage de `std::enable_shared_from_this<ASTNode>` pour l'optimisation mémoire du `clone()`.
-   * Alias de pointeur intelligent : `using ExprPtr = std::shared_ptr<ASTNode>;`.
-   * **Nœuds terminaux** : `Constante`, `Fraction` (rationnel exact $A/B$, arithmétique exacte lors de la simplification), `Variable` (variable d'évaluation, quel que soit son nom), `Parametre` (constante symbolique : dérivée nulle, évaluation impossible).
-   * **Nœuds non évalués** : `IntegraleNonEvaluee`, `LimiteNonEvaluee` (renvoyés quand aucune règle ne s'applique, au lieu d'un résultat faux).
-   * **Points d'entrée** : `integrer()` et `limite(a)` sont non virtuels ; les règles propres à chaque nœud sont dans les méthodes protégées `primitive()` et `calculerLimite(a)`.
-   * **Opérateurs binaires** : `Addition`, `Soustraction`, `Multiplication`, `Division`, `Puissance` (support $u(x)^{v(x)}$ et exposants constants).
-   * **Fonctions unaires** : `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`.
-   * **Helpers & Surcharges** : `cst()`, `frac()`, `var()`, `param()`, `ast_pow()`, `ast_sin()`, `ast_cos()`, `ast_tan()`, `ast_exp()`, `ast_ln()`, surcharges d'opérateurs `+`, `-`, `*`, `/`.
+4. **Expressions (AST)** — schéma complet dans `docs/ARCHITECTURE.md` :
+   * `ExprPtr = Ref<ASTNode>` (`include/Ref.hpp`) : compteur de références **intrusif**, non atomique (pas de partage d'une expression entre threads). Les nœuds ne se créent que via `fabriquer<T>()` et les helpers (clé `CleFabrique`) ; `comme<T>(e)` remplace `dynamic_cast` (interdit sur un temporaire).
+   * **Hash-consing** : chaque expression est unique en mémoire (`Signature` + table intrusive dans `src/Noeud.cpp`) ; `estEgal` = comparaison d'adresses.
+   * **Forme canonique automatique** (`src/Noeud.cpp`, `include/Canonique.hpp`) : `Somme` (constante + termes triés à coefficients `Nombre`), `Produit` (coefficient + facteurs `base^exposant` triés), `Puissance`. Pas de nœuds Soustraction/Division : `a - b = a + (-1)*b`, `a / b = a * b^(-1)`. Ordre total : `comparer()`.
+   * **`Nombre`** (`include/Nombre.hpp`, `src/Nombre.cpp`) : rationnel exact (int64 avec repli GMP) ou réel ; `cst(2.0)` est exact, `cst(0.5)` réel.
+   * **Nœuds** : `Constante`, `Variable`, `Parametre`, `Somme`, `Produit`, `Puissance`, `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`, `IntegraleNonEvaluee`, `LimiteNonEvaluee`.
+   * **Points d'entrée non virtuels** (`derivee`, `simplifier`, `integrer`, `limite`) ; règles par nœud dans les méthodes protégées `calculerDerivee`, `calculerSimplification`, `primitive`, `calculerLimite`. Modules : `Regles.cpp` (éval, dérivées, primitives), `Limites.cpp`, `Series.cpp` (DL), `Affichage.cpp`, `Evaluateur.cpp` (programme compilé).
+   * **Helpers** : `cst()`, `frac()`, `nombre()`, `var()`, `param()`, `somme()`, `produit()`, `ast_pow()`, `ast_sin()`, `ast_cos()`, `ast_tan()`, `ast_exp()`, `ast_ln()`, opérateurs `+ - * /` et moins unaire.
 
 ---
 
 ## 🎨 Normes de Code & Bonnes Pratiques C++
 
 * **Langage & Standard** : C++17 moderne.
-* **Sécurité Mémoire** : Utiliser `std::shared_ptr` / `std::unique_ptr`. Éviter les `raw pointers` pour la gestion de propriété.
+* **Sécurité Mémoire** : Utiliser `std::unique_ptr` / `std::shared_ptr`, et `Ref` (`ExprPtr`) pour les nœuds de l'AST. Éviter les `raw pointers` pour la gestion de propriété ; ne jamais conserver le pointeur renvoyé par `comme<T>()` au-delà de la vie de l'`ExprPtr` source.
 * **Const-Correctness** : Marquer `const` toutes les méthodes de consultation et passer les types non primitifs par référence constante (`const std::string&`, `const std::vector<double>&`).
 * **Tests** : chaque correction ou fonctionnalité s'accompagne de cas dans `tests/test_*.cpp` (mini-framework `tests/test_framework.hpp` : `TEST_CASE`, `CHECK`, `CHECK_EQ`, `CHECK_NEAR`, `CHECK_THROWS`). Les nœuds de l'AST se créent toujours via les helpers (jamais sur la pile).
 * **Dépendances** :
   * **STL** (`std::vector`, `std::map`, `std::shared_ptr`) comme alternative native et performante.
   * **Eigen** (`vendor/eigen`) pour l'algèbre linéaire / matrices d'espace d'état.
+  * **GMP** (`-lgmpxx -lgmp`) pour les rationnels exacts de taille arbitraire, confiné à `src/Nombre.cpp`.
   * **Google Benchmark** & **GiNaC** pour les mesures comparatives de performance dans `benchmarks/`.
 
 ---

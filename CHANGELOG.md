@@ -2,7 +2,34 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
-## [Unreleased] - Branche feature/corrections-robustesse
+## [Unreleased] - Optimisation de fond (branches feature/mesure-performances → feature/evaluation-compilee)
+
+### Performances (mesurées contre GiNaC, détail dans `benchmarks/RESULTATS.md`)
+* **Dérivée 10e** : de 4,4 s et 901 Mo alloués à 1,4 ms et 0,56 Mo (GiNaC : 7,5 ms).
+* **Mémoire** : le résultat d'une dérivée 6e occupe 4,2 Ko au lieu de 375 Ko (GiNaC : 4,9 Ko).
+* **Évaluation** : grande expression 1 450 fois plus rapide que GiNaC, tableau de 10 000 points 494 fois plus rapide.
+* SymAlgo++ est désormais devant GiNaC sur tous les scénarios mesurés.
+
+### Ajouts (Additions)
+* **Forme canonique automatique** : sommes et produits n-aires triés, regroupement des termes semblables (`x + x = 2*x`, `x*x^2 = x^3`, `2*(x+1) = 2*x + 2`), simplification des quotients.
+* **Hash-consing** : chaque expression est unique en mémoire ; égalité en temps constant.
+* **`Nombre`** : rationnels exacts de taille arbitraire (repli GMP) ou réels ; `2^100`, `4^(1/2) = 2` exacts.
+* **Évaluation compilée** (`ProgrammeEvaluation`, `eq.eval(std::vector<double>)`) : sous-expressions partagées calculées une fois, blocs vectorisés, compilation automatique quand elle est rentable.
+* Limites désormais déterminées : $x \ln x \to 0$ et $x^x \to 1$ en 0.
+* Cible `make check` (AddressSanitizer + UBSan) ; benchmark élargi avec mesure de la mémoire.
+
+### Correctifs (Patches)
+* Use-after-free dans la détection des arguments linéaires de l'intégration (détecté par AddressSanitizer) ; `comme<T>()` est désormais interdit sur un temporaire.
+* `0/0` reste indéfini (NaN) sous forme canonique.
+
+### Changements d'API (Breaking Changes)
+* `ExprPtr` devient `Ref<ASTNode>` (compteur intrusif) ; `std::dynamic_pointer_cast` est remplacé par `comme<T>()`.
+* Les classes `Fraction`, `Addition`, `Soustraction`, `Multiplication`, `Division` et `OperateurBinaire` sont remplacées par `Constante` (nombre exact), `Somme`, `Produit` et `Puissance`.
+* Affichage : `2*x`, `x^2`, `sin(x)/x`, `x^3/3` (au lieu de `2 * x`, `(x)^(2)`, `(sin(x) / x)`).
+* `cst(2.0)` est l'entier exact 2 ; `sin(2)` reste symbolique (évalué par `eval`), alors que `sin(2.5)` (argument réel) est évalué.
+* Les nœuds ne se construisent plus sur la pile (erreur de compilation) ; le partage d'une expression entre threads n'est pas pris en charge.
+
+## Branche feature/corrections-robustesse
 
 ### Correctifs majeurs (Major Patches)
 * **Constantes d'EDO** : les constantes $C_1, C_2$ de `resoudreLitteral()` étaient des variables (évaluées comme $x$, dérivée 1). Nouveau nœud `Parametre` (helper `param()`).
