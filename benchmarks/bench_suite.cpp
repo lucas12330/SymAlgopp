@@ -124,6 +124,19 @@ static void BM_SymAlgo_EvalTableau(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_EvalTableau);
 
+// Même tableau, par l'évaluation compilée et vectorisée par blocs
+static void BM_SymAlgo_EvalTableauVectorise(benchmark::State& state) {
+    const EquationClassique eq(fSymAlgo());
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = i * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+BENCHMARK(BM_SymAlgo_EvalTableauVectorise);
+
 static void BM_GiNaC_EvalTableau(benchmark::State& state) {
     GiNaC::symbol x("x");
     const GiNaC::ex eq = fGinac(x);
@@ -137,6 +150,33 @@ static void BM_GiNaC_EvalTableau(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
 }
 BENCHMARK(BM_GiNaC_EvalTableau)->Unit(benchmark::kMillisecond);
+
+// Évaluation d'une grande expression à sous-expressions partagées :
+// dérivée 8e de exp(sin x) * x^2 (compilée automatiquement par EquationClassique)
+static void BM_SymAlgo_EvalGrandeExpression(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    EquationClassique d(ast_exp(ast_sin(x)) * ast_pow(x, 2.0));
+    for (int k = 0; k < 8; ++k) d = d.derivee();
+    double v = 0.3;
+    for (auto _ : state) {
+        double res = d.eval(v);
+        benchmark::DoNotOptimize(res);
+        v += 1e-9;
+    }
+}
+BENCHMARK(BM_SymAlgo_EvalGrandeExpression);
+
+static void BM_GiNaC_EvalGrandeExpression(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    const GiNaC::ex d = (GiNaC::exp(GiNaC::sin(x)) * GiNaC::pow(x, 2)).diff(x, 8);
+    double v = 0.3;
+    for (auto _ : state) {
+        double res = GiNaC::ex_to<GiNaC::numeric>(d.subs(x == v).evalf()).to_double();
+        benchmark::DoNotOptimize(res);
+        v += 1e-9;
+    }
+}
+BENCHMARK(BM_GiNaC_EvalGrandeExpression)->Unit(benchmark::kMicrosecond);
 
 // ============================================================================
 // 3. Dérivation (première dérivée, puis dérivée 10e)

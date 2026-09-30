@@ -12,6 +12,7 @@
 
 #include "Equation.hpp"
 #include "ASTNode.hpp"
+#include "Evaluateur.hpp"
 
 #include <memory>
 #include <utility>
@@ -49,6 +50,14 @@ public:
      * Utilisation : double resultat = eq.eval(valeur);
      */
     double eval(double x) const override;
+
+    /*
+     * Nom : eval (tableau)
+     * Description : Évalue l'équation en chaque point, par l'évaluateur compilé et vectorisé
+     *               (voir Evaluateur.hpp) : de loin le moyen le plus rapide pour de nombreux points.
+     * Utilisation : std::vector<double> ys = eq.eval(xs);
+     */
+    std::vector<double> eval(const std::vector<double>& xs) const;
 
     /*
      * Nom : derivee
@@ -115,7 +124,20 @@ public:
     std::vector<std::pair<double, double>> genererPointsTrace(double xMin, double xMax, double tolerance = 1e-3) const;
 
 private:
+    // Nombre d'évaluations ponctuelles au-delà duquel l'expression est compilée : une
+    // évaluation isolée ne paie pas le coût de la compilation
+    static constexpr unsigned SEUIL_COMPILATION = 8;
+    // Gain de partage minimal pour que l'évaluation ponctuelle compilée batte l'arbre
+    // (mesuré : x3 pour des dérivées successives, gain 1,6 à 1,7 ; surcoût de 5 à 15 % pour
+    // des expressions sans partage, gain 1 à 1,1)
+    static constexpr double GAIN_PARTAGE_MIN = 1.3;
+
+    const ProgrammeEvaluation& programme() const;
+
     ExprPtr m_racine;
+    mutable std::shared_ptr<const ProgrammeEvaluation> m_programme; // compilé à la demande
+    mutable unsigned m_evaluations = 0;
+    mutable bool m_ponctuelCompile = false; // l'évaluation ponctuelle passe par le programme
     void echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const;
 };
 

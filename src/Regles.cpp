@@ -14,27 +14,6 @@ namespace symalgo {
 
 namespace {
 
-// b^k par exponentiation rapide (bien plus rapide que std::pow pour les petits entiers)
-double puissanceEntiere(double b, long long k) {
-    switch (k) {
-        case 1: return b;
-        case 2: return b * b;
-        case -1: return 1.0 / b;
-        case 3: return b * b * b;
-        case -2: return 1.0 / (b * b);
-        default: break;
-    }
-    const bool negatif = k < 0;
-    unsigned long long n = negatif ? 0ULL - static_cast<unsigned long long>(k) : static_cast<unsigned long long>(k);
-    double r = 1.0;
-    while (n) {
-        if (n & 1ULL) r *= b;
-        b *= b;
-        n >>= 1;
-    }
-    return negatif ? 1.0 / r : r;
-}
-
 /*
  * Nom : coefficientLineaire
  * Description : Si u est une fonction affine de x (u = a*x + b avec a non nul), renvoie vrai
@@ -131,7 +110,7 @@ double Produit::eval(double x) const {
         const double b = f.base->eval(x);
         long long k;
         const Constante* e = comme<Constante>(f.exposant);
-        r *= e && e->getNombre().versEntier(k) ? puissanceEntiere(b, k) : std::pow(b, f.exposant->eval(x));
+        r *= e && e->getNombre().versEntier(k) ? puissanceEntiereReelle(b, k) : std::pow(b, f.exposant->eval(x));
     }
     return r;
 }
@@ -178,7 +157,7 @@ ExprPtr Produit::primitive() const {
 
 double Puissance::eval(double x) const {
     const double b = m_base->eval(x);
-    return m_exposantEntier != PAS_ENTIER ? puissanceEntiere(b, m_exposantEntier) : std::pow(b, m_exposant->eval(x));
+    return m_exposantEntier != PAS_ENTIER ? puissanceEntiereReelle(b, m_exposantEntier) : std::pow(b, m_exposant->eval(x));
 }
 
 ExprPtr Puissance::calculerDerivee(CacheDerivees& cache) const {

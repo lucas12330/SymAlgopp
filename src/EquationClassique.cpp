@@ -26,7 +26,28 @@ EquationClassique::EquationClassique() : m_racine(cst(0.0)) {}
  * Description : Calcule la valeur de l'équation en un point x.
  * Utilisation : double y = eq.eval(x);
  */
-double EquationClassique::eval(double x) const { return m_racine->eval(x); }
+double EquationClassique::eval(double x) const {
+    if (m_ponctuelCompile) return m_programme->evaluer(x);
+    if (m_evaluations < SEUIL_COMPILATION && ++m_evaluations == SEUIL_COMPILATION) {
+        // Assez d'évaluations pour compiler ; le programme n'est utilisé point par point
+        // que si le partage des sous-expressions le rend plus rapide que l'arbre
+        m_ponctuelCompile = programme().estValide() && programme().gainPartage() >= GAIN_PARTAGE_MIN;
+        if (m_ponctuelCompile) return m_programme->evaluer(x);
+    }
+    return m_racine->eval(x);
+}
+
+/*
+ * Nom : eval (tableau)
+ * Description : Évaluation compilée et vectorisée en chaque point.
+ * Utilisation : std::vector<double> ys = eq.eval(xs);
+ */
+std::vector<double> EquationClassique::eval(const std::vector<double>& xs) const { return programme().evaluer(xs); }
+
+const ProgrammeEvaluation& EquationClassique::programme() const {
+    if (!m_programme) m_programme = std::make_shared<const ProgrammeEvaluation>(m_racine);
+    return *m_programme;
+}
 
 /*
  * Nom : derivee
@@ -46,7 +67,12 @@ std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
  * Description : Simplifie l'expression mathématique de l'équation (factorisation, etc.).
  * Utilisation : eq.simplifier();
  */
-void EquationClassique::simplifier() { m_racine = m_racine->simplifier(); }
+void EquationClassique::simplifier() {
+    m_racine = m_racine->simplifier();
+    m_programme.reset(); // le programme compilé correspondait à l'ancienne expression
+    m_evaluations = 0;
+    m_ponctuelCompile = false;
+}
 
 /*
  * Nom : afficher
