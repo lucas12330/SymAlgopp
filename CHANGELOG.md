@@ -2,6 +2,21 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
+## [Unreleased] - Résolution d'équations (branches feature/solveur-equations → feature/resolution-equations)
+
+### Ajouts (Additions)
+* **`developper()`** : distribution des produits et puissances entières de sommes (exponentiation rapide), mémorisée sur le graphe partagé.
+* **`Polynome`** : polynômes à une variable à coefficients `Nombre` exacts ; opérations, division euclidienne, PGCD, dérivée, décomposition sans carré (Yun), évaluation exacte.
+* **Racines réelles certifiées** : isolement par suites de Sturm et bissection rationnelle exacte ; racines rationnelles reconnues exactement, degré 2 par radicaux, les autres arrondies au `double` le plus proche (polynôme de Wilkinson de degré 20 : 11,6 ms).
+* **`factoriser()`** : factorisation sur $\mathbb{Q}$ (facteurs linéaires rationnels avec multiplicité, parties primitives restantes).
+* **Constante `pi` exacte** et fonctions **`asin`, `acos`, `atan`** (évaluation, dérivées, primitives, limites, DL, affichage, évaluation compilée).
+* **Valeurs remarquables exactes** : sin/cos/tan des multiples de $\pi/6$ et $\pi/4$ et leurs réciproques ; radicaux canoniques (`8^(1/2) = 2*2^(1/2)`, dénominateurs rationalisés) ; `ln(8) = 3*ln(2)`.
+* **`resoudre()`** : résolution exacte par isolement de l'inconnue, règle du produit nul, changement de variable, polynômes ; solutions avec approximation, multiplicité et indicateur de complétude ; vérification du domaine (`x*ln(x) = 0` donne seulement 1).
+* **Familles trigonométriques** : `sin(x) = 1/2` donne `pi/6 + 2*pi*k` et `5*pi/6 + 2*pi*k`.
+* **`resoudreSurIntervalle()`** et **`resoudreNumerique()`** : familles dépliées sur un intervalle ; recherche numérique (échantillonnage, méthode de Brent, racines doubles aux points critiques).
+* `EquationClassique` : `resoudre()`, `resoudre(a, b)`, `developper()`, `factoriser()`.
+* Helpers `substituer(e, cible, remplacement)` et `contient(e, cible)`.
+
 ## [Unreleased] - Optimisation de fond (branches feature/mesure-performances → feature/evaluation-compilee)
 
 ### Performances (mesurées contre GiNaC, détail dans `benchmarks/RESULTATS.md`)

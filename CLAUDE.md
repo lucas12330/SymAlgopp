@@ -37,6 +37,8 @@
   * `./bin/test_differentielle` : Tests des équations différentielles (matrice compagnon, RK4, solutions littérale et de Cauchy).
   * `./bin/test_nombre` : Tests des nombres exacts (`Nombre`, repli GMP).
   * `./bin/test_evaluateur` : Tests de l'évaluation compilée.
+  * `./bin/test_polynome` : Tests de `developper`, `Polynome` (Sturm, racines certifiées) et `factoriser`.
+  * `./bin/test_solveur` : Tests du solveur d'équations (exact, familles, intervalles, numérique).
   * `./bin/demo` : Programme de démonstration.
   * `./bin/bench_suite` : Exécutable du benchmark de performance.
 
@@ -52,7 +54,7 @@ Le projet repose sur la Programmation Orientée Objet et le polymorphisme C++17.
 
 2. **`EquationClassique`** (`include/EquationClassique.hpp`, `src/EquationClassique.cpp`) :
    * Wrapper orienté objet autour de la racine d'un AST (`ExprPtr`).
-   * Méthodes clés (résultats renvoyés **par valeur**, jamais de `new`) : `eval(x)` (compilé automatiquement si le partage le rend rentable), `eval(xs)` (tableau, évaluation compilée par blocs), `derivee()`, `simplifier()`, `integrer()`, `limite(x0)`, `DL(x0, ordre)`, `genererPointsTrace(xMin, xMax, tolerance)`, `getExpression()`.
+   * Méthodes clés (résultats renvoyés **par valeur**, jamais de `new`) : `eval(x)` (compilé automatiquement si le partage le rend rentable), `eval(xs)` (tableau, évaluation compilée par blocs), `derivee()`, `simplifier()`, `integrer()`, `limite(x0)`, `DL(x0, ordre)`, `genererPointsTrace(xMin, xMax, tolerance)`, `developper()`, `factoriser()`, `resoudre()`, `resoudre(a, b)`, `getExpression()`.
 
 3. **`EquationDifferentielle`** (`include/EquationDifferentielle.hpp`, `src/EquationDifferentielle.cpp`) :
    * Représentation linéaire d'EDO : $\sum a_i y^{(i)} = 0$.
@@ -63,9 +65,13 @@ Le projet repose sur la Programmation Orientée Objet et le polymorphisme C++17.
    * **Hash-consing** : chaque expression est unique en mémoire (`Signature` + table intrusive dans `src/Noeud.cpp`) ; `estEgal` = comparaison d'adresses.
    * **Forme canonique automatique** (`src/Noeud.cpp`, `include/Canonique.hpp`) : `Somme` (constante + termes triés à coefficients `Nombre`), `Produit` (coefficient + facteurs `base^exposant` triés), `Puissance`. Pas de nœuds Soustraction/Division : `a - b = a + (-1)*b`, `a / b = a * b^(-1)`. Ordre total : `comparer()`.
    * **`Nombre`** (`include/Nombre.hpp`, `src/Nombre.cpp`) : rationnel exact (int64 avec repli GMP) ou réel ; `cst(2.0)` est exact, `cst(0.5)` réel.
-   * **Nœuds** : `Constante`, `Variable`, `Parametre`, `Somme`, `Produit`, `Puissance`, `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`, `IntegraleNonEvaluee`, `LimiteNonEvaluee`.
+   * **Nœuds** : `Constante`, `Variable`, `Parametre`, `Pi`, `Somme`, `Produit`, `Puissance`, `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`, `ArcSinus`, `ArcCosinus`, `ArcTangente`, `IntegraleNonEvaluee`, `LimiteNonEvaluee`. Valeurs remarquables exactes (tables de `src/Noeud.cpp`) et radicaux canoniques.
    * **Points d'entrée non virtuels** (`derivee`, `simplifier`, `integrer`, `limite`) ; règles par nœud dans les méthodes protégées `calculerDerivee`, `calculerSimplification`, `primitive`, `calculerLimite`. Modules : `Regles.cpp` (éval, dérivées, primitives), `Limites.cpp`, `Series.cpp` (DL), `Affichage.cpp`, `Evaluateur.cpp` (programme compilé).
-   * **Helpers** : `cst()`, `frac()`, `nombre()`, `var()`, `param()`, `somme()`, `produit()`, `ast_pow()`, `ast_sin()`, `ast_cos()`, `ast_tan()`, `ast_exp()`, `ast_ln()`, opérateurs `+ - * /` et moins unaire.
+   * **Helpers** : `cst()`, `frac()`, `nombre()`, `var()`, `param()`, `pi()`, `somme()`, `produit()`, `ast_pow()`, `ast_sin()`, `ast_cos()`, `ast_tan()`, `ast_exp()`, `ast_ln()`, `ast_asin()`, `ast_acos()`, `ast_atan()`, `appliquer()`, `substituer()`, `contient()`, opérateurs `+ - * /` et moins unaire.
+
+5. **Algèbre** :
+   * `include/Polynome.hpp`, `src/Polynome.cpp` : `developper()`, `Polynome` (coefficients `Nombre` exacts, `estExact()` faux si un coefficient était réel ; PGCD, `sansCarre()` de Yun, `racinesReelles()` certifiées par Sturm), `factoriser()` sur Q.
+   * `include/Solveur.hpp`, `src/Solveur.cpp` : `resoudre(gauche, droite)`, `resoudreSurIntervalle(e, a, b)`, `resoudreNumerique(f, a, b)` ; `Solutions { liste, complet, toutReel }`, `Solution { valeur, approximation, multiplicite, exacte, entiers }` (familles trigonométriques paramétrées par `k`, `k2`...).
 
 ---
 

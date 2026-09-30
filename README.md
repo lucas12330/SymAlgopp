@@ -1,6 +1,6 @@
 # SymAlgo++
 
-SymAlgo++ est une bibliothèque C++17 moderne et performante conçue pour représenter, manipuler, évaluer, dériver, intégrer et simplifier des expressions algébriques classiques ainsi que des équations différentielles ordinaires (EDO). Elle s'appuie sur une modélisation orientée objet robuste utilisant un Arbre de Syntaxe Abstraite (AST) pour le calcul symbolique et des solveurs algébriques/numériques intégrés.
+SymAlgo++ est une bibliothèque C++17 moderne et performante conçue pour représenter, manipuler, évaluer, dériver, intégrer, simplifier, développer, factoriser et résoudre des expressions algébriques classiques ainsi que des équations différentielles ordinaires (EDO). Elle s'appuie sur une modélisation orientée objet robuste utilisant un Arbre de Syntaxe Abstraite (AST) pour le calcul symbolique et des solveurs algébriques/numériques intégrés.
 
 Face à GiNaC, bibliothèque C++ de calcul formel de référence, SymAlgo++ est plus rapide sur tous les scénarios mesurés et son empreinte mémoire est plus faible (voir [Benchmarks](#-benchmarks-de-performances)).
 
@@ -15,7 +15,7 @@ Le projet est structuré autour d'une hiérarchie de classes exploitant le polym
 * **`Equation`** : Classe abstraite de base définissant l'interface commune de toutes les équations du système.
   * `eval(double x)` : Évalue l'équation pour une valeur réelle donnée.
   * `deriveeGenerique()` : Dérivée polymorphe, renvoyée sous forme de `std::unique_ptr<Equation>`. Chaque classe dérivée propose aussi `derivee()`, qui renvoie son propre type par valeur.
-* **`EquationClassique`** (hérite d'`Equation`) : Encapsule une expression (AST) et fournit dérivation formelle, intégration symbolique, limites, développements limités, tracé adaptatif et évaluation compilée.
+* **`EquationClassique`** (hérite d'`Equation`) : Encapsule une expression (AST) et fournit dérivation formelle, intégration symbolique, limites, développements limités, développement et factorisation, résolution d'équations, tracé adaptatif et évaluation compilée.
 * **`EquationDifferentielle`** (hérite d'`Equation`) : Représente des équations différentielles linéaires de la forme $\sum a_i y^{(i)} = 0$. Offre à la fois une résolution analytique exacte et une résolution numérique via Runge-Kutta 4 (RK4) basée sur la matrice compagnon d'état (Eigen).
 
 ---
@@ -36,14 +36,14 @@ Le projet est structuré autour d'une hiérarchie de classes exploitant le polym
 
 ### Nœuds disponibles
 
-1. **Terminaux** : `Constante` (nombre exact ou réel), `Variable` (la variable d'évaluation, quel que soit son nom), `Parametre` (constante symbolique sans valeur, comme les $C_1, C_2$ des solutions d'EDO : dérivée nulle, évaluation impossible).
+1. **Terminaux** : `Constante` (nombre exact ou réel), `Pi` (la constante $\pi$ exacte), `Variable` (la variable d'évaluation, quel que soit son nom), `Parametre` (constante symbolique sans valeur, comme les $C_1, C_2$ des solutions d'EDO : dérivée nulle, évaluation impossible).
 2. **Sommes, produits, puissances** : `Somme` (constante + termes à coefficients exacts), `Produit` (coefficient + facteurs `base^exposant`), `Puissance`.
-3. **Fonctions** : `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`.
+3. **Fonctions** : `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`, `ArcSinus`, `ArcCosinus`, `ArcTangente`. Les valeurs remarquables sont exactes : `sin(pi/3)` donne `3^(1/2)/2`, `acos(1/2)` donne `pi/3`, `8^(1/2)` donne `2*2^(1/2)`, `ln(8)` donne `3*ln(2)`.
 4. **Nœuds non évalués** : `IntegraleNonEvaluee` et `LimiteNonEvaluee` représentent une primitive ou une limite que la bibliothèque ne sait pas déterminer, au lieu d'un résultat faux.
 
 ### Construction
 
-Des helpers (`cst`, `frac`, `nombre`, `var`, `param`, `somme`, `produit`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`) et les opérateurs `+ - * /` (y compris le moins unaire) permettent une écriture proche des mathématiques :
+Des helpers (`cst`, `frac`, `nombre`, `var`, `param`, `pi`, `somme`, `produit`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`, `ast_asin`, `ast_acos`, `ast_atan`, `substituer`) et les opérateurs `+ - * /` (y compris le moins unaire) permettent une écriture proche des mathématiques :
 
 ```cpp
 auto X = var("x");
@@ -59,6 +59,9 @@ std::cout << expr;   // x^2/3 + sin(x) + ln(x)
 * **Intégration symbolique (`integrer()`)** : polynômes, fonctions usuelles, linéarité, facteurs constants, substitution linéaire $\int f(ax+b)\,dx = F(ax+b)/a$. Hors de ces règles, le résultat est une `IntegraleNonEvaluee`.
 * **Limites (`limite(x0)`)** : règle de L'Hôpital pour $0/0$ et $\infty/\infty$ (profondeur bornée), formes $0 \cdot \infty$, $1^\infty$, $0^0$, $\infty^0$ ; signe de l'infini déterminé par le développement du dénominateur. Exemples : $\sin(x)/x \to 1$, $x \ln x \to 0$, $x^x \to 1$ en 0. Une limite inexistante (ex. $1/x$ en 0) ou non déterminée est une `LimiteNonEvaluee`.
 * **Développements limités (`DL(x0, ordre)`)** : calculés par arithmétique des séries tronquées (technique de la différentiation automatique) : l'ordre 20 de $e^{\sin x}$ s'obtient en quelques microsecondes.
+* **Développement et factorisation (`developper()`, `factoriser()`)** : `(x + 1)^3` donne `x^3 + 3*x^2 + 3*x + 1` ; `x^3 - x^2 - 2*x + 2` donne `(x - 1)*(x^2 - 2)` (factorisation sur $\mathbb{Q}$ : facteurs linéaires rationnels et parties primitives restantes).
+* **Polynômes exacts (`Polynome`)** : coefficients rationnels exacts, division euclidienne, PGCD, décomposition sans carré (Yun), et **racines réelles certifiées** par suites de Sturm : chaque racine est isolée dans un intervalle rationnel exact, puis donnée exactement (rationnelle, ou radicaux au degré 2) ou arrondie au `double` le plus proche.
+* **Résolution d'équations (`resoudre()`)** : isolement de l'inconnue par inversion des opérations (sommes, produits nuls, puissances, `exp`, `ln`, fonctions trigonométriques et réciproques), polynômes par racines certifiées, changement de variable ($e^{2x} - 3e^x + 2 = 0$). Les solutions sont exactes quand c'est possible, avec leur approximation, leur multiplicité et un indicateur `complet`. Les équations trigonométriques donnent des **familles** : $\sin x = 1/2 \Rightarrow x = \pi/6 + 2k\pi$ ou $5\pi/6 + 2k\pi$. Sur un intervalle (`resoudre(a, b)`), les familles sont dépliées et une recherche numérique (méthode de Brent) complète les équations transcendantes ($e^x + x = 0$).
 * **Évaluation compilée** : une expression peut être compilée en un programme linéaire (sous-expressions partagées calculées une fois, registres réutilisés). `EquationClassique` compile automatiquement quand c'est rentable, et `eq.eval(xs)` évalue un tableau de points par blocs vectorisés.
 * **Tracé adaptatif (`genererPointsTrace(xMin, xMax, tolerance)`)** : échantillonnage adaptatif récursif, qui raffine les zones de forte courbure.
 * **Résolution littérale d'EDO (`resoudreLitteral()`)** : solution générale des équations linéaires homogènes à coefficients constants (racines réelles, complexes conjuguées et multiples : $x^k e^{rx}$).
@@ -105,7 +108,37 @@ int main() {
 }
 ```
 
-### 2. Équations différentielles (littérale et numérique RK4)
+### 2. Développement, factorisation et résolution
+```cpp
+#include <iostream>
+#include "ASTNode.hpp"
+#include "Polynome.hpp"
+#include "Solveur.hpp"
+
+using namespace symalgo;
+
+int main() {
+    auto X = var("x");
+    std::cout << developper(ast_pow(X + 1.0, 3)) << "\n";                         // x^3 + 3*x^2 + 3*x + 1
+    std::cout << factoriser(ast_pow(X, 3) - ast_pow(X, 2) - 2.0 * X + 2.0) << "\n"; // (x - 1)*(x^2 - 2)
+
+    // x^2 = 2 : x = -2^(1/2), x = 2^(1/2) (exactes, liste complète)
+    Solutions s = resoudre(ast_pow(X, 2), cst(2.0));
+    for (const Solution& sol : s.liste) std::cout << sol.valeur << " ~ " << sol.approximation << "\n";
+
+    // sin(x) = 1/2 : familles pi/6 + 2*pi*k et 5*pi/6 + 2*pi*k (sol.entiers = {"k"})
+    Solutions t = resoudre(ast_sin(X), frac(1, 2));
+
+    // Sur [0, 7] : pi/6, 5*pi/6, 13*pi/6
+    Solutions u = resoudreSurIntervalle(ast_sin(X) - frac(1, 2), 0.0, 7.0);
+
+    // e^x + x = 0 : pas de forme exacte, solution numérique -0.567143... (complet = false)
+    Solutions v = resoudreSurIntervalle(ast_exp(X) + X, -5.0, 5.0);
+    return 0;
+}
+```
+
+### 3. Équations différentielles (littérale et numérique RK4)
 ```cpp
 #include <iostream>
 #include "EquationDifferentielle.hpp"
@@ -192,7 +225,7 @@ Médiane de 3 répétitions, Intel Celeron N4120 @ 1.10 GHz (Arch Linux, GCC 16,
 * **Analyse** :
   * **Évaluation** : SymAlgo++ évalue directement en `double` (programme compilé pour les grandes expressions), là où GiNaC substitue puis évalue symboliquement.
   * **Calcul symbolique** : forme canonique, hash-consing et dérivation sur graphe partagé évitent toute copie et tout recalcul.
-  * *Comparaison à nuancer* : GiNaC est un système de calcul formel complet, plus général (plusieurs variables, arithmétique exacte généralisée, développement de polynômes...).
+  * *Comparaison à nuancer* : GiNaC est un système de calcul formel complet, plus général (plusieurs variables, polynômes multivariés, nombres complexes...).
 * L'historique détaillé des mesures, chantier par chantier, est consigné dans [`benchmarks/RESULTATS.md`](benchmarks/RESULTATS.md).
 
 ### Scalabilité EDO (Génération Matrice Compagnon)

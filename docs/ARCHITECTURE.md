@@ -8,7 +8,7 @@ Dans SymAlgo++, une expression est un **graphe unique, réduit et partagé**. Ce
 flowchart TB
     subgraph EQ["Équations — include/Equation*.hpp"]
         E["Equation (abstraite)<br/>eval · deriveeGenerique"]
-        EC["EquationClassique<br/>dérivée · primitive · limite · DL · tracé"]
+        EC["EquationClassique<br/>dérivée · primitive · limite · DL · tracé · résolution"]
         ED["EquationDifferentielle<br/>Σ aᵢ y⁽ⁱ⁾ = 0 : littérale · Cauchy · RK4"]
         E --> EC
         E --> ED
@@ -21,6 +21,11 @@ flowchart TB
         SE["Séries (DL)<br/>Series.cpp"]
         AF["Affichage<br/>Affichage.cpp"]
     end
+    subgraph AL["Algèbre — include/Polynome.hpp, include/Solveur.hpp"]
+        DV["developper · factoriser<br/>Polynome.cpp"]
+        PO["Polynome exact<br/>Sturm · Yun · PGCD"]
+        SO["resoudre<br/>Solveur.cpp"]
+    end
     subgraph NU["Calcul numérique"]
         NB["Nombre<br/>int64 → GMP, ou réel"]
         PE["ProgrammeEvaluation<br/>Evaluateur.cpp"]
@@ -28,6 +33,8 @@ flowchart TB
         RF["Ref<br/>compteur intrusif"]
     end
     EQ -->|"construit et transforme"| EX
+    EQ -->|"résout"| AL
+    AL -->|"manipule"| EX
     EX -->|"calcule avec"| NU
 ```
 
@@ -56,6 +63,8 @@ Règles de la forme canonique (`src/Noeud.cpp`, `include/Canonique.hpp`) :
 | `x - y` | `x + (-1)*y` (Somme) |
 | `x / y` | `x*y^(-1)` (Produit) |
 | `(x^2)^3`, `4^(1/2)`, `exp(ln(x))` | `x^6`, `2`, `x` |
+| `8^(1/2)`, `(1/2)^(1/2)`, `ln(8)` | `2*2^(1/2)`, `2^(1/2)/2`, `3*ln(2)` |
+| `sin(pi/3)`, `acos(1/2)` | `3^(1/2)/2`, `pi/3` |
 
 ## 3. Un graphe partagé, pas un arbre
 
@@ -84,6 +93,9 @@ flowchart TB
 | `integrer()` | règles par noeud, substitution linéaire ; sinon `IntegraleNonEvaluee` | `∫sin(2x) = -cos(2*x)/2` |
 | `limite(a)` | quotient N/D (exposants négatifs), L'Hôpital sur N′/D′ réduit, signe de l'infini par Taylor | `x·ln(x) → 0` en 0 ; `1/x` en 0 non déterminée |
 | `DL(a, n)` | arithmétique des séries tronquées, O(n²) par noeud | DL de `exp` en 0 |
+| `developper()` | distribution mémorisée, puissances entières de sommes par exponentiation rapide | `(x+1)^3 = x^3 + 3*x^2 + 3*x + 1` |
+| `factoriser()` | `Polynome` exact, racines rationnelles, parties primitives | `(x - 1)*(x^2 - 2)` |
+| `resoudre()` | voir section 6 | `sin(x) = 1/2` → `pi/6 + 2*pi*k`, `5*pi/6 + 2*pi*k` |
 | `eval(x)` / `eval(xs)` | arbre, ou programme compilé si le partage le rend rentable ; blocs vectorisés pour un tableau | `2^100` exact |
 
 Les points d'entrée (`derivee`, `simplifier`, `integrer`, `limite`) sont non virtuels ; les règles propres à chaque noeud sont dans les méthodes protégées `calculerDerivee`, `calculerSimplification`, `primitive` et `calculerLimite`.
@@ -107,7 +119,27 @@ Programme de `(sin(x)+1)·(sin(x)+2)·(sin(x)+4)` produit par `ProgrammeEvaluati
 
 10 instructions, 3 registres. `eval(xs)` compile toujours et applique chaque instruction à des blocs de 256 points. Pour un point isolé, `EquationClassique` compile à la 8e évaluation et n'utilise le programme que si le partage divise le travail de l'arbre par au moins 1,3.
 
-## 6. Mémoire et sûreté
+## 6. Résolution d'équations
+
+```mermaid
+flowchart TB
+    A["gauche = droite"] --> B["différence développée<br/>sans x : identité ou aucune solution"]
+    B --> C{"polynôme en x ?"}
+    C -->|"oui"| P["Polynome exact<br/>sans carré (Yun) · Sturm<br/>rationnelles · radicaux · double certifié"]
+    C -->|"non"| D{"changement de variable ?<br/>(exp(x), sin(x)... de degré ≥ 2)"}
+    D -->|"oui"| P
+    D -->|"non"| I["isolement : inverser<br/>somme · produit nul · u^n · exp · ln<br/>sin/cos/tan → familles en k · asin/acos/atan"]
+    P --> N["nettoyage : domaine (f fini),<br/>doublons, tri"]
+    I --> N
+    N --> S["Solutions : liste, complet, toutReel"]
+    S -->|"resoudreSurIntervalle"| Q["familles dépliées sur [a, b]<br/>+ Brent si incomplet"]
+```
+
+* Une racine de polynôme est isolée dans un intervalle **rationnel exact** (suites de Sturm, bissection exacte), puis reconnue exactement (candidats p/q) ou raffinée jusqu'à deux `double` adjacents : la valeur rendue est le `double` le plus proche.
+* Un polynôme à coefficients réels (non exacts) donne des racines seulement approchées.
+* `complet = false` signale qu'une forme n'a pas pu être résolue exactement : les solutions listées sont justes, mais il peut en manquer.
+
+## 7. Mémoire et sûreté
 
 * `ExprPtr = Ref<ASTNode>` : compteur de références stocké dans le noeud (une allocation par noeud, libération immédiate du dernier usage, retrait automatique de la table de hash-consing).
 * Les noeuds ne se créent que par `fabriquer<T>()` et les helpers (clé `CleFabrique`) : jamais sur la pile.
@@ -115,7 +147,7 @@ Programme de `(sin(x)+1)·(sin(x)+2)·(sin(x)+4)` produit par `ProgrammeEvaluati
 * Comme GiNaC, une expression ne se partage pas entre threads (compteur non atomique).
 * `make check` exécute toute la suite de tests sous AddressSanitizer et UBSan.
 
-## 7. Où vit chaque partie
+## 8. Où vit chaque partie
 
 | Fichier | Rôle |
 | :--- | :--- |
@@ -128,6 +160,8 @@ Programme de `(sin(x)+1)·(sin(x)+2)·(sin(x)+4)` produit par `ProgrammeEvaluati
 | `src/Limites.cpp` | limites : quotients, L'Hôpital, signe de l'infini |
 | `src/Series.cpp` | développements limités par séries tronquées |
 | `src/Affichage.cpp` | écriture lisible avec précédences et quotients |
+| `include/Polynome.hpp`, `src/Polynome.cpp` | `developper`, `Polynome` exact (Sturm, Yun), `factoriser` |
+| `include/Solveur.hpp`, `src/Solveur.cpp` | résolution exacte, familles trigonométriques, recherche numérique |
 | `include/Evaluateur.hpp`, `src/Evaluateur.cpp` | compilation en programme linéaire, évaluation par blocs |
 | `src/Equation*.cpp` | équations classiques et différentielles (Eigen, RK4) |
 
