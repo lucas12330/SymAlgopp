@@ -13,40 +13,166 @@
 #include "EquationDifferentielle.hpp"
 #include "EquationClassique.hpp"
 #include "ASTNode.hpp"
-#include <iostream>
-#include <cmath>
-#include <string>
 #include <algorithm>
+#include <cmath>
+#include <complex>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace symalgo {
+
+namespace {
+
+// Racine du polynôme caractéristique avec sa multiplicité
+struct RacineCaracteristique {
+    std::complex<double> valeur;
+    int multiplicite;
+};
+
+/*
+ * Nom : estRacineDeMultiplicite
+ * Description : Vérifie que mu annule le polynôme de coefficients c (c[i] devant X^i)
+ *               ainsi que ses m-1 premières dérivées, à une tolérance relative près
+ *               (rapportée à la somme des modules des termes, comme une erreur inverse).
+ */
+bool estRacineDeMultiplicite(std::vector<double> c, std::complex<double> mu, int m) {
+    for (int k = 0; k < m; ++k) {
+        std::complex<double> valeur = 0.0, puissance = 1.0;
+        double echelle = 0.0;
+        for (double ci : c) {
+            valeur += ci * puissance;
+            echelle += std::abs(ci) * std::abs(puissance);
+            puissance *= mu;
+        }
+        if (std::abs(valeur) > 1e-6 * echelle) return false;
+        // Dérivée du polynôme
+        for (size_t i = 1; i < c.size(); ++i) c[i - 1] = c[i] * static_cast<double>(i);
+        c.pop_back();
+    }
+    return true;
+}
+
+/*
+ * Nom : regrouperRacines
+ * Description : Regroupe les racines numériques (Eigen) en racines multiples. Une racine
+ *               de multiplicité m est calculée avec une erreur en eps^(1/m) (jusqu'à 1e-2
+ *               pour m = 6) mais la moyenne du groupe reste exacte : on regroupe avec une
+ *               tolérance large, puis on valide chaque groupe par les dérivées du polynôme.
+ *               Un groupe non validé est traité comme des racines simples distinctes.
+ */
+std::vector<RacineCaracteristique> regrouperRacines(const std::vector<double>& coeffs,
+                                                   const Eigen::VectorXcd& racines) {
+    std::vector<RacineCaracteristique> resultat;
+    std::vector<bool> utilisee(racines.size(), false);
+    for (Eigen::Index i = 0; i < racines.size(); ++i) {
+        if (utilisee[i]) continue;
+        std::vector<Eigen::Index> groupe = {i};
+        const double tolerance = 0.05 * std::max(1.0, std::abs(racines[i]));
+        for (Eigen::Index j = i + 1; j < racines.size(); ++j) {
+            if (!utilisee[j] && std::abs(racines[j] - racines[i]) <= tolerance) groupe.push_back(j);
+        }
+        std::complex<double> moyenne = 0.0;
+        for (Eigen::Index j : groupe) moyenne += racines[j];
+        moyenne /= static_cast<double>(groupe.size());
+
+        const int m = static_cast<int>(groupe.size());
+        if (m > 1 && !estRacineDeMultiplicite(coeffs, moyenne, m)) {
+            utilisee[i] = true;
+            resultat.push_back({racines[i], 1});
+            continue;
+        }
+        for (Eigen::Index j : groupe) utilisee[j] = true;
+        // Nettoie les résidus d'arrondi (ex. partie imaginaire 1e-17 d'une racine réelle)
+        const double seuil = 1e-9 * std::max(1.0, std::abs(moyenne));
+        if (std::abs(moyenne.imag()) < seuil) moyenne.imag(0.0);
+        if (std::abs(moyenne.real()) < seuil) moyenne.real(0.0);
+        // Une partie entière à l'arrondi près devient exacte (exp(-x) plutôt que exp(-1.0000000000000002*x))
+        auto arrondirEntier = [](double v) {
+            const double r = std::round(v);
+            return std::abs(v - r) < 1e-12 * std::max(1.0, std::abs(v)) ? r : v;
+        };
+        moyenne = {arrondirEntier(moyenne.real()), arrondirEntier(moyenne.imag())};
+        resultat.push_back({moyenne, m});
+    }
+    return resultat;
+}
+
+// x^k (ou nullptr si k = 0)
+ExprPtr puissanceDeX(const ExprPtr& X, int k) {
+    if (k == 0) return nullptr;
+    if (k == 1) return X;
+    return ast_pow(X, static_cast<double>(k));
+}
+
+// Produit des facteurs non nuls
+ExprPtr produitNonNuls(std::initializer_list<ExprPtr> facteurs) {
+    ExprPtr r = nullptr;
+    for (const ExprPtr& f : facteurs) {
+        if (f) r = r ? r * f : f;
+    }
+    return r ? r : cst(1.0);
+}
+
+} // namespace
 
 EquationDifferentielle::EquationDifferentielle() {}
 
 void EquationDifferentielle::ajouterTerme(unsigned int rang, double coeff) {
-  m_terme[rang] += coeff;
+    double& total = m_terme[rang];
+    total += coeff;
+    // Un terme qui s'annule disparaît : le terme dominant n'est jamais nul, ce qui
+    // évite une division par zéro dans la matrice compagnon
+    if (total == 0.0) m_terme.erase(rang);
 }
 
 void EquationDifferentielle::setConditionsInitiales(const std::vector<double>& ci) {
     m_conditions_initiales = ci;
 }
 
+EquationDifferentielle EquationDifferentielle::derivee() const {
+    EquationDifferentielle d = *this;
+    if (m_terme.empty() || m_terme.rbegin()->first == 0) return d; // solution nulle
+
+    const unsigned int n = m_terme.rbegin()->first;
+    const double an = m_terme.rbegin()->second;
+    // Conditions initiales complètes (les manquantes valent 0, comme pour eval)
+    std::vector<double> y0(n, 0.0);
+    for (size_t i = 0; i < std::min<size_t>(n, m_conditions_initiales.size()); ++i) {
+        y0[i] = m_conditions_initiales[i];
+    }
+    // y^(n)(0) = -sum_{i<n} (a_i / a_n) y^(i)(0)
+    double yn = 0.0;
+    for (const auto& [rang, coeff] : m_terme) {
+        if (rang < n) yn -= coeff / an * y0[rang];
+    }
+    std::vector<double> conditions(y0.begin() + 1, y0.end());
+    conditions.push_back(yn);
+    d.m_conditions_initiales = conditions;
+    return d;
+}
+
+std::unique_ptr<Equation> EquationDifferentielle::deriveeGenerique() const {
+    return std::make_unique<EquationDifferentielle>(derivee());
+}
+
 void EquationDifferentielle::afficher() const {
     bool first = true;
     for (auto it = m_terme.rbegin(); it != m_terme.rend(); ++it) {
         if (it->second == 0.0) continue;
-        
+
         if (!first) {
             if (it->second > 0) std::cout << " + ";
             else std::cout << " - ";
         } else {
             if (it->second < 0) std::cout << "-";
         }
-        
+
         double abs_coeff = std::abs(it->second);
-        if (abs_coeff != 1.0 || it->first == 0) std::cout << abs_coeff;
-        if (abs_coeff != 1.0 && it->first > 0) std::cout << "*";
-        
+        if (abs_coeff != 1.0) std::cout << abs_coeff << "*";
+
         if (it->first == 0) {
-            if (abs_coeff == 1.0) std::cout << "y";
-            else std::cout << "*y";
+            std::cout << "y";
         } else if (it->first == 1) {
             std::cout << "y'";
         } else if (it->first == 2) {
@@ -64,7 +190,7 @@ Eigen::MatrixXd EquationDifferentielle::getMatriceCompagnon() const {
     if (m_terme.empty()) return Eigen::MatrixXd::Zero(1, 1);
     unsigned int n = m_terme.rbegin()->first;
     if (n == 0) return Eigen::MatrixXd::Zero(1, 1);
-    
+
     double an = m_terme.rbegin()->second;
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n, n);
     for (unsigned int i = 0; i < n - 1; ++i) {
@@ -78,66 +204,104 @@ Eigen::MatrixXd EquationDifferentielle::getMatriceCompagnon() const {
     return A;
 }
 
-EquationClassique* EquationDifferentielle::resoudreLitteral() const {
-    if (m_terme.empty()) return new EquationClassique(cst(0.0));
-    unsigned int n = m_terme.rbegin()->first;
-    if (n == 0) return new EquationClassique(cst(0.0));
-    
-    Eigen::MatrixXd A = getMatriceCompagnon();
-    Eigen::EigenSolver<Eigen::MatrixXd> solver(A);
-    
-    auto X = var("x");
-    ExprPtr solution = cst(0.0);
-    auto eigenvalues = solver.eigenvalues();
-    int var_idx = 1;
-    
-    for (int i = 0; i < eigenvalues.size(); ++i) {
-        std::complex<double> lambda = eigenvalues[i];
-        
-        if (std::abs(lambda.imag()) < 1e-6) {
-            std::string c_name = "C" + std::to_string(var_idx++);
-            ExprPtr terme = var(c_name) * ast_exp(cst(lambda.real()) * X);
-            solution = solution + terme;
-        } else {
-            if (lambda.imag() > 0) {
-                std::string c_name1 = "C" + std::to_string(var_idx++);
-                std::string c_name2 = "C" + std::to_string(var_idx++);
-                ExprPtr exp_part = ast_exp(cst(lambda.real()) * X);
-                ExprPtr trig_part = var(c_name1) * ast_cos(cst(lambda.imag()) * X) + var(c_name2) * ast_sin(cst(lambda.imag()) * X);
-                
-                if (std::abs(lambda.real()) < 1e-6) {
-                    solution = solution + trig_part;
-                } else {
-                    solution = solution + (exp_part * trig_part);
-                }
+std::vector<ExprPtr> EquationDifferentielle::baseDeSolutions() const {
+    std::vector<ExprPtr> base;
+    if (m_terme.empty() || m_terme.rbegin()->first == 0) return base;
+
+    const unsigned int n = m_terme.rbegin()->first;
+    std::vector<double> coeffs(n + 1, 0.0); // polynôme caractéristique sum a_i r^i
+    for (const auto& [rang, coeff] : m_terme) coeffs[rang] = coeff;
+
+    const Eigen::EigenSolver<Eigen::MatrixXd> solveur(getMatriceCompagnon(), false);
+    const auto X = var("x");
+    for (const RacineCaracteristique& r : regrouperRacines(coeffs, solveur.eigenvalues())) {
+        const double alpha = r.valeur.real();
+        const double beta = r.valeur.imag();
+        if (beta < 0.0) continue; // traitée avec sa conjuguée
+        const ExprPtr exponentielle = alpha == 0.0 ? nullptr : ast_exp(cst(alpha) * X);
+        for (int k = 0; k < r.multiplicite; ++k) {
+            // Racine de multiplicité m : x^k e^(alpha x) [cos(beta x), sin(beta x)], k < m
+            if (beta == 0.0) {
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle}));
+            } else {
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle, ast_cos(cst(beta) * X)}));
+                base.push_back(produitNonNuls({puissanceDeX(X, k), exponentielle, ast_sin(cst(beta) * X)}));
             }
         }
     }
-    return new EquationClassique(solution->simplifier());
+    return base;
+}
+
+EquationClassique EquationDifferentielle::resoudreLitteral() const {
+    ExprPtr solution = cst(0.0);
+    int indice = 1;
+    for (const ExprPtr& phi : baseDeSolutions()) {
+        solution = solution + param("C" + std::to_string(indice++)) * phi;
+    }
+    return EquationClassique(solution->simplifier());
+}
+
+EquationClassique EquationDifferentielle::resoudreProblemeCauchy() const {
+    const std::vector<ExprPtr> base = baseDeSolutions();
+    const Eigen::Index n = static_cast<Eigen::Index>(base.size());
+    if (n == 0) return EquationClassique(cst(0.0));
+
+    // M(i, j) = phi_j^(i)(0) ; les constantes c vérifient M c = (y(0), y'(0), ...)
+    Eigen::MatrixXd M(n, n);
+    for (Eigen::Index j = 0; j < n; ++j) {
+        ExprPtr derivee = base[j];
+        for (Eigen::Index i = 0; i < n; ++i) {
+            M(i, j) = derivee->eval(0.0);
+            derivee = derivee->derivee()->simplifier();
+        }
+    }
+    Eigen::VectorXd conditions = Eigen::VectorXd::Zero(n);
+    for (Eigen::Index i = 0; i < n && i < static_cast<Eigen::Index>(m_conditions_initiales.size()); ++i) {
+        conditions(i) = m_conditions_initiales[i];
+    }
+    const Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(M);
+    if (qr.rank() < n) {
+        throw std::runtime_error("resoudreProblemeCauchy : base de solutions degeneree");
+    }
+    const Eigen::VectorXd c = qr.solve(conditions);
+
+    const double echelle = std::max(1.0, c.cwiseAbs().maxCoeff());
+    ExprPtr solution = cst(0.0);
+    for (Eigen::Index j = 0; j < n; ++j) {
+        if (std::abs(c(j)) > 1e-12 * echelle) solution = solution + cst(c(j)) * base[j];
+    }
+    return EquationClassique(solution->simplifier());
 }
 
 double EquationDifferentielle::eval(double x) const {
-    unsigned int n = m_terme.empty() ? 0 : m_terme.rbegin()->first;
+    const unsigned int n = m_terme.empty() ? 0 : m_terme.rbegin()->first;
     if (n == 0) return 0.0;
-    
+
     Eigen::VectorXd Y = Eigen::VectorXd::Zero(n);
-    for (size_t i = 0; i < std::min((size_t)n, m_conditions_initiales.size()); ++i) {
+    for (size_t i = 0; i < std::min<size_t>(n, m_conditions_initiales.size()); ++i) {
         Y(i) = m_conditions_initiales[i];
     }
-    
     if (std::abs(x) < 1e-9) return Y(0);
-    
-    Eigen::MatrixXd A = getMatriceCompagnon();
-    int steps = std::max(100, (int)(std::abs(x) / 0.01));
-    double h = x / steps;
-    
-    for (int i = 0; i < steps; ++i) {
-        Eigen::VectorXd k1 = A * Y;
-        Eigen::VectorXd k2 = A * (Y + 0.5 * h * k1);
-        Eigen::VectorXd k3 = A * (Y + 0.5 * h * k2);
-        Eigen::VectorXd k4 = A * (Y + h * k3);
-        Y += (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+
+    const int pas = std::max(100, static_cast<int>(std::abs(x) / 0.01));
+    const double h = x / pas;
+
+    // Pour un système linéaire Y' = A Y, un pas de RK4 vaut exactement Y <- P Y avec
+    // P = I + hA + (hA)^2/2 + (hA)^3/6 + (hA)^4/24 : P est calculée une seule fois, puis
+    // chaque pas se réduit à un produit matrice-vecteur, sans allocation.
+    const Eigen::MatrixXd hA = h * getMatriceCompagnon();
+    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(n, n);
+    Eigen::MatrixXd terme = Eigen::MatrixXd::Identity(n, n);
+    for (int k = 1; k <= 4; ++k) {
+        terme = (terme * hA) / static_cast<double>(k);
+        P += terme;
     }
-    
+    Eigen::VectorXd suivant(n);
+    for (int i = 0; i < pas; ++i) {
+        suivant.noalias() = P * Y;
+        Y.swap(suivant);
+    }
     return Y(0);
 }
+
+} // namespace symalgo

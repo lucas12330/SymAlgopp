@@ -1,193 +1,269 @@
 # SymAlgo++
 
-SymAlgo++ est une bibliothèque C++ conçue pour représenter, manipuler, évaluer, dériver et simplifier des expressions algébriques classiques ainsi que des équations différentielles ordinaires. Elle s'appuie sur une modélisation orientée objet moderne utilisant un arbre de syntaxe abstraite (AST) pour la partie symbolique.
+SymAlgo++ est une bibliothèque C++17 moderne et performante conçue pour représenter, manipuler, évaluer, dériver, intégrer, simplifier, développer, factoriser et résoudre des expressions algébriques classiques ainsi que des équations différentielles ordinaires (EDO). Elle s'appuie sur une modélisation orientée objet robuste utilisant un Arbre de Syntaxe Abstraite (AST) pour le calcul symbolique et des solveurs algébriques/numériques intégrés.
+
+Face à GiNaC, bibliothèque C++ de calcul formel de référence, SymAlgo++ est plus rapide sur tous les scénarios mesurés et son empreinte mémoire est plus faible (voir [Benchmarks](#-benchmarks-de-performances)).
+
+Un schéma détaillé de l'architecture et du cheminement d'une expression est disponible dans [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
-## Architecture de la bibliothèque
+## 🏛️ Architecture de la bibliothèque
 
-Le projet est structuré autour d'une hiérarchie de classes exploitant le polymorphisme en C++ :
+Le projet est structuré autour d'une hiérarchie de classes exploitant le polymorphisme et le C++17 moderne. Toute la bibliothèque est déclarée dans l'espace de noms `symalgo`.
 
 * **`Equation`** : Classe abstraite de base définissant l'interface commune de toutes les équations du système.
-  * `eval(double x)` : Évalue l'équation pour une valeur de variable donnée.
-  * `derivee()` : Retourne un pointeur vers une nouvelle instance d'équation représentant sa dérivée.
-* **`EquationClassique`** (hérite d'`Equation`) : Représente des expressions algébriques simples. Elle encapsule un arbre de syntaxe abstraite (`ASTNode`) et implémente la résolution formelle (dérivation symbolique, simplification mathématique).
-* **`EquationDifferentielle`** (hérite d'`Equation`) : Dédiée à la représentation linéaire d'équations différentielles de la forme $\sum a_i y^{(i)} = 0$. Elle stocke en interne une table associative associant l'ordre de dérivation à son coefficient multiplicateur.
+  * `eval(double x)` : Évalue l'équation pour une valeur réelle donnée.
+  * `deriveeGenerique()` : Dérivée polymorphe, renvoyée sous forme de `std::unique_ptr<Equation>`. Chaque classe dérivée propose aussi `derivee()`, qui renvoie son propre type par valeur.
+* **`EquationClassique`** (hérite d'`Equation`) : Encapsule une expression (AST) et fournit dérivation formelle, intégration symbolique, limites, développements limités, développement et factorisation, résolution d'équations, tracé adaptatif et évaluation compilée.
+* **`EquationDifferentielle`** (hérite d'`Equation`) : Représente des équations différentielles linéaires de la forme $\sum a_i y^{(i)} = 0$. Offre à la fois une résolution analytique exacte et une résolution numérique via Runge-Kutta 4 (RK4) basée sur la matrice compagnon d'état (Eigen).
 
 ---
 
-## Arbre de Syntaxe Abstraite (AST)
+## 🌲 Expressions symboliques (AST)
 
-La manipulation symbolique des expressions classiques repose sur la classe abstraite **`ASTNode`** et l'alias de pointeur intelligent associé :
-```cpp
-using ExprPtr = std::shared_ptr<ASTNode>;
-```
+### Un modèle d'expressions sans copie ni doublon
+
+* **Forme canonique automatique** : les expressions sont construites directement sous forme réduite, comme dans les systèmes de calcul formel. Sommes et produits sont n-aires, leurs termes triés, et les termes semblables regroupés dès la construction :
+  * `x + x` donne `2*x`, `x * x^2` donne `x^3`, `2*(x + 1)` donne `2*x + 2` ;
+  * `x - y` est `x + (-1)*y` et `x / y` est `x*y^(-1)` : un quotient est un produit à exposants négatifs ;
+  * `(x + 1)/(x + 1)` donne `1`, `exp(ln(x))` donne `x`.
+* **Hash-consing** : chaque expression n'existe qu'une fois en mémoire. Deux expressions mathématiquement identiques sous forme canonique (`x + y` et `y + x`) sont le même pointeur, et l'égalité se teste par simple comparaison d'adresses.
+* **Nombres exacts** : les coefficients sont des rationnels exacts de taille arbitraire (`Nombre`), stockés sur 64 bits tant qu'ils tiennent et basculant sur GMP au-delà : `1/3 + 1/6` donne `1/2`, `2^100` est calculé exactement, `4^(1/2)` donne `2`. `cst(2.0)` est l'entier exact 2, `cst(0.5)` le réel 0.5.
+* **`ExprPtr`** : pointeur à compteur de références intrusif (`Ref<ASTNode>`) — une seule allocation par noeud, libération immédiate du dernier usage. Les noeuds ne se créent que par les helpers : la construction sur la pile est interdite à la compilation.
+
+> **Threads** : comme GiNaC, SymAlgo++ ne permet pas de manipuler une même expression depuis plusieurs threads simultanément.
 
 ### Nœuds disponibles
-1. **Nœuds terminaux** :
-   * `Constante` : Contient une valeur réelle (`double`).
-   * `Variable` : Représente la variable (par défaut `"x"`).
-2. **Opérateurs binaires** :
-   * `Addition` ($+$)
-   * `Soustraction` ($-$)
-   * `Multiplication` ($*$)
-   * `Division` ($/$)
-   * `Puissance` (base ^ exposant)
-3. **Fonctions unaires** :
-   * `Sinus` ($\sin$)
-   * `Cosinus` ($\cos$)
 
-### Simplification et Surcharges
-Des fonctions d'aide (`cst`, `var`) et des surcharges d'opérateurs arithmétiques permettent d'écrire des expressions de manière proche de l'écriture mathématique usuelle.
+1. **Terminaux** : `Constante` (nombre exact ou réel), `Pi` (la constante $\pi$ exacte), `Variable` (la variable d'évaluation, quel que soit son nom), `Parametre` (constante symbolique sans valeur, comme les $C_1, C_2$ des solutions d'EDO : dérivée nulle, évaluation impossible).
+2. **Sommes, produits, puissances** : `Somme` (constante + termes à coefficients exacts), `Produit` (coefficient + facteurs `base^exposant`), `Puissance`.
+3. **Fonctions** : `Sinus`, `Cosinus`, `Tangente`, `Exponentielle`, `Logarithme`, `ArcSinus`, `ArcCosinus`, `ArcTangente`. Les valeurs remarquables sont exactes : `sin(pi/3)` donne `3^(1/2)/2`, `acos(1/2)` donne `pi/3`, `8^(1/2)` donne `2*2^(1/2)`, `ln(8)` donne `3*ln(2)`.
+4. **Nœuds non évalués** : `IntegraleNonEvaluee` et `LimiteNonEvaluee` représentent une primitive ou une limite que la bibliothèque ne sait pas déterminer, au lieu d'un résultat faux.
 
-Par exemple, au lieu d'instancier manuellement chaque nœud, l'expression $x^2 + 5x + 6$ s'écrit :
+### Construction
+
+**Depuis du texte** (`include/Lecture.hpp`) : `lire("x^2 + 3*sin(x)")`, `lireEquation("sin(x) = 1/2")`, `EquationClassique eq("x^2 = 2")` ou le littéral `"x^2 + 1"_expr` (`using namespace symalgo::litteraux`).
+
+* Nombres **exacts**, décimaux compris : `0.1` est le rationnel 1/10 (et `0.1 + 0.2` vaut exactement `3/10`), entiers de taille arbitraire.
+* Précédences usuelles, `^` (ou `**`) associatif à droite, multiplication implicite : `2x`, `3(x + 1)`, `(x + 1)(x - 1)`, `x sin(x)`.
+* Fonctions `sin cos tan exp ln log sqrt asin acos atan` (et `arcsin`...), constantes `pi` (ou `π`) et `e`. La variable est `x` (modifiable : `lire("t^2", {"t"})`), tout autre nom est un paramètre (`a*x + b`).
+* Symboles `× · ÷ − ² ³` acceptés. Les erreurs (`ErreurLecture`) indiquent la position : `lecture, position 5 : expression attendue`.
+* Le texte affiché d'une expression exacte se relit en **le même nœud** : `lire(e->texte()) == e`.
+
+**En C++** : des helpers (`cst`, `frac`, `nombre`, `var`, `param`, `pi`, `somme`, `produit`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`, `ast_asin`, `ast_acos`, `ast_atan`, `substituer`) et les opérateurs `+ - * /` (y compris le moins unaire) permettent une écriture proche des mathématiques :
+
 ```cpp
 auto X = var("x");
-auto expr = ast_pow(X, 2) + (X * 5) + 6;
+auto expr = frac(1, 3) * ast_pow(X, 2) + ast_sin(X) + ast_ln(X);
+std::cout << expr;   // x^2/3 + sin(x) + ln(x)
 ```
 
 ---
 
-## Exemples d'utilisation
+## ⚡ Fonctionnalités
 
-### 1. Expressions classiques et dérivation symbolique
-Cet exemple montre comment construire l'expression $x^2 + 5x + 6$, l'évaluer pour $x = 2$, calculer sa dérivée symbolique ($2x + 5$) et évaluer cette dernière.
+* **Dérivation (`derivee()`)** : sur le graphe partagé, chaque sous-expression n'est dérivée qu'une fois par appel ; le résultat est directement sous forme canonique.
+* **Intégration symbolique (`integrer()`)** : polynômes, fonctions usuelles, linéarité, facteurs constants, substitution linéaire $\int f(ax+b)\,dx = F(ax+b)/a$. Hors de ces règles, le résultat est une `IntegraleNonEvaluee`.
+* **Limites (`limite(x0)`)** : règle de L'Hôpital pour $0/0$ et $\infty/\infty$ (profondeur bornée), formes $0 \cdot \infty$, $1^\infty$, $0^0$, $\infty^0$ ; signe de l'infini déterminé par le développement du dénominateur. Exemples : $\sin(x)/x \to 1$, $x \ln x \to 0$, $x^x \to 1$ en 0. Une limite inexistante (ex. $1/x$ en 0) ou non déterminée est une `LimiteNonEvaluee`.
+* **Développements limités (`DL(x0, ordre)`)** : calculés par arithmétique des séries tronquées (technique de la différentiation automatique) : l'ordre 20 de $e^{\sin x}$ s'obtient en quelques microsecondes.
+* **Développement et factorisation (`developper()`, `factoriser()`)** : `(x + 1)^3` donne `x^3 + 3*x^2 + 3*x + 1` ; `x^3 - x^2 - 2*x + 2` donne `(x - 1)*(x^2 - 2)` (factorisation sur $\mathbb{Q}$ : facteurs linéaires rationnels et parties primitives restantes).
+* **Polynômes exacts (`Polynome`)** : coefficients rationnels exacts, division euclidienne, PGCD, décomposition sans carré (Yun), et **racines réelles certifiées** par suites de Sturm : chaque racine est isolée dans un intervalle rationnel exact, puis donnée exactement (rationnelle, ou radicaux au degré 2) ou arrondie au `double` le plus proche.
+* **Résolution d'équations (`resoudre()`)** : isolement de l'inconnue par inversion des opérations (sommes, produits nuls, puissances, `exp`, `ln`, fonctions trigonométriques et réciproques), polynômes par racines certifiées, changement de variable ($e^{2x} - 3e^x + 2 = 0$). Les solutions sont exactes quand c'est possible, avec leur approximation, leur multiplicité et un indicateur `complet`. Les équations trigonométriques donnent des **familles** : $\sin x = 1/2 \Rightarrow x = \pi/6 + 2k\pi$ ou $5\pi/6 + 2k\pi$. Sur un intervalle (`resoudre(a, b)`), les familles sont dépliées et une recherche numérique (méthode de Brent) complète les équations transcendantes ($e^x + x = 0$).
+* **Évaluation compilée** : une expression peut être compilée en un programme linéaire (sous-expressions partagées calculées une fois, registres réutilisés). `EquationClassique` compile automatiquement quand c'est rentable, et `eq.eval(xs)` évalue un tableau de points par blocs vectorisés.
+* **Tracé adaptatif (`genererPointsTrace(xMin, xMax, tolerance)`)** : échantillonnage adaptatif récursif, qui raffine les zones de forte courbure.
+* **Résolution littérale d'EDO (`resoudreLitteral()`)** : solution générale des équations linéaires homogènes à coefficients constants (racines réelles, complexes conjuguées et multiples : $x^k e^{rx}$).
+* **Problème de Cauchy (`resoudreProblemeCauchy()`)** : solution exacte satisfaisant les conditions initiales, directement évaluable.
+* **Solveur numérique d'EDO (RK4)** : schéma d'espace d'état sur la matrice compagnon (Eigen) ; chaque pas se réduit à un produit matrice-vecteur précalculé.
 
+---
+
+## 💡 Exemples d'utilisation
+
+### 1. Expressions classiques, dérivation, intégration et limite
 ```cpp
 #include <iostream>
 #include "EquationClassique.hpp"
 #include "ASTNode.hpp"
 
+using namespace symalgo;
+
 int main() {
     auto X = var("x");
-    // Construction de x^2 + 5x + 6
-    auto expr = ast_pow(X, 2) + (X * 5) + 6;
-    
+    // (x^2 - 1) / (x - 1)
+    auto expr = (ast_pow(X, 2) - 1.0) / (X - 1.0);
     EquationClassique eq(expr);
-    std::cout << "Equation originale : ";
-    eq.afficher(); // Affiche : (((x)^(2) + x * 5) + 6) = 0
-    
-    std::cout << "Evaluation (x = 2) : " << eq.eval(2.0) << std::endl; // Affiche : 20
 
-    // Dérivation formelle
-    EquationClassique* eq_derivee = eq.derivee();
-    std::cout << "Derivee simplifiee : ";
-    eq_derivee->afficher(); // Affiche : (2 * x + 5) = 0
-    
-    std::cout << "Evaluation derivee (x = 2) : " << eq_derivee->eval(2.0) << std::endl; // Affiche : 9
+    std::cout << "Equation : ";
+    eq.afficher();                                        // (x^2 - 1)/(x - 1) = 0
 
-    delete eq_derivee;
+    // Calcul de la limite en x = 1 (L'Hôpital) -> 2
+    EquationClassique eq_lim = eq.limite(1.0);
+    std::cout << "Limite en x->1 : ";
+    eq_lim.afficher();                                    // 2 = 0
+
+    // Dérivation et intégration d'un polynôme (résultats renvoyés par valeur)
+    EquationClassique poly(ast_pow(X, 2) + X * 5 + 6);
+    EquationClassique poly_der = poly.derivee();
+    EquationClassique poly_int = poly.integrer();
+
+    std::cout << "Derivee   : "; poly_der.afficher();     // 2*x + 5 = 0
+    std::cout << "Integrale : "; poly_int.afficher();     // x^3/3 + 5*x^2/2 + 6*x = 0
+
+    // Évaluation vectorisée d'un tableau de points
+    std::vector<double> ys = poly.eval(std::vector<double>{0.0, 1.0, 2.0}); // 6, 12, 20
     return 0;
 }
 ```
 
-### 2. Équations différentielles
-Cet exemple montre comment définir et manipuler des équations différentielles sous forme linéaire en y ajoutant des termes.
+### 2. Développement, factorisation et résolution
+```cpp
+#include <iostream>
+#include "ASTNode.hpp"
+#include "EquationClassique.hpp"
+#include "Polynome.hpp"
+#include "Solveur.hpp"
 
+using namespace symalgo;
+
+int main() {
+    // Depuis du texte : x = 0, x = ln(2)
+    Solutions depuisTexte = EquationClassique("exp(2x) - 3exp(x) + 2 = 0").resoudre();
+
+    auto X = var("x");
+    std::cout << developper(ast_pow(X + 1.0, 3)) << "\n";                         // x^3 + 3*x^2 + 3*x + 1
+    std::cout << factoriser(ast_pow(X, 3) - ast_pow(X, 2) - 2.0 * X + 2.0) << "\n"; // (x - 1)*(x^2 - 2)
+
+    // x^2 = 2 : x = -2^(1/2), x = 2^(1/2) (exactes, liste complète)
+    Solutions s = resoudre(ast_pow(X, 2), cst(2.0));
+    for (const Solution& sol : s.liste) std::cout << sol.valeur << " ~ " << sol.approximation << "\n";
+
+    // sin(x) = 1/2 : familles pi/6 + 2*pi*k et 5*pi/6 + 2*pi*k (sol.entiers = {"k"})
+    Solutions t = resoudre(ast_sin(X), frac(1, 2));
+
+    // Sur [0, 7] : pi/6, 5*pi/6, 13*pi/6
+    Solutions u = resoudreSurIntervalle(ast_sin(X) - frac(1, 2), 0.0, 7.0);
+
+    // e^x + x = 0 : pas de forme exacte, solution numérique -0.567143... (complet = false)
+    Solutions v = resoudreSurIntervalle(ast_exp(X) + X, -5.0, 5.0);
+    return 0;
+}
+```
+
+### 3. Équations différentielles (littérale et numérique RK4)
 ```cpp
 #include <iostream>
 #include "EquationDifferentielle.hpp"
+#include "EquationClassique.hpp"
+
+using namespace symalgo;
 
 int main() {
-    // Exemple 1 : Oscillateur Harmonique (y'' + 4y = 0)
-    EquationDifferentielle eqHarmonique;
-    eqHarmonique.ajouterTerme(2, 1.0); // Ajoute 1.0 * y''
-    eqHarmonique.ajouterTerme(0, 4.0); // Ajoute 4.0 * y
-    
-    std::cout << "Oscillateur Harmonique : ";
-    eqHarmonique.afficher(); // Affiche : 4*y^0 + 1*y^2 + 0 = 0
+    // Oscillateur harmonique : y'' + 4y = 0
+    EquationDifferentielle eq;
+    eq.ajouterTerme(2, 1.0); // y''
+    eq.ajouterTerme(0, 4.0); // 4y
 
-    // Exemple 2 : Équation d'ordre supérieur (3y''' - 2y' + 5y = 0)
-    EquationDifferentielle eqComplexe;
-    eqComplexe.ajouterTerme(3, 3.0);  // Ajoute 3.0 * y'''
-    eqComplexe.ajouterTerme(1, -2.0); // Ajoute -2.0 * y'
-    eqComplexe.ajouterTerme(0, 5.0);  // Ajoute 5.0 * y
-    
-    std::cout << "Equation complexe : ";
-    eqComplexe.afficher(); // Affiche : 5*y^0 + -2*y^1 + 3*y^3 + 0 = 0
+    std::cout << "EDO : ";
+    eq.afficher(); // y'' + 4*y = 0
 
+    // Solution générale : C1, C2 sont des paramètres symboliques
+    EquationClassique sol_generale = eq.resoudreLitteral();
+    std::cout << "Solution analytique : ";
+    sol_generale.afficher(); // C1*cos(2*x) + C2*sin(2*x) = 0
+
+    // Avec les conditions initiales y(0)=1, y'(0)=0
+    eq.setConditionsInitiales({1.0, 0.0});
+    EquationClassique sol_exacte = eq.resoudreProblemeCauchy();
+    sol_exacte.afficher(); // cos(2*x) = 0
+
+    // Évaluation numérique via RK4
+    std::cout << "Evaluation RK4 en x=pi/4 : " << eq.eval(3.141592653589793 / 4.0) << std::endl; // ~ 0
     return 0;
 }
 ```
 
 ---
 
-## Compilation et Tests
+## 🛠️ Compilation et Tests
 
-Le projet fournit un `Makefile` permettant de gérer la compilation de la bibliothèque et des exécutables de test.
+Dépendances : un compilateur C++17 (GCC ou Clang), **GMP** (arithmétique exacte), et **Eigen** (fourni dans `vendor/eigen`).
 
-* **Compiler l'ensemble du projet** :
+```bash
+sudo pacman -S gmp            # Arch / EndeavourOS  (Debian/Ubuntu : libgmp-dev)
+```
+
+* **Compiler l'ensemble du projet** (bibliothèque, tests, démo) :
   ```bash
   make
   ```
-* **Lancer la suite de tests automatisés** (recommandé pour valider les changements) :
+* **Lancer la suite de tests** (mini-framework sans dépendance, `tests/test_framework.hpp` ; code de retour non nul en cas d'échec) :
   ```bash
   make run_tests
   ```
-* **Nettoyer les fichiers de build (fichiers objets et binaires)** :
+* **Lancer les tests sous AddressSanitizer et UndefinedBehaviorSanitizer** (fuites mémoire, accès invalides, comportements indéfinis) :
   ```bash
-  make clean
+  make check
   ```
-
-Les fichiers intermédiaires sont compilés dans le dossier `build/` et les exécutables finaux sont générés dans le dossier `bin/`.
+* **Lancer la démonstration** : `./bin/demo`
+* **Nettoyer les fichiers de build** : `make clean`
 
 ---
 
-## Benchmarks de Performances
+## 📊 Benchmarks de Performances
 
-Pour mesurer les performances de SymAlgo++ et les comparer avec une librairie symbolique standard de l'industrie, nous utilisons **Google Benchmark** ainsi que la librairie concurrente **GiNaC**. 
+Les performances de SymAlgo++ sont mesurées avec **Google Benchmark** et comparées à **GiNaC**, sur les mêmes expressions. La mémoire est mesurée en remplaçant `operator new/delete`, de la même façon pour les deux bibliothèques.
 
-### 1. Installation des dépendances (Arch Linux / EndeavourOS)
-Pour pouvoir compiler les benchmarks, vous devez installer les paquets suivants :
 ```bash
-sudo pacman -Syu benchmark ginac
-```
-
-### 2. Lancer les Benchmarks
-La commande suivante compilera les benchmarks avec le maximum d'optimisations (`-O3`) et exécutera la suite de tests comparatifs (équations classiques et différentielles jusqu'à de grands ordres) :
-```bash
+sudo pacman -S benchmark ginac # Arch / EndeavourOS
 make bench
 ```
 
-### 3. Résultats des Benchmarks (Benchmark 1)
+Médiane de 3 répétitions, Intel Celeron N4120 @ 1.10 GHz (Arch Linux, GCC 16, `-O3`) :
 
-Les mesures suivantes ont été effectuées sur un processeur Intel Core i5 @ 2.60 GHz sous EndeavourOS (Arch Linux).
-
-#### A. Évaluation et Dérivation (SymAlgo++ vs GiNaC)
-
-| Opération / Scénario | SymAlgo++ | GiNaC | Comparaison |
-| :--- | :--- | :--- | :--- |
-| **Évaluation numérique** ($x=5$) | **~ 260 ns** | ~ 30 376 ns | 🚀 **SymAlgo++ est ~116x plus rapide** |
-| **Dérivation symbolique** ($f'(x)$) | ~ 50 486 ns | **~ 28 534 ns** | ⚠️ GiNaC est ~1.7x plus rapide |
+| Scénario | SymAlgo++ | GiNaC | Comparaison |
+| :--- | ---: | ---: | :--- |
+| Évaluation en un point | 123 ns | 30 820 ns | 🚀 ×250 |
+| Évaluation d'une grande expression (dérivée 8e) | 1,1 µs | 1 607 µs | 🚀 ×1 450 |
+| Évaluation de 10 000 points (par blocs) | 0,61 ms | 302 ms | 🚀 ×494 |
+| Dérivée première (sous forme réduite) | 8,7 µs | 28,1 µs | 🚀 ×3,2 |
+| Dérivée 10e de $e^{\sin x} x^2$ | 1,38 ms | 7,45 ms | 🚀 ×5,4 |
+| Collecte de 100 termes semblables | 146 µs | 255 µs | 🚀 ×1,7 |
+| Série de Taylor d'ordre 10 | 4,1 µs | 4 784 µs | 🚀 ×1 170 |
+| Lecture d'une expression depuis du texte (73 caractères) | 15,2 µs | 54,3 µs | 🚀 ×3,6 |
+| Mémoire du résultat (dérivée 6e) | 4,2 Ko | 4,9 Ko | 🚀 −14 % |
 
 ![Comparaison SymAlgo++ vs GiNaC](docs/images/bench_comparison.svg)
 
 * **Analyse** :
-  * **Évaluation** : SymAlgo++ surpasse largement GiNaC pour l'évaluation de valeurs numériques réelles (`double`). GiNaC, conçu pour le calcul exact, traite des objets symboliques lourds, ce qui introduit un surcoût.
-  * **Dérivation** : GiNaC est plus rapide pour la manipulation d'arbre symbolique. SymAlgo++ paie le coût des nombreuses allocations dynamiques (`std::shared_ptr`) lors des copies profondes du nœud d'arbre (`clone()`).
+  * **Évaluation** : SymAlgo++ évalue directement en `double` (programme compilé pour les grandes expressions), là où GiNaC substitue puis évalue symboliquement.
+  * **Calcul symbolique** : forme canonique, hash-consing et dérivation sur graphe partagé évitent toute copie et tout recalcul.
+  * **Lecture** : descente récursive sur des lexèmes de 12 octets, construction directe de la forme canonique.
+  * *Comparaison à nuancer* : GiNaC est un système de calcul formel complet, plus général (plusieurs variables, polynômes multivariés, nombres complexes...).
+* L'historique détaillé des mesures, chantier par chantier, est consigné dans [`benchmarks/RESULTATS.md`](benchmarks/RESULTATS.md).
 
-#### B. Scalabilité de l'Équation Différentielle (SymAlgo++)
-
-Mesure du temps de génération de la matrice compagnon d'état selon l'ordre de dérivation $N$ :
+### Scalabilité EDO (Génération Matrice Compagnon)
 
 ![Scalabilité de l'Équation Différentielle](docs/images/bench_ode_scaling.svg)
 
-* **Analyse** : La complexité temporelle augmente de manière strictement linéaire par rapport à l'ordre de l'équation, validant le choix de modélisation utilisant `std::map` et `Eigen::MatrixXd` pour stocker les coefficients et concevoir le système.
+* **Analyse** : La génération de la matrice compagnon conserve une complexité $O(N)$ strictement linéaire par rapport à l'ordre $N$ de l'équation.
 
 ---
 
-## Organisation du dépôt et conventions
+## 📂 Conventions et Contribution
 
 * **Arborescence** :
-  * `include/` : Contient les fichiers d'en-tête de la bibliothèque (`.hpp`).
-  * `src/` : Contient les fichiers sources d'implémentation (`.cpp`).
-  * `tests/` : Contient les programmes de validation et tests unitaires.
+  * `include/` : En-têtes de la bibliothèque (`.hpp`).
+  * `src/` : Fichiers sources (`.cpp`), un module par responsabilité (voir `docs/ARCHITECTURE.md`).
+  * `tests/` : Suite de tests automatisés.
+  * `benchmarks/` : Benchmarks Google Benchmark, résultats et générateur de graphiques.
+  * `docs/` : Documentation et visuels SVG.
 * **Stratégie de branche** :
-  Toute modification doit être effectuée sur une branche de fonctionnalité dédiée (`feature/nom-de-la-tache`) et soumise via Pull Request. Les commits directs sur la branche `main` sont interdits.
-* **Conventions de messages de commits** :
-  Les messages doivent respecter les préfixes suivants :
-  * `feat:` (nouvelle fonctionnalité)
-  * `fix:` (correction de bug)
-  * `refactor:` (restructuration du code sans changement de comportement)
-  * `docs:` (documentation)
-  * `chore:` (fichiers de configuration, Makefile, .gitignore)
+  Travail exclusivement sur branches dédiées (`feature/nom-de-la-tache`). Direct commit sur `main` proscrit.
+* **Conventions de commit (en français)** :
+  * `feat:` Nouvelle fonctionnalité.
+  * `fix:` Correction de bogue.
+  * `refactor:` Amélioration de structure/code.
+  * `perf:` Optimisation mesurée.
+  * `docs:` Documentation.
+  * `chore:` Configuration, Makefile, .gitignore.

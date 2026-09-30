@@ -13,7 +13,9 @@
 
 #pragma once
 
-#include <vector>
+#include <memory>
+
+namespace symalgo {
 
 class Equation {
 public:
@@ -39,9 +41,13 @@ public:
   virtual double eval(double x) const = 0;
 
   /*
-   * Nom : derivee
-   * Description : Calcule la dérivée de l'équation.
-   * Utilisation : Implémentée par les classes dérivées. S'utilise via Equation* derivee_eq = obj.derivee();
+   * Nom : deriveeGenerique
+   * Description : Version polymorphe de la dérivation, pour manipuler n'importe quelle
+   *               équation via la classe de base. Chaque classe dérivée propose aussi
+   *               derivee(), qui renvoie directement son propre type par valeur.
+   * Utilisation : std::unique_ptr<Equation> d = equation.deriveeGenerique(); d->eval(x);
    */
-  virtual Equation *derivee() { return nullptr; }
+  virtual std::unique_ptr<Equation> deriveeGenerique() const = 0;
 };
+
+} // namespace symalgo

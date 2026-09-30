@@ -1,12 +1,19 @@
 #include "EquationClassique.hpp"
+#include "Polynome.hpp"
+#include <cmath>
 #include <iostream>
+#include <stdexcept>
+
+namespace symalgo {
 
 /*
  * Nom : EquationClassique
  * Description : Constructeur de l'équation avec une racine AST spécifique.
  * Utilisation : EquationClassique eq(mon_ast);
  */
-EquationClassique::EquationClassique(ExprPtr racine) : m_racine(racine) {}
+EquationClassique::EquationClassique(ExprPtr racine) : m_racine(std::move(racine)) {
+    if (!m_racine) throw std::invalid_argument("EquationClassique : expression nulle");
+}
 
 /*
  * Nom : EquationClassique
@@ -16,27 +23,54 @@ EquationClassique::EquationClassique(ExprPtr racine) : m_racine(racine) {}
 EquationClassique::EquationClassique() : m_racine(cst(0.0)) {}
 
 /*
+ * Nom : EquationClassique (texte)
+ * Description : Lit « gauche = droite » et garde gauche - droite.
+ * Utilisation : EquationClassique eq("sin(x) = 1/2");
+ */
+EquationClassique::EquationClassique(const std::string& texte, const OptionsLecture& options) {
+    const EgaliteLue lue = lireEquation(texte, options);
+    m_racine = lue.gauche - lue.droite;
+}
+
+/*
  * Nom : eval
  * Description : Calcule la valeur de l'équation en un point x.
  * Utilisation : double y = eq.eval(x);
  */
 double EquationClassique::eval(double x) const {
-    if (m_racine) return m_racine->eval(x);
-    return 0.0;
+    if (m_ponctuelCompile) return m_programme->evaluer(x);
+    if (m_evaluations < SEUIL_COMPILATION && ++m_evaluations == SEUIL_COMPILATION) {
+        // Assez d'évaluations pour compiler ; le programme n'est utilisé point par point
+        // que si le partage des sous-expressions le rend plus rapide que l'arbre
+        m_ponctuelCompile = programme().estValide() && programme().gainPartage() >= GAIN_PARTAGE_MIN;
+        if (m_ponctuelCompile) return m_programme->evaluer(x);
+    }
+    return m_racine->eval(x);
+}
+
+/*
+ * Nom : eval (tableau)
+ * Description : Évaluation compilée et vectorisée en chaque point.
+ * Utilisation : std::vector<double> ys = eq.eval(xs);
+ */
+std::vector<double> EquationClassique::eval(const std::vector<double>& xs) const { return programme().evaluer(xs); }
+
+const ProgrammeEvaluation& EquationClassique::programme() const {
+    if (!m_programme) m_programme = std::make_shared<const ProgrammeEvaluation>(m_racine);
+    return *m_programme;
 }
 
 /*
  * Nom : derivee
- * Description : Calcule la dérivée symbolique de l'équation et renvoie un nouveau pointeur d'EquationClassique.
- * Utilisation : EquationClassique* derivee_eq = eq.derivee();
+ * Description : Calcule la dérivée symbolique simplifiée de l'équation.
+ * Utilisation : EquationClassique d = eq.derivee();
  */
-EquationClassique* EquationClassique::derivee() {
-    if (m_racine) {
-        // Appelle la dérivation symbolique puis simplifie l'expression immédiatement
-        ExprPtr deriveeFormelle = m_racine->derivee()->simplifier();
-        return new EquationClassique(deriveeFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+EquationClassique EquationClassique::derivee() const {
+    return EquationClassique(m_racine->derivee()->simplifier());
+}
+
+std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
+    return std::make_unique<EquationClassique>(derivee());
 }
 
 /*
@@ -45,9 +79,10 @@ EquationClassique* EquationClassique::derivee() {
  * Utilisation : eq.simplifier();
  */
 void EquationClassique::simplifier() {
-    if (m_racine) {
-        m_racine = m_racine->simplifier();
-    }
+    m_racine = m_racine->simplifier();
+    m_programme.reset(); // le programme compilé correspondait à l'ancienne expression
+    m_evaluations = 0;
+    m_ponctuelCompile = false;
 }
 
 /*
@@ -56,36 +91,36 @@ void EquationClassique::simplifier() {
  * Utilisation : eq.afficher();
  */
 void EquationClassique::afficher() const {
-    if (m_racine) {
-        m_racine->afficher(std::cout);
-        std::cout << " = 0" << std::endl;
-    } else {
-        std::cout << "0 = 0" << std::endl;
-    }
+    m_racine->afficher(std::cout);
+    std::cout << " = 0" << std::endl;
 }
 
-EquationClassique* EquationClassique::integrer() const {
-    if (m_racine) {
-        ExprPtr intFormelle = m_racine->integrer()->simplifier();
-        return new EquationClassique(intFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : integrer
+ * Description : Calcule une primitive symbolique simplifiée (IntegraleNonEvaluee si aucune
+ *               règle ne s'applique).
+ * Utilisation : EquationClassique F = eq.integrer();
+ */
+EquationClassique EquationClassique::integrer() const {
+    return EquationClassique(m_racine->integrer()->simplifier());
 }
 
-EquationClassique* EquationClassique::limite(double x0) const {
-    if (m_racine) {
-        ExprPtr limFormelle = m_racine->limite(x0)->simplifier();
-        return new EquationClassique(limFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : limite
+ * Description : Calcule la limite en x0 (LimiteNonEvaluee si elle n'est pas déterminée).
+ * Utilisation : EquationClassique l = eq.limite(0.0);
+ */
+EquationClassique EquationClassique::limite(double x0) const {
+    return EquationClassique(m_racine->limite(x0)->simplifier());
 }
 
-EquationClassique* EquationClassique::DL(double x0, int ordre) const {
-    if (m_racine) {
-        ExprPtr dlFormelle = m_racine->DL(x0, ordre);
-        return new EquationClassique(dlFormelle);
-    }
-    return new EquationClassique(cst(0.0));
+/*
+ * Nom : DL
+ * Description : Développement limité de Taylor en x0 à l'ordre donné.
+ * Utilisation : EquationClassique dl = eq.DL(0.0, 3);
+ */
+EquationClassique EquationClassique::DL(double x0, int ordre) const {
+    return EquationClassique(m_racine->DL(x0, ordre));
 }
 
 void EquationClassique::echantillonnageAdaptatif(double x1, double y1, double x2, double y2, std::vector<std::pair<double, double>>& pts, double tolerance, int depth) const {
@@ -108,7 +143,7 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
     // Découpage initial grossier (10 segments) pour éviter de rater les grandes variations
     int segments = 10;
     double pas = (xMax - xMin) / segments;
-    
+
     double currX = xMin;
     double currY = this->eval(currX);
     points.push_back({currX, currY});
@@ -116,13 +151,23 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
     for (int i = 1; i <= segments; ++i) {
         double nextX = xMin + i * pas;
         double nextY = this->eval(nextX);
-        
+
         echantillonnageAdaptatif(currX, currY, nextX, nextY, points, tolerance, 0);
         points.push_back({nextX, nextY});
-        
+
         currX = nextX;
         currY = nextY;
     }
-    
+
     return points;
 }
+
+Solutions EquationClassique::resoudre() const { return symalgo::resoudre(m_racine); }
+
+Solutions EquationClassique::resoudre(double a, double b) const { return resoudreSurIntervalle(m_racine, a, b); }
+
+EquationClassique EquationClassique::developper() const { return EquationClassique(symalgo::developper(m_racine)); }
+
+EquationClassique EquationClassique::factoriser() const { return EquationClassique(symalgo::factoriser(m_racine)); }
+
+} // namespace symalgo

@@ -6,4 +6,6 @@ bin/
 .clangd
 compile_commands.json
 .vscode/
-/.agents
+.agents/
+.cache/
+vendor/
