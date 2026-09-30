@@ -107,6 +107,33 @@ TEST_CASE(equation_expression_nulle) {
     CHECK_THROWS(EquationClassique(nullptr), std::invalid_argument);
 }
 
+TEST_CASE(types_des_noeuds) {
+    const ExprPtr x = var("x");
+    CHECK(comme<Constante>(cst(1.0)) != nullptr);
+    CHECK(comme<Fraction>(frac(1, 3)) != nullptr);
+    CHECK(comme<Variable>(x) != nullptr);
+    CHECK(comme<Parametre>(param("C")) != nullptr);
+    CHECK(comme<Addition>(x + x) != nullptr);
+    CHECK(comme<Soustraction>(x - x) != nullptr);
+    CHECK(comme<Multiplication>(x * x) != nullptr);
+    CHECK(comme<Division>(x / x) != nullptr);
+    CHECK(comme<Puissance>(ast_pow(x, 2.0)) != nullptr);
+    CHECK(comme<Sinus>(ast_sin(x)) != nullptr);
+    CHECK(comme<Cosinus>(ast_cos(x)) != nullptr);
+    CHECK(comme<Tangente>(ast_tan(x)) != nullptr);
+    CHECK(comme<Exponentielle>(ast_exp(x)) != nullptr);
+    CHECK(comme<Logarithme>(ast_ln(x)) != nullptr);
+    // Groupes
+    CHECK(comme<OperateurBinaire>(x * x) != nullptr);
+    CHECK(comme<OperateurBinaire>(ast_sin(x)) == nullptr);
+    CHECK(comme<FonctionUnaire>(ast_ln(x)) != nullptr);
+    CHECK(comme<FonctionUnaire>(x) == nullptr);
+    // Mauvais type
+    CHECK(comme<Sinus>(ast_cos(x)) == nullptr);
+    CHECK(comme<Constante>(frac(1, 3)) == nullptr);
+    CHECK(comme<Sinus>(ExprPtr()) == nullptr);
+}
+
 TEST_CASE(fraction_dans_expression) {
     EquationClassique eq(frac(2, 6) * X);
     CHECK_NEAR(eq.eval(3.0), 1.0, 1e-15);

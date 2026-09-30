@@ -20,7 +20,7 @@ namespace {
  * Utilisation : ExprPtr c, u; extraireCoefficient(expr, c, u);
  */
 void extraireCoefficient(const ExprPtr& e, ExprPtr& coeff, ExprPtr& u) {
-    if (const Multiplication* m = dynamic_cast<const Multiplication*>(e.get())) {
+    if (const Multiplication* m = comme<Multiplication>(e.get())) {
         if (m->m_gauche->estConstante()) {
             coeff = m->m_gauche;
             u = m->m_droite;
@@ -41,7 +41,7 @@ bool estValeur(const ExprPtr& e, double v) {
     return e->estConstante() && e->getValeurConstante() == v;
 }
 
-bool estFraction(const ExprPtr& e) { return dynamic_cast<const Fraction*>(e.get()) != nullptr; }
+bool estFraction(const ExprPtr& e) { return comme<Fraction>(e.get()) != nullptr; }
 
 /*
  * Nom : commeRationnel
@@ -49,12 +49,12 @@ bool estFraction(const ExprPtr& e) { return dynamic_cast<const Fraction*>(e.get(
  *               une Fraction, ou une Constante entière (|v| <= 2^53).
  */
 bool commeRationnel(const ExprPtr& e, int64_t& n, int64_t& d) {
-    if (const Fraction* f = dynamic_cast<const Fraction*>(e.get())) {
+    if (const Fraction* f = comme<Fraction>(e.get())) {
         n = f->getNum();
         d = f->getDen();
         return true;
     }
-    if (const Constante* c = dynamic_cast<const Constante*>(e.get())) {
+    if (const Constante* c = comme<Constante>(e.get())) {
         const double v = c->getValeurConstante();
         if (std::floor(v) == v && std::abs(v) <= 9007199254740992.0) {
             n = static_cast<int64_t>(v);
@@ -105,7 +105,7 @@ ExprPtr plierConstantes(const ExprPtr& g, const ExprPtr& d, char op) {
 
 // Écrit e = base^exposant (u seul vaut u^1)
 void baseEtExposant(const ExprPtr& e, ExprPtr& base, ExprPtr& exposant) {
-    if (const Puissance* p = dynamic_cast<const Puissance*>(e.get())) {
+    if (const Puissance* p = comme<Puissance>(e.get())) {
         base = p->m_gauche;
         exposant = p->m_droite;
         return;
@@ -128,17 +128,17 @@ ExprPtr combinerProduit(ExprPtr g, ExprPtr d) {
         if (d->estConstante()) return plierConstantes(g, d, '*');
         if (estValeur(g, 0.0)) return cst(0.0);
         if (estValeur(g, 1.0)) return d;
-        const Multiplication* m = dynamic_cast<const Multiplication*>(d.get());
+        const Multiplication* m = comme<Multiplication>(d.get());
         if (m && m->m_gauche->estConstante()) {
             return combinerProduit(plierConstantes(g, m->m_gauche, '*'), m->m_droite);
         }
         return fabriquer<Multiplication>(g, d);
     }
     // Les constantes remontent à gauche : u * (c * v) = c * (u * v)
-    if (const Multiplication* m = dynamic_cast<const Multiplication*>(d.get()); m && m->m_gauche->estConstante()) {
+    if (const Multiplication* m = comme<Multiplication>(d.get()); m && m->m_gauche->estConstante()) {
         return combinerProduit(m->m_gauche, combinerProduit(g, m->m_droite));
     }
-    if (const Multiplication* m = dynamic_cast<const Multiplication*>(g.get()); m && m->m_gauche->estConstante()) {
+    if (const Multiplication* m = comme<Multiplication>(g.get()); m && m->m_gauche->estConstante()) {
         return combinerProduit(m->m_gauche, combinerProduit(m->m_droite, d));
     }
     ExprPtr bg, eg, bd, ed;
@@ -222,9 +222,9 @@ enum class GenreLimite { Nombre, Symbolique, NonEvaluee };
  *               dans v), expression symbolique (paramètres) ou limite non déterminée.
  */
 GenreLimite analyserLimite(const ExprPtr& limite, double& v) {
-    if (dynamic_cast<const LimiteNonEvaluee*>(limite.get())) return GenreLimite::NonEvaluee;
+    if (comme<LimiteNonEvaluee>(limite.get())) return GenreLimite::NonEvaluee;
     const ExprPtr s = limite->simplifier();
-    if (dynamic_cast<const LimiteNonEvaluee*>(s.get())) return GenreLimite::NonEvaluee;
+    if (comme<LimiteNonEvaluee>(s.get())) return GenreLimite::NonEvaluee;
     if (s->estConstante()) {
         v = s->getValeurConstante();
         return std::isnan(v) ? GenreLimite::NonEvaluee : GenreLimite::Nombre;
@@ -290,12 +290,12 @@ ExprPtr limiteUnaire(const ExprPtr& argument, double a,
  *               renvoie vrai et écrit son numérateur et son dénominateur.
  */
 bool commeQuotient(const ExprPtr& e, ExprPtr& num, ExprPtr& den) {
-    if (const Division* d = dynamic_cast<const Division*>(e.get())) {
+    if (const Division* d = comme<Division>(e.get())) {
         num = d->m_gauche;
         den = d->m_droite;
         return true;
     }
-    const Puissance* p = dynamic_cast<const Puissance*>(e.get());
+    const Puissance* p = comme<Puissance>(e.get());
     if (p && !p->m_droite->contientVariable()) {
         const ExprPtr n = p->m_droite->simplifier();
         if (n->estConstante() && n->getValeurConstante() < 0.0) {
@@ -364,7 +364,7 @@ ExprPtr ASTNode::limiteNonEvaluee(double a) const {
  * Description : Constructeur de constante qui stocke la valeur passée.
  * Utilisation : Constante c(3.14);
  */
-Constante::Constante(CleFabrique, double valeur) : m_valeur(valeur) {}
+Constante::Constante(CleFabrique, double valeur) : ASTNode(TypeNoeud::Constante), m_valeur(valeur) {}
 
 /*
  * Nom : eval
@@ -405,7 +405,7 @@ bool Constante::estEgal(const ASTNode& autre) const {
 
 // ============== FRACTION ==================
 
-Fraction::Fraction(CleFabrique, int64_t num, int64_t den) {
+Fraction::Fraction(CleFabrique, int64_t num, int64_t den) : ASTNode(TypeNoeud::Fraction) {
     if (den == 0) {
         throw std::invalid_argument("Denominateur nul dans une Fraction");
     }
@@ -431,7 +431,7 @@ void Fraction::afficher(std::ostream& os) const {
 }
 
 bool Fraction::estEgal(const ASTNode& autre) const {
-    if (const Fraction* f = dynamic_cast<const Fraction*>(&autre)) {
+    if (const Fraction* f = comme<Fraction>(&autre)) {
         return m_num == f->m_num && m_den == f->m_den;
     }
     if (autre.estConstante()) {
@@ -450,7 +450,7 @@ ExprPtr Fraction::calculerLimite(double /*a*/) const { return clone(); }
  * Description : Constructeur de variable qui l'initialise avec le nom donné.
  * Utilisation : Variable v("t");
  */
-Variable::Variable(CleFabrique, const std::string& nom) : m_nom(nom) {}
+Variable::Variable(CleFabrique, const std::string& nom) : ASTNode(TypeNoeud::Variable), m_nom(nom) {}
 
 /*
  * Nom : eval
@@ -486,13 +486,13 @@ void Variable::afficher(std::ostream& os) const { os << m_nom; }
  * Utilisation : bool eq = v.estEgal(autre);
  */
 bool Variable::estEgal(const ASTNode& autre) const {
-    const Variable* v = dynamic_cast<const Variable*>(&autre);
+    const Variable* v = comme<Variable>(&autre);
     return v != nullptr && v->m_nom == m_nom;
 }
 
 // ============== PARAMETRE ==================
 
-Parametre::Parametre(CleFabrique, const std::string& nom) : m_nom(nom) {}
+Parametre::Parametre(CleFabrique, const std::string& nom) : ASTNode(TypeNoeud::Parametre), m_nom(nom) {}
 
 double Parametre::eval(double) const {
     throw std::logic_error("Impossible d'evaluer le parametre symbolique '" + m_nom +
@@ -506,7 +506,7 @@ ExprPtr Parametre::simplifier() const { return clone(); }
 void Parametre::afficher(std::ostream& os) const { os << m_nom; }
 
 bool Parametre::estEgal(const ASTNode& autre) const {
-    const Parametre* p = dynamic_cast<const Parametre*>(&autre);
+    const Parametre* p = comme<Parametre>(&autre);
     return p != nullptr && p->m_nom == m_nom;
 }
 
@@ -521,7 +521,8 @@ ExprPtr Parametre::calculerLimite(double /*a*/) const { return clone(); }
  * Description : Initialise les sous-arbres gauche et droite d'un opérateur.
  * Utilisation : Appelé par les classes dérivées.
  */
-OperateurBinaire::OperateurBinaire(ExprPtr gauche, ExprPtr droite) : m_gauche(gauche), m_droite(droite) {}
+OperateurBinaire::OperateurBinaire(TypeNoeud type, ExprPtr gauche, ExprPtr droite)
+    : ASTNode(type), m_gauche(std::move(gauche)), m_droite(std::move(droite)) {}
 
 // ============== ADDITION ==================
 
@@ -530,7 +531,7 @@ OperateurBinaire::OperateurBinaire(ExprPtr gauche, ExprPtr droite) : m_gauche(ga
  * Description : Constructeur de l'addition.
  * Utilisation : Addition add(gauche, droite);
  */
-Addition::Addition(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Addition::Addition(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(TypeNoeud::Addition, gauche, droite) {}
 
 /*
  * Nom : eval
@@ -582,7 +583,7 @@ void Addition::afficher(std::ostream& os) const {
  * Utilisation : bool eq = add.estEgal(autre);
  */
 bool Addition::estEgal(const ASTNode& autre) const {
-    const Addition* a = dynamic_cast<const Addition*>(&autre);
+    const Addition* a = comme<Addition>(&autre);
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
            (m_gauche->estEgal(*(a->m_droite)) && m_droite->estEgal(*(a->m_gauche)));
@@ -595,7 +596,7 @@ bool Addition::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la soustraction.
  * Utilisation : Soustraction sub(gauche, droite);
  */
-Soustraction::Soustraction(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Soustraction::Soustraction(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(TypeNoeud::Soustraction, gauche, droite) {}
 
 /*
  * Nom : eval
@@ -647,7 +648,7 @@ void Soustraction::afficher(std::ostream& os) const {
  * Utilisation : bool eq = sub.estEgal(autre);
  */
 bool Soustraction::estEgal(const ASTNode& autre) const {
-    const Soustraction* a = dynamic_cast<const Soustraction*>(&autre);
+    const Soustraction* a = comme<Soustraction>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -658,7 +659,7 @@ bool Soustraction::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la multiplication.
  * Utilisation : Multiplication mul(gauche, droite);
  */
-Multiplication::Multiplication(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Multiplication::Multiplication(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(TypeNoeud::Multiplication, gauche, droite) {}
 
 /*
  * Nom : eval
@@ -700,7 +701,7 @@ void Multiplication::afficher(std::ostream& os) const {
  * Utilisation : bool eq = mul.estEgal(autre);
  */
 bool Multiplication::estEgal(const ASTNode& autre) const {
-    const Multiplication* a = dynamic_cast<const Multiplication*>(&autre);
+    const Multiplication* a = comme<Multiplication>(&autre);
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
            (m_gauche->estEgal(*(a->m_droite)) && m_droite->estEgal(*(a->m_gauche)));
@@ -713,7 +714,7 @@ bool Multiplication::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la division.
  * Utilisation : Division div(gauche, droite);
  */
-Division::Division(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Division::Division(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(TypeNoeud::Division, gauche, droite) {}
 
 /*
  * Nom : eval
@@ -746,7 +747,7 @@ ExprPtr Division::simplifier() const {
         if (g->estConstante()) return plierConstantes(g, d, '/');
         if (estValeur(d, 1.0)) return g;
         // (c * u) / k = (c/k) * u
-        const Multiplication* m = dynamic_cast<const Multiplication*>(g.get());
+        const Multiplication* m = comme<Multiplication>(g.get());
         if (m && m->m_gauche->estConstante()) {
             return combinerProduit(plierConstantes(m->m_gauche, d, '/'), m->m_droite);
         }
@@ -772,7 +773,7 @@ void Division::afficher(std::ostream& os) const {
  * Utilisation : bool eq = div.estEgal(autre);
  */
 bool Division::estEgal(const ASTNode& autre) const {
-    const Division* a = dynamic_cast<const Division*>(&autre);
+    const Division* a = comme<Division>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -783,7 +784,7 @@ bool Division::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la puissance (base^exposant).
  * Utilisation : Puissance p(base, exposant);
  */
-Puissance::Puissance(CleFabrique, ExprPtr base, ExprPtr exposant) : OperateurBinaire(base, exposant) {}
+Puissance::Puissance(CleFabrique, ExprPtr base, ExprPtr exposant) : OperateurBinaire(TypeNoeud::Puissance, base, exposant) {}
 
 /*
  * Nom : eval
@@ -837,7 +838,7 @@ void Puissance::afficher(std::ostream& os) const {
  * Utilisation : bool eq = p.estEgal(autre);
  */
 bool Puissance::estEgal(const ASTNode& autre) const {
-    const Puissance* a = dynamic_cast<const Puissance*>(&autre);
+    const Puissance* a = comme<Puissance>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
 
@@ -848,7 +849,7 @@ bool Puissance::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de base des fonctions mathématiques unaires initialisant l'argument.
  * Utilisation : Appelé par les constructeurs des classes filles.
  */
-FonctionUnaire::FonctionUnaire(ExprPtr arg) : m_argument(arg) {}
+FonctionUnaire::FonctionUnaire(TypeNoeud type, ExprPtr arg) : ASTNode(type), m_argument(std::move(arg)) {}
 
 // ============== SINUS ==================
 
@@ -857,7 +858,7 @@ FonctionUnaire::FonctionUnaire(ExprPtr arg) : m_argument(arg) {}
  * Description : Constructeur de la fonction sinus avec l'argument.
  * Utilisation : Sinus s(expr);
  */
-Sinus::Sinus(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
+Sinus::Sinus(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Sinus, arg) {}
 
 /*
  * Nom : eval
@@ -899,7 +900,7 @@ void Sinus::afficher(std::ostream& os) const {
  * Utilisation : bool eq = s.estEgal(autre);
  */
 bool Sinus::estEgal(const ASTNode& autre) const {
-    const Sinus* a = dynamic_cast<const Sinus*>(&autre);
+    const Sinus* a = comme<Sinus>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -910,7 +911,7 @@ bool Sinus::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la fonction cosinus avec l'argument.
  * Utilisation : Cosinus c(expr);
  */
-Cosinus::Cosinus(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
+Cosinus::Cosinus(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Cosinus, arg) {}
 
 /*
  * Nom : eval
@@ -952,13 +953,13 @@ void Cosinus::afficher(std::ostream& os) const {
  * Utilisation : bool eq = c.estEgal(autre);
  */
 bool Cosinus::estEgal(const ASTNode& autre) const {
-    const Cosinus* a = dynamic_cast<const Cosinus*>(&autre);
+    const Cosinus* a = comme<Cosinus>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
 // ============== TANGENTE ==================
 
-Tangente::Tangente(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
+Tangente::Tangente(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Tangente, arg) {}
 
 double Tangente::eval(double x) const { return std::tan(m_argument->eval(x)); }
 
@@ -979,7 +980,7 @@ void Tangente::afficher(std::ostream& os) const {
 }
 
 bool Tangente::estEgal(const ASTNode& autre) const {
-    const Tangente* a = dynamic_cast<const Tangente*>(&autre);
+    const Tangente* a = comme<Tangente>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -1180,21 +1181,21 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
         w[0] = e.getValeurConstante();
         return true;
     }
-    if (dynamic_cast<const Variable*>(&e)) {
+    if (comme<Variable>(&e)) {
         w[0] = a;
         if (n >= 1) w[1] = 1.0;
         return true;
     }
-    if (const OperateurBinaire* op = dynamic_cast<const OperateurBinaire*>(&e)) {
+    if (const OperateurBinaire* op = comme<OperateurBinaire>(&e)) {
         Serie u, v;
         if (!serieTaylor(*op->m_gauche, a, n, u) || !serieTaylor(*op->m_droite, a, n, v)) return false;
-        if (dynamic_cast<const Addition*>(op)) {
+        if (comme<Addition>(op)) {
             for (size_t k = 0; k < taille; ++k) w[k] = u[k] + v[k];
-        } else if (dynamic_cast<const Soustraction*>(op)) {
+        } else if (comme<Soustraction>(op)) {
             for (size_t k = 0; k < taille; ++k) w[k] = u[k] - v[k];
-        } else if (dynamic_cast<const Multiplication*>(op)) {
+        } else if (comme<Multiplication>(op)) {
             w = produitSeries(u, v);
-        } else if (dynamic_cast<const Division*>(op)) {
+        } else if (comme<Division>(op)) {
             // q = u / v : q_k = (u_k - sum_{j>=1} v_j q_{k-j}) / v_0
             if (v[0] == 0.0) return false;
             for (size_t k = 0; k < taille; ++k) {
@@ -1202,7 +1203,7 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
                 for (size_t j = 1; j <= k; ++j) somme -= v[j] * w[k - j];
                 w[k] = somme / v[0];
             }
-        } else if (dynamic_cast<const Puissance*>(op)) {
+        } else if (comme<Puissance>(op)) {
             if (op->m_droite->contientVariable()) {
                 // u^v = exp(v ln u), défini pour u(a) > 0
                 if (u[0] <= 0.0) return false;
@@ -1237,10 +1238,10 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
         }
         return true;
     }
-    if (const FonctionUnaire* f = dynamic_cast<const FonctionUnaire*>(&e)) {
+    if (const FonctionUnaire* f = comme<FonctionUnaire>(&e)) {
         Serie u;
         if (!serieTaylor(*f->m_argument, a, n, u)) return false;
-        if (dynamic_cast<const Exponentielle*>(f)) {
+        if (comme<Exponentielle>(f)) {
             // w' = u' w : k w_k = sum_{j=1..k} j u_j w_{k-j}
             w[0] = std::exp(u[0]);
             for (size_t k = 1; k < taille; ++k) {
@@ -1250,7 +1251,7 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
             }
             return true;
         }
-        if (dynamic_cast<const Logarithme*>(f)) {
+        if (comme<Logarithme>(f)) {
             // w' u = u' : k u_0 w_k = k u_k - sum_{j=1..k-1} j w_j u_{k-j}
             if (u[0] <= 0.0) return false;
             w[0] = std::log(u[0]);
@@ -1274,11 +1275,11 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
             sinus[k] = ss / double(k);
             cosinus[k] = sc / double(k);
         }
-        if (dynamic_cast<const Sinus*>(f)) {
+        if (comme<Sinus>(f)) {
             w = sinus;
-        } else if (dynamic_cast<const Cosinus*>(f)) {
+        } else if (comme<Cosinus>(f)) {
             w = cosinus;
-        } else if (dynamic_cast<const Tangente*>(f)) {
+        } else if (comme<Tangente>(f)) {
             if (std::abs(cosinus[0]) < 1e-15) return false; // pôle de tan
             for (size_t k = 0; k < taille; ++k) {
                 double somme = sinus[k];
@@ -1435,7 +1436,7 @@ ExprPtr Division::primitive() const {
     if (!m_droite->contientVariable()) return m_gauche->integrer() / m_droite;
     if (!m_gauche->contientVariable()) {
         // c / v^n = c * v^(-n), puis règle des puissances
-        const Puissance* p = dynamic_cast<const Puissance*>(m_droite.get());
+        const Puissance* p = comme<Puissance>(m_droite.get());
         if (p && !p->m_droite->contientVariable()) {
             return m_gauche * ast_pow(p->m_gauche, cst(-1.0) * p->m_droite)->integrer();
         }
@@ -1561,7 +1562,7 @@ ExprPtr Cosinus::calculerLimite(double a) const {
 
 // ============== EXPONENTIELLE ==================
 
-Exponentielle::Exponentielle(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
+Exponentielle::Exponentielle(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Exponentielle, arg) {}
 
 double Exponentielle::eval(double x) const { return std::exp(m_argument->eval(x)); }
 
@@ -1583,7 +1584,7 @@ void Exponentielle::afficher(std::ostream& os) const {
 }
 
 bool Exponentielle::estEgal(const ASTNode& autre) const {
-    const Exponentielle* a = dynamic_cast<const Exponentielle*>(&autre);
+    const Exponentielle* a = comme<Exponentielle>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -1605,7 +1606,7 @@ ExprPtr ast_exp(ExprPtr arg) {
 
 // ============== LOGARITHME ==================
 
-Logarithme::Logarithme(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
+Logarithme::Logarithme(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Logarithme, arg) {}
 
 double Logarithme::eval(double x) const { return std::log(m_argument->eval(x)); }
 
@@ -1624,7 +1625,7 @@ void Logarithme::afficher(std::ostream& os) const {
 }
 
 bool Logarithme::estEgal(const ASTNode& autre) const {
-    const Logarithme* a = dynamic_cast<const Logarithme*>(&autre);
+    const Logarithme* a = comme<Logarithme>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
 
@@ -1650,7 +1651,7 @@ ExprPtr ast_ln(ExprPtr arg) {
 
 // ============== INTEGRALE NON EVALUEE ==================
 
-IntegraleNonEvaluee::IntegraleNonEvaluee(CleFabrique, ExprPtr integrande) : m_integrande(std::move(integrande)) {}
+IntegraleNonEvaluee::IntegraleNonEvaluee(CleFabrique, ExprPtr integrande) : ASTNode(TypeNoeud::IntegraleNonEvaluee), m_integrande(std::move(integrande)) {}
 
 double IntegraleNonEvaluee::eval(double) const {
     throw std::logic_error("Impossible d'evaluer une primitive non calculee symboliquement");
@@ -1668,7 +1669,7 @@ void IntegraleNonEvaluee::afficher(std::ostream& os) const {
 }
 
 bool IntegraleNonEvaluee::estEgal(const ASTNode& autre) const {
-    const IntegraleNonEvaluee* i = dynamic_cast<const IntegraleNonEvaluee*>(&autre);
+    const IntegraleNonEvaluee* i = comme<IntegraleNonEvaluee>(&autre);
     return i && m_integrande->estEgal(*(i->m_integrande));
 }
 
@@ -1679,7 +1680,7 @@ ExprPtr IntegraleNonEvaluee::calculerLimite(double a) const { return limiteNonEv
 // ============== LIMITE NON EVALUEE ==================
 
 LimiteNonEvaluee::LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point)
-    : m_expression(std::move(expression)), m_point(point) {}
+    : ASTNode(TypeNoeud::LimiteNonEvaluee), m_expression(std::move(expression)), m_point(point) {}
 
 double LimiteNonEvaluee::eval(double) const {
     throw std::logic_error("Impossible d'evaluer une limite non determinee");
@@ -1694,7 +1695,7 @@ void LimiteNonEvaluee::afficher(std::ostream& os) const {
 }
 
 bool LimiteNonEvaluee::estEgal(const ASTNode& autre) const {
-    const LimiteNonEvaluee* l = dynamic_cast<const LimiteNonEvaluee*>(&autre);
+    const LimiteNonEvaluee* l = comme<LimiteNonEvaluee>(&autre);
     return l && l->m_point == m_point && m_expression->estEgal(*(l->m_expression));
 }
 

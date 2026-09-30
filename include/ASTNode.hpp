@@ -12,6 +12,34 @@ namespace symalgo {
 class ASTNode;
 
 /*
+ * Nom : TypeNoeud
+ * Description : Type concret d'un noeud, stocké sur un octet. Permet l'aiguillage par
+ *               switch et les conversions typées sans RTTI (voir comme<T>). Les opérateurs
+ *               binaires et les fonctions unaires occupent des plages contiguës.
+ */
+enum class TypeNoeud : std::uint8_t {
+    Constante,
+    Fraction,
+    Variable,
+    Parametre,
+    // Opérateurs binaires
+    Addition,
+    Soustraction,
+    Multiplication,
+    Division,
+    Puissance,
+    // Fonctions unaires
+    Sinus,
+    Cosinus,
+    Tangente,
+    Exponentielle,
+    Logarithme,
+    // Noeuds non évalués
+    IntegraleNonEvaluee,
+    LimiteNonEvaluee,
+};
+
+/*
  * ExprPtr : pointeur partagé vers un noeud immuable de l'AST (compteur intrusif, voir Ref.hpp).
  */
 using ExprPtr = Ref<ASTNode>;
@@ -41,6 +69,13 @@ ExprPtr fabriquer(Args&&... args) {
 // Classe abstraite de base pour tous les noeuds de l'arbre
 class ASTNode : public ObjetCompte {
 public:
+    /*
+     * Nom : type
+     * Description : Type concret du noeud.
+     * Utilisation : if (noeud->type() == TypeNoeud::Sinus) { ... }
+     */
+    TypeNoeud type() const { return m_type; }
+
     /*
      * Nom : ~ASTNode
      * Description : Destructeur virtuel par défaut de la classe ASTNode.
@@ -139,6 +174,8 @@ public:
     virtual double getValeurConstante() const { return 0.0; }
 
 protected:
+    explicit ASTNode(TypeNoeud type) : m_type(type) {}
+
     /*
      * Nom : primitive
      * Description : Règles d'intégration propres au noeud, appelées par integrer()
@@ -163,6 +200,9 @@ protected:
      * Description : Renvoie le noeud LimiteNonEvaluee portant sur ce noeud au point a.
      */
     ExprPtr limiteNonEvaluee(double a) const;
+
+private:
+    TypeNoeud m_type;
 };
 
 /*
@@ -172,13 +212,21 @@ protected:
  * Utilisation : if (const Sinus* s = comme<Sinus>(expr)) { ... s->m_argument ... }
  */
 template <class T>
-const T* comme(const ExprPtr& e) { return dynamic_cast<const T*>(e.get()); }
+const T* comme(const ASTNode* n) {
+    return n && T::correspond(n->type()) ? static_cast<const T*>(n) : nullptr;
+}
+
+template <class T>
+const T* comme(const ExprPtr& e) { return comme<T>(e.get()); }
 
 // --- Noeuds Terminaux ---
 
 class Constante : public ASTNode {
     double m_valeur;
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Constante;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Constante
      * Description : Constructeur initialisant la constante avec sa valeur numérique.
@@ -254,6 +302,9 @@ private:
     double m_valeur_eval; // Cache pour eval()
 
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Fraction;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     Fraction(CleFabrique, int64_t num, int64_t den);
 
     double eval(double x) const override;
@@ -275,6 +326,9 @@ protected:
 class Variable : public ASTNode {
     std::string m_nom;
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Variable;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Variable
      * Description : Constructeur d'une variable mathématique avec un nom (par défaut "x").
@@ -336,6 +390,9 @@ protected:
 class Parametre : public ASTNode {
     std::string m_nom;
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Parametre;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Parametre
      * Description : Construit une constante symbolique nommée.
@@ -378,6 +435,10 @@ protected:
 
 class OperateurBinaire : public ASTNode {
 public:
+    static constexpr bool correspond(TypeNoeud t) {
+        return t >= TypeNoeud::Addition && t <= TypeNoeud::Puissance;
+    }
+
     ExprPtr m_gauche;
     ExprPtr m_droite;
 
@@ -386,7 +447,7 @@ public:
      * Description : Constructeur de base pour tous les opérateurs prenant deux opérandes.
      * Utilisation : Appelé par les constructeurs des classes filles.
      */
-    OperateurBinaire(ExprPtr gauche, ExprPtr droite);
+    OperateurBinaire(TypeNoeud type, ExprPtr gauche, ExprPtr droite);
 
     bool contientVariable() const override {
         return m_gauche->contientVariable() || m_droite->contientVariable();
@@ -395,6 +456,9 @@ public:
 
 class Addition : public OperateurBinaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Addition;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Addition
      * Description : Construit un noeud d'addition de deux expressions.
@@ -445,6 +509,9 @@ protected:
 
 class Soustraction : public OperateurBinaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Soustraction;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Soustraction
      * Description : Construit un noeud de soustraction.
@@ -495,6 +562,9 @@ protected:
 
 class Multiplication : public OperateurBinaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Multiplication;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Multiplication
      * Description : Construit un noeud de multiplication de deux expressions.
@@ -545,6 +615,9 @@ protected:
 
 class Division : public OperateurBinaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Division;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Division
      * Description : Construit un noeud de division de deux expressions.
@@ -595,6 +668,9 @@ protected:
 
 class Puissance : public OperateurBinaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Puissance;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Puissance
      * Description : Construit un noeud de puissance (base^exposant).
@@ -647,6 +723,10 @@ protected:
 
 class FonctionUnaire : public ASTNode {
 public:
+    static constexpr bool correspond(TypeNoeud t) {
+        return t >= TypeNoeud::Sinus && t <= TypeNoeud::Logarithme;
+    }
+
     ExprPtr m_argument;
 
     /*
@@ -654,13 +734,16 @@ public:
      * Description : Constructeur de base pour les fonctions mathématiques à un paramètre (ex: sin, cos).
      * Utilisation : Appelé par les constructeurs de Sinus, Cosinus, etc.
      */
-    explicit FonctionUnaire(ExprPtr arg);
+    FonctionUnaire(TypeNoeud type, ExprPtr arg);
 
     bool contientVariable() const override { return m_argument->contientVariable(); }
 };
 
 class Sinus : public FonctionUnaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Sinus;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Sinus
      * Description : Construit un noeud pour la fonction sinus.
@@ -711,6 +794,9 @@ protected:
 
 class Cosinus : public FonctionUnaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Cosinus;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     /*
      * Nom : Cosinus
      * Description : Construit un noeud pour la fonction cosinus.
@@ -761,6 +847,9 @@ protected:
 
 class Tangente : public FonctionUnaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Tangente;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     Tangente(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -775,6 +864,9 @@ protected:
 
 class Exponentielle : public FonctionUnaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Exponentielle;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     Exponentielle(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -790,6 +882,9 @@ protected:
 
 class Logarithme : public FonctionUnaire {
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Logarithme;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     Logarithme(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -816,6 +911,9 @@ protected:
 class IntegraleNonEvaluee : public ASTNode {
     ExprPtr m_integrande;
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::IntegraleNonEvaluee;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     IntegraleNonEvaluee(CleFabrique, ExprPtr integrande);
 
     double eval(double x) const override;
@@ -844,6 +942,9 @@ class LimiteNonEvaluee : public ASTNode {
     ExprPtr m_expression;
     double m_point;
 public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::LimiteNonEvaluee;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+
     LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point);
 
     double eval(double x) const override;
