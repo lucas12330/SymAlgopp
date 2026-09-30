@@ -118,3 +118,24 @@ leur erreur peut atteindre 4 ULP, contre moins d'1 ULP pour la libm scalaire.
 | 10 000 points | 1,31 ms | 0,61 ms | 302 ms |
 
 SymAlgo++ est désormais devant GiNaC sur tous les scénarios mesurés.
+
+## Chantier « lecture depuis du texte »
+
+Branche `feature/lecture-expressions` : `lire()` contre `GiNaC::parser`, sur le même texte.
+Médiane de 3 répétitions.
+
+| Scénario | Première version | Maintenant | GiNaC | Rapport actuel |
+| :--- | ---: | ---: | ---: | :--- |
+| Expression courante (73 caractères) | 63,8 µs · 20,3 Ko | **15,2 µs · 5,9 Ko** | 54,3 µs · 5,3 Ko | **SymAlgo++ ×3,6** |
+| Grande expression (608 caractères, dérivée 6e) | 118 µs · 117 Ko | **108 µs · 54 Ko** | 423 µs · 55 Ko | **SymAlgo++ ×3,9** |
+
+Texte courant : `3*x^4 - 2*x^3 + sin(x)*exp(-x^2/2) + log(x^2 + 1)/(x + 1) - 5/7*atan(2*x)`.
+
+**Deux corrections mesurées** :
+
+* `atan(2*x)` coûtait à lui seul 44 µs : la recherche d'une valeur exacte (`atan(1) = pi/4`)
+  recalculait à chaque appel les sinus et cosinus exacts des angles remarquables. Ces
+  valeurs sont maintenant calculées une fois ; la recherche se réduit à des comparaisons
+  d'adresses (0,38 µs, ×115). Gain valable pour `asin`, `acos` et `atan` partout.
+* Un lexème occupait ~72 octets (nom et nombre déjà convertis) ; il ne désigne plus qu'un
+  morceau du texte (12 octets), converti à l'analyse : mémoire allouée divisée par 2.

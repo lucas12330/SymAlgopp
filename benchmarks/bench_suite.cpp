@@ -14,11 +14,13 @@
 #include <atomic>
 #include <cstdlib>
 #include <new>
+#include <string>
 #include <vector>
 
 #include "ASTNode.hpp"
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
+#include "Lecture.hpp"
 
 using namespace symalgo;
 
@@ -322,7 +324,60 @@ static void BM_GiNaC_Memoire(benchmark::State& state) {
 BENCHMARK(BM_GiNaC_Memoire)->Unit(benchmark::kMicrosecond);
 
 // ============================================================================
-// 7. Équations différentielles : matrice compagnon (SymAlgo++ seul)
+// 7. Lecture depuis du texte : expression courante, puis grande expression
+//    (texte de la dérivée 6e de exp(sin x)·x², environ 1 000 caractères)
+// ============================================================================
+
+const std::string TEXTE_COURANT = "3*x^4 - 2*x^3 + sin(x)*exp(-x^2/2) + log(x^2 + 1)/(x + 1) - 5/7*atan(2*x)";
+
+const std::string& texteGrand() {
+    static const std::string texte = [] {
+        const ExprPtr x = var("x");
+        ExprPtr d = ast_exp(ast_sin(x)) * ast_pow(x, 2.0);
+        for (int k = 0; k < 6; ++k) d = d->derivee();
+        return d->texte();
+    }();
+    return texte;
+}
+
+static void lireSymAlgo(benchmark::State& state, const std::string& texte) {
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        ExprPtr e = lire(texte);
+        benchmark::DoNotOptimize(e);
+    }
+    rapporterAllocations(state, debut);
+    state.counters["caracteres"] = static_cast<double>(texte.size());
+}
+
+static void lireGinac(benchmark::State& state, const std::string& texte) {
+    GiNaC::symbol x("x");
+    GiNaC::symtab table;
+    table["x"] = x;
+    GiNaC::parser lecteur(table);
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        GiNaC::ex e = lecteur(texte);
+        benchmark::DoNotOptimize(e);
+    }
+    rapporterAllocations(state, debut);
+    state.counters["caracteres"] = static_cast<double>(texte.size());
+}
+
+static void BM_SymAlgo_Lecture(benchmark::State& state) { lireSymAlgo(state, TEXTE_COURANT); }
+BENCHMARK(BM_SymAlgo_Lecture);
+
+static void BM_GiNaC_Lecture(benchmark::State& state) { lireGinac(state, TEXTE_COURANT); }
+BENCHMARK(BM_GiNaC_Lecture);
+
+static void BM_SymAlgo_LectureGrande(benchmark::State& state) { lireSymAlgo(state, texteGrand()); }
+BENCHMARK(BM_SymAlgo_LectureGrande);
+
+static void BM_GiNaC_LectureGrande(benchmark::State& state) { lireGinac(state, texteGrand()); }
+BENCHMARK(BM_GiNaC_LectureGrande);
+
+// ============================================================================
+// 8. Équations différentielles : matrice compagnon (SymAlgo++ seul)
 // ============================================================================
 
 static void BM_SymAlgo_EqDiff_MatriceCompagnon(benchmark::State& state) {

@@ -5,8 +5,10 @@
 
 #include "Lecture.hpp"
 
+#include <cstdint>
 #include <cstring>
-#include <utility>
+#include <limits>
+#include <string_view>
 #include <vector>
 
 namespace symalgo {
@@ -29,28 +31,31 @@ std::string message(const std::string& texte, std::size_t position, const std::s
 
 enum class Jeton { Nombre, Identifiant, Plus, Moins, Fois, Divise, Puissance, Exposant, Ouvrante, Fermante, Egal, Fin };
 
+// Un lexème désigne un morceau du texte (12 octets) : les nombres et les noms ne sont
+// convertis qu'à l'analyse syntaxique
 struct Lexeme {
     Jeton type;
-    std::size_t octet;      // position dans le texte
-    std::string texte;      // identifiant
-    Nombre valeur;          // nombre, ou exposant ² ³
+    std::uint32_t octet;     // position dans le texte
+    std::uint32_t longueur;
 };
 
 // Symboles Unicode reconnus (UTF-8) et leur jeton
 struct SymboleUnicode {
     const char* octets;
     Jeton type;
-    long long exposant;
 };
 
+constexpr const char* PI_UNICODE = "\xCF\x80";   // π
+constexpr const char* CARRE = "\xC2\xB2";        // ²
+
 constexpr SymboleUnicode SYMBOLES[] = {
-    {"\xC3\x97", Jeton::Fois, 0},          // ×
-    {"\xC2\xB7", Jeton::Fois, 0},          // ·
-    {"\xC3\xB7", Jeton::Divise, 0},        // ÷
-    {"\xE2\x88\x92", Jeton::Moins, 0},     // −
-    {"\xC2\xB2", Jeton::Exposant, 2},      // ²
-    {"\xC2\xB3", Jeton::Exposant, 3},      // ³
-    {"\xCF\x80", Jeton::Identifiant, 0},   // π (identifiant « pi »)
+    {"\xC3\x97", Jeton::Fois},          // ×
+    {"\xC2\xB7", Jeton::Fois},          // ·
+    {"\xC3\xB7", Jeton::Divise},        // ÷
+    {"\xE2\x88\x92", Jeton::Moins},     // −
+    {CARRE, Jeton::Exposant},
+    {"\xC2\xB3", Jeton::Exposant},      // ³
+    {PI_UNICODE, Jeton::Identifiant},
 };
 
 // Au-delà, 10^exposant n'a plus de sens pour une saisie et coûterait cher en mémoire
@@ -66,6 +71,7 @@ bool suiteIdentifiant(char c) { return debutIdentifiant(c) || estChiffre(c); }
 class Lecteur {
 public:
     Lecteur(const std::string& texte, const OptionsLecture& options) : m_texte(texte), m_options(options) {
+        if (texte.size() >= std::numeric_limits<std::uint32_t>::max()) erreurA(0, "texte trop long");
         decouper();
     }
 
@@ -103,9 +109,14 @@ private:
 
     // ----- Analyse lexicale -----
 
+    void ajouter(Jeton type, std::size_t debut, std::size_t fin) {
+        m_lexemes.push_back({type, static_cast<std::uint32_t>(debut), static_cast<std::uint32_t>(fin - debut)});
+    }
+
     void decouper() {
         std::size_t i = 0;
         const std::size_t n = m_texte.size();
+        m_lexemes.reserve(n / 2 + 2);
         while (i < n) {
             const char c = m_texte[i];
             if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
@@ -114,12 +125,13 @@ private:
             }
             const std::size_t debut = i;
             if (estChiffre(c) || (c == '.' && i + 1 < n && estChiffre(m_texte[i + 1]))) {
-                m_lexemes.push_back({Jeton::Nombre, debut, {}, lireNombre(i)});
+                i = finNombre(i);
+                ajouter(Jeton::Nombre, debut, i);
                 continue;
             }
             if (debutIdentifiant(c)) {
                 while (i < n && suiteIdentifiant(m_texte[i])) ++i;
-                m_lexemes.push_back({Jeton::Identifiant, debut, m_texte.substr(debut, i - debut), {}});
+                ajouter(Jeton::Identifiant, debut, i);
                 continue;
             }
             Jeton type = Jeton::Fin;
@@ -141,59 +153,73 @@ private:
                 default: break;
             }
             if (type != Jeton::Fin) {
-                m_lexemes.push_back({type, debut, {}, {}});
-                ++i;
+                ajouter(type, debut, ++i);
                 continue;
             }
             if (!lireSymbole(i)) erreurA(debut, "caractere inattendu");
         }
-        m_lexemes.push_back({Jeton::Fin, n, {}, {}});
+        ajouter(Jeton::Fin, n, n);
     }
 
     bool lireSymbole(std::size_t& i) {
         for (const SymboleUnicode& s : SYMBOLES) {
             const std::size_t longueur = std::strlen(s.octets);
             if (m_texte.compare(i, longueur, s.octets) != 0) continue;
-            Lexeme l{s.type, i, {}, Nombre(s.exposant)};
-            if (s.type == Jeton::Identifiant) l.texte = "pi";
-            m_lexemes.push_back(std::move(l));
+            ajouter(s.type, i, i + longueur);
             i += longueur;
             return true;
         }
         return false;
     }
 
-    // Nombre décimal exact : chiffres [. chiffres] [e|E [+|-] chiffres]
-    Nombre lireNombre(std::size_t& i) {
-        const std::size_t debut = i, n = m_texte.size();
-        std::string chiffres;
-        long long decimales = 0;
-        while (i < n && estChiffre(m_texte[i])) chiffres += m_texte[i++];
+    // Fin d'un nombre : chiffres [. chiffres] [e|E [+|-] chiffres]. « e » n'introduit un
+    // exposant que s'il est suivi d'un chiffre (« 2e » vaut 2*e)
+    std::size_t finNombre(std::size_t i) const {
+        const std::size_t n = m_texte.size();
+        while (i < n && estChiffre(m_texte[i])) ++i;
         if (i < n && m_texte[i] == '.') {
             ++i;
-            while (i < n && estChiffre(m_texte[i])) {
-                chiffres += m_texte[i++];
-                ++decimales;
-            }
+            while (i < n && estChiffre(m_texte[i])) ++i;
         }
-        long long exposant = 0;
-        // « e » n'introduit un exposant que s'il est suivi d'un chiffre (« 2e » vaut 2*e)
         if (i < n && (m_texte[i] == 'e' || m_texte[i] == 'E')) {
             std::size_t j = i + 1;
-            const bool negatif = j < n && m_texte[j] == '-';
             if (j < n && (m_texte[j] == '+' || m_texte[j] == '-')) ++j;
             if (j < n && estChiffre(m_texte[j])) {
-                while (j < n && estChiffre(m_texte[j])) {
-                    exposant = exposant * 10 + (m_texte[j++] - '0');
-                    if (exposant > EXPOSANT_DECIMAL_MAX) erreurA(debut, "exposant decimal trop grand");
-                }
-                if (negatif) exposant = -exposant;
+                while (j < n && estChiffre(m_texte[j])) ++j;
                 i = j;
             }
         }
+        return i;
+    }
+
+    // Valeur exacte d'un lexème nombre : mantisse entière * 10^(exposant - décimales)
+    Nombre valeurNombre(const Lexeme& l) const {
+        std::size_t i = l.octet;
+        const std::size_t fin = l.octet + l.longueur;
+        std::string chiffres;
+        long long decimales = 0;
+        bool apresPoint = false;
+        for (; i < fin && m_texte[i] != 'e' && m_texte[i] != 'E'; ++i) {
+            if (m_texte[i] == '.') {
+                apresPoint = true;
+                continue;
+            }
+            chiffres += m_texte[i];
+            if (apresPoint) ++decimales;
+        }
+        long long exposant = 0;
+        if (i < fin) {
+            const bool negatif = m_texte[++i] == '-';
+            if (m_texte[i] == '+' || m_texte[i] == '-') ++i;
+            for (; i < fin; ++i) {
+                exposant = exposant * 10 + (m_texte[i] - '0');
+                if (exposant > EXPOSANT_DECIMAL_MAX) erreurA(l.octet, "exposant decimal trop grand");
+            }
+            if (negatif) exposant = -exposant;
+        }
         const long long puissance = exposant - decimales;
         if (puissance > EXPOSANT_DECIMAL_MAX || puissance < -EXPOSANT_DECIMAL_MAX) {
-            erreurA(debut, "nombre trop long");
+            erreurA(l.octet, "nombre trop long");
         }
         return Nombre::depuisTexte(chiffres) * Nombre(10).puissanceEntiere(puissance);
     }
@@ -285,9 +311,9 @@ private:
         ExprPtr base = primaire();
         if (accepter(Jeton::Puissance)) return ast_pow(base, unaire()); // associative à droite
         if (courant().type == Jeton::Exposant) {
-            const Nombre exposant = courant().valeur;
+            const bool carre = m_texte.compare(courant().octet, courant().longueur, CARRE) == 0;
             ++m_indice;
-            return ast_pow(base, nombre(exposant));
+            return ast_pow(base, frac(carre ? 2 : 3));
         }
         return base;
     }
@@ -295,7 +321,7 @@ private:
     ExprPtr primaire() {
         const Lexeme& l = courant();
         switch (l.type) {
-            case Jeton::Nombre: ++m_indice; return nombre(l.valeur);
+            case Jeton::Nombre: ++m_indice; return nombre(valeurNombre(l));
             case Jeton::Identifiant: return identifiant();
             case Jeton::Ouvrante: {
                 Profondeur garde(*this);
@@ -313,11 +339,10 @@ private:
     }
 
     ExprPtr identifiant() {
-        const Lexeme& l = courant();
-        const std::string nom = l.texte;
-        const std::size_t octet = l.octet;
+        const std::size_t octet = courant().octet;
+        const std::string_view nom(m_texte.data() + octet, courant().longueur);
         ++m_indice;
-        if (nom == m_options.variable) return var(nom);
+        if (nom == m_options.variable) return var(m_options.variable);
 
         struct Fonction {
             const char* nom;
@@ -331,7 +356,7 @@ private:
         };
         for (const Fonction& f : FONCTIONS) {
             if (nom != f.nom) continue;
-            if (courant().type != Jeton::Ouvrante) erreur("parenthese ouvrante attendue apres " + nom);
+            if (courant().type != Jeton::Ouvrante) erreur("parenthese ouvrante attendue apres " + std::string(nom));
             Profondeur garde(*this);
             ++m_indice;
             if (courant().type == Jeton::Fermante) erreur("argument attendu");
@@ -339,14 +364,14 @@ private:
             attendre(Jeton::Fermante, "parenthese fermante");
             return f.appliquer(argument);
         }
-        if (nom == "pi") return pi();
+        if (nom == "pi" || nom == PI_UNICODE) return pi();
         if (nom == "e") return ast_exp(frac(1));
         // Un paramètre suivi d'une parenthèse est presque toujours une fonction inconnue
         // (sinh(x), f(x)) : la lire comme un produit donnerait un résultat faux
         if (courant().type == Jeton::Ouvrante && courant().octet == octet + nom.size()) {
-            erreurA(octet, "fonction inconnue : " + nom);
+            erreurA(octet, "fonction inconnue : " + std::string(nom));
         }
-        return param(nom);
+        return param(std::string(nom));
     }
 };
 
