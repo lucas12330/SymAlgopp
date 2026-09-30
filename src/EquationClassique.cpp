@@ -38,16 +38,17 @@ EquationClassique::EquationClassique(const std::string& texte, const OptionsLect
  * Utilisation : double y = eq.eval(x);
  */
 double EquationClassique::eval(double x) const {
-    if (m_racine->plusieursVariables()) {
-        throw std::logic_error("eval(x) : l'expression '" + m_racine->texte() +
-                               "' a plusieurs variables, utiliser eval({{\"x\", ...}, ...})");
-    }
     if (m_ponctuelCompile) return m_programme->evaluer(x);
     if (m_evaluations < SEUIL_COMPILATION && ++m_evaluations == SEUIL_COMPILATION) {
         // Assez d'évaluations pour compiler ; le programme n'est utilisé point par point
         // que si le partage des sous-expressions le rend plus rapide que l'arbre
         m_ponctuelCompile = programme().estValide() && programme().gainPartage() >= GAIN_PARTAGE_MIN;
         if (m_ponctuelCompile) return m_programme->evaluer(x);
+    }
+    // (un programme n'est jamais valide pour plusieurs variables : ce test ne coûte que hors compilation)
+    if (m_racine->plusieursVariables()) {
+        throw std::logic_error("eval(x) : l'expression '" + m_racine->texte() +
+                               "' a plusieurs variables, utiliser eval({{\"x\", ...}, ...})");
     }
     return m_racine->eval(x);
 }

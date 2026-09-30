@@ -117,10 +117,13 @@ private:
 
     void verifierValidite() const;
     // Exécute le programme pour un point ; r doit contenir m_nombreRegistres valeurs
-    void executer(const double* entrees, double* r) const;
+    template <class Entree>
+    void executer(const Entree& entree, double* r) const;
 
     std::vector<Instruction> m_instructions;
     std::vector<std::uint32_t> m_resultats; // registre de chaque sortie
+    std::uint32_t m_premierResultat = 0;    // m_resultats[0], lu par les évaluations à une sortie
+    bool m_scalaire = true;                 // une entrée et une sortie : evaluer(x) est permis
     std::uint32_t m_nombreEntrees = 1;
     std::uint32_t m_nombreRegistres = 0;
     std::string m_erreur; // raison de l'invalidité, vide si le programme est valide

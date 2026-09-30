@@ -173,8 +173,9 @@ public:
 
     /*
      * Nom : eval
-     * Description : Évalue l'expression pour une valeur de la variable (lève std::logic_error
-     *               si elle contient un paramètre ou un noeud non évalué).
+     * Description : Évalue l'expression pour une valeur de son unique variable (lève
+     *               std::logic_error si elle contient un paramètre ou un noeud non évalué ;
+     *               pour plusieurs variables, utiliser evaluer() de Multivariable.hpp).
      * Utilisation : double y = expr->eval(2.0);
      */
     virtual double eval(double x) const = 0;
@@ -379,7 +380,8 @@ private:
 };
 
 /*
- * CLASSE VARIABLE : la variable d'évaluation (quel que soit son nom).
+ * CLASSE VARIABLE : une variable, identifiée par son nom. Une expression à une seule variable
+ * l'évalue en x quel que soit ce nom ; à plusieurs variables, voir Multivariable.hpp.
  */
 class Variable : public ASTNode {
 public:

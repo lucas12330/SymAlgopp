@@ -268,6 +268,8 @@ private:
             m_programme.m_instructions.push_back(ins);
         }
         for (const std::uint32_t resultat : resultats) m_programme.m_resultats.push_back(registre[resultat]);
+        m_programme.m_premierResultat = m_programme.m_resultats.empty() ? 0 : m_programme.m_resultats[0];
+        m_programme.m_scalaire = m_programme.m_nombreEntrees == 1 && m_programme.m_resultats.size() == 1;
         m_programme.m_nombreRegistres = nombreRegistres;
     }
 
@@ -290,12 +292,15 @@ void ProgrammeEvaluation::verifierValidite() const {
     if (!m_erreur.empty()) throw std::logic_error(m_erreur);
 }
 
-void ProgrammeEvaluation::executer(const double* entrees, double* r) const {
+// `entree(i)` donne la valeur de l'entrée i : une valeur unique pour le cas à une variable
+// (gardée dans un registre, plus rapide qu'une lecture indexée), un tableau sinon
+template <class Entree>
+void ProgrammeEvaluation::executer(const Entree& entree, double* r) const {
     for (const Instruction& ins : m_instructions) {
         double& d = r[ins.destination];
         switch (ins.code) {
             case Code::Constante: d = ins.valeur; break;
-            case Code::Variable: d = entrees[ins.entier]; break;
+            case Code::Variable: d = entree(ins.entier); break;
             case Code::Axpy: d = r[ins.a] + ins.valeur * r[ins.b]; break;
             case Code::Echelle: d = ins.valeur * r[ins.a]; break;
             case Code::Produit: d = r[ins.a] * r[ins.b]; break;
@@ -315,7 +320,7 @@ void ProgrammeEvaluation::executer(const double* entrees, double* r) const {
 
 double ProgrammeEvaluation::evaluer(double x) const {
     verifierValidite();
-    if (m_nombreEntrees != 1 || m_resultats.size() != 1) {
+    if (!m_scalaire) {
         throw std::logic_error("evaluer(x) : le programme a plusieurs entrees ou plusieurs sorties, utiliser evaluerEn");
     }
     constexpr std::size_t REGISTRES_SUR_PILE = 64;
@@ -326,8 +331,8 @@ double ProgrammeEvaluation::evaluer(double x) const {
         tas.resize(m_nombreRegistres);
         r = tas.data();
     }
-    executer(&x, r);
-    return r[m_resultats[0]];
+    executer([x](long long) { return x; }, r);
+    return r[m_premierResultat];
 }
 
 void ProgrammeEvaluation::evaluerEn(const double* valeurs, double* sorties) const {
@@ -340,7 +345,7 @@ void ProgrammeEvaluation::evaluerEn(const double* valeurs, double* sorties) cons
         tas.resize(m_nombreRegistres);
         r = tas.data();
     }
-    executer(valeurs, r);
+    executer([valeurs](long long i) { return valeurs[i]; }, r);
     for (std::size_t i = 0; i < m_resultats.size(); ++i) sorties[i] = r[m_resultats[i]];
 }
 
@@ -356,7 +361,7 @@ std::vector<double> ProgrammeEvaluation::evaluerEn(const std::vector<double>& va
 
 void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) const {
     verifierValidite();
-    if (m_nombreEntrees != 1 || m_resultats.size() != 1) {
+    if (!m_scalaire) {
         throw std::logic_error("evaluer(xs) : le programme a plusieurs entrees ou plusieurs sorties, utiliser evaluerEn");
     }
     constexpr std::size_t BLOC = 256;
@@ -425,7 +430,7 @@ void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) c
                     break;
             }
         }
-        const double* resultat = &registres[m_resultats[0] * BLOC];
+        const double* resultat = &registres[m_premierResultat * BLOC];
         std::copy(resultat, resultat + m, ys + debut);
     }
 }
