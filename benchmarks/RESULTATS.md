@@ -83,3 +83,38 @@ exposants, arithmétique exacte), mais le résultat est une forme réduite : la 
 est enfin effective et plus rapide que GiNaC, et deux limites jusque-là non déterminées
 (`x·ln x` et `x^x` en 0) sont résolues grâce à la simplification des quotients.
 Tous les scénarios sont désormais à l'avantage de SymAlgo++.
+
+## Après le chantier « évaluation compilée »
+
+Branche `feature/evaluation-compilee` : compilation en programme linéaire (sous-expressions
+partagées calculées une fois, registres réutilisés), évaluation par blocs vectorisés,
+compilation automatique quand elle est rentable. Médiane de 3 répétitions.
+
+| Scénario | Avant | Maintenant | GiNaC | Rapport actuel |
+| :--- | ---: | ---: | ---: | :--- |
+| Évaluation en un point | 112 ns | 123 ns (arbre, pas de partage) | 30 820 ns | SymAlgo++ ×250 |
+| **Évaluation d'une grande expression** (dérivée 8e) | 3 640 ns | **1 109 ns** | 1 607 µs | **SymAlgo++ ×1 450** |
+| Évaluation sur 10 000 points (point par point) | 1,07 ms | 1,07 ms | 302 ms | SymAlgo++ ×283 |
+| **Évaluation sur 10 000 points (par blocs)** | — | **0,61 ms** | 302 ms | **SymAlgo++ ×494** |
+| Dérivée première | 8,8 µs | 8,7 µs | 28,1 µs | SymAlgo++ ×3,2 |
+| Dérivée 10e | 1,36 ms | 1,38 ms | 7,45 ms | SymAlgo++ ×5,4 |
+| Collecte (100 termes) | 143 µs | 146 µs | 255 µs | SymAlgo++ ×1,7 |
+| Série d'ordre 10 | 4,0 µs | 4,1 µs | 4 784 µs | SymAlgo++ ×1 170 |
+| Mémoire du résultat (dérivée 6e) | 4,2 Ko | 4,2 Ko | 4,9 Ko | SymAlgo++ −14 % |
+
+**Choix mesurés** : le programme compilé n'est utilisé point par point que si le partage
+des sous-expressions le rend rentable (sans partage, son interprétation coûte 5 à 15 %
+de plus que l'arbre). Les fonctions sin/cos/exp ne sont pas vectorisées (libmvec) car
+leur erreur peut atteindre 4 ULP, contre moins d'1 ULP pour la libm scalaire.
+
+## Bilan des quatre chantiers
+
+| Scénario | Référence initiale | Final | GiNaC |
+| :--- | ---: | ---: | ---: |
+| Dérivée 10e | 4 406 ms · 901 Mo | 1,38 ms · 0,56 Mo | 7,45 ms · 0,83 Mo |
+| Mémoire du résultat (dérivée 6e) | 375 Ko | 4,2 Ko | 4,9 Ko |
+| Collecte de 100 termes | non collectés | 8 termes, 146 µs | 255 µs |
+| Grande expression, un point | 3 640 ns (après forme canonique) | 1 109 ns | 1 607 µs |
+| 10 000 points | 1,31 ms | 0,61 ms | 302 ms |
+
+SymAlgo++ est désormais devant GiNaC sur tous les scénarios mesurés.
