@@ -31,7 +31,14 @@ DEMO_BIN = $(BIN_DIR)/demo
 BENCH_SRC = $(wildcard $(BENCH_DIR)/*.cpp)
 BENCH_BIN = $(BIN_DIR)/bench_suite
 
-.PHONY: all clean run_tests bench
+# Compilation instrumentée (AddressSanitizer + UndefinedBehaviorSanitizer)
+SAN_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all -g -O1
+SAN_BUILD_DIR = $(BUILD_DIR)/san
+SAN_BIN_DIR = $(BIN_DIR)/san
+SAN_OBJS = $(patsubst $(SRC_DIR)/%.cpp,$(SAN_BUILD_DIR)/%.o,$(SRCS))
+SAN_TEST_BINS = $(patsubst $(TEST_DIR)/%.cpp,$(SAN_BIN_DIR)/%,$(TEST_SRCS))
+
+.PHONY: all clean run_tests check bench
 
 # Cible par défaut
 all: $(TEST_BINS) $(DEMO_BIN)
@@ -58,6 +65,23 @@ run_tests: $(TEST_BINS)
 		./$$t || exit 1; \
 	done
 
+# Tests sous sanitizers : toute fuite mémoire, lecture hors limites ou
+# comportement indéfini fait échouer la cible
+$(SAN_BUILD_DIR) $(SAN_BIN_DIR):
+	mkdir -p $@
+
+$(SAN_BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(SAN_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(SAN_BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(SAN_OBJS) | $(SAN_BIN_DIR)
+	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) $^ -o $@
+
+check: $(SAN_TEST_BINS)
+	@for t in $(SAN_TEST_BINS); do \
+		printf '\n--- EXECUTION SOUS SANITIZERS DE %s ---\n' "$$t"; \
+		ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1 ./$$t || exit 1; \
+	done
+
 # Règle pour compiler les benchmarks (avec optimisation maximale)
 $(BENCH_BIN): $(BENCH_SRC) $(SRCS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ -lbenchmark -lpthread -lginac -lcln
@@ -70,4 +94,4 @@ bench: $(BENCH_BIN)
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
 
--include $(OBJS:.o=.d) $(TEST_BINS:$(BIN_DIR)/%=$(BIN_DIR)/%.d) $(DEMO_BIN).d
+-include $(OBJS:.o=.d) $(SAN_OBJS:.o=.d) $(TEST_BINS:%=%.d) $(SAN_TEST_BINS:%=%.d) $(DEMO_BIN).d
