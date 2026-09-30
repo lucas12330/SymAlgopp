@@ -824,6 +824,33 @@ const std::vector<Nombre>& anglesRemarquables() {
 
 ExprPtr foisPi(const Nombre& r) { return nombre(r) * pi(); }
 
+// Valeur exacte d'une fonction trigonométrique en r*pi, pour les réciproques exactes
+struct ValeurRemarquable {
+    ExprPtr valeur;
+    Nombre angle;
+};
+
+// sin(r*pi) et tan(r*pi) aux angles remarquables, calculés une seule fois : la recherche
+// d'une réciproque exacte se réduit à des comparaisons d'adresses (hash-consing)
+const std::vector<ValeurRemarquable>& valeursRemarquables(bool tangente) {
+    static const auto construire = [](bool tan) {
+        auto* table = new std::vector<ValeurRemarquable>;
+        for (const Nombre& r : anglesRemarquables()) {
+            ExprPtr s, c;
+            if (!sinusExact(r, s)) continue;
+            if (!tan) {
+                table->push_back({s, r});
+            } else if (r.valeurAbsolue() != Nombre::rationnel(1, 2) && cosinusExact(r, c)) { // tan définie
+                table->push_back({s / c, r});
+            }
+        }
+        return table;
+    };
+    static const std::vector<ValeurRemarquable>* sinus = construire(false);
+    static const std::vector<ValeurRemarquable>* tangentes = construire(true);
+    return tangente ? *tangentes : *sinus;
+}
+
 } // namespace
 
 ExprPtr ast_sin(const ExprPtr& arg) {
@@ -855,9 +882,8 @@ ExprPtr ast_tan(const ExprPtr& arg) {
 
 ExprPtr ast_asin(const ExprPtr& arg) {
     double v;
-    for (const Nombre& r : anglesRemarquables()) {
-        ExprPtr s;
-        if (sinusExact(r, s) && s.get() == arg.get()) return foisPi(r); // asin(1/2) = pi/6
+    for (const ValeurRemarquable& v : valeursRemarquables(false)) {
+        if (v.valeur.get() == arg.get()) return foisPi(v.angle); // asin(1/2) = pi/6
     }
     if (argumentReel(arg, v) && std::abs(v) <= 1.0) return nombre(Nombre::reel(std::asin(v)));
     return fabriquer<ArcSinus>(arg);
@@ -865,9 +891,8 @@ ExprPtr ast_asin(const ExprPtr& arg) {
 
 ExprPtr ast_acos(const ExprPtr& arg) {
     double v;
-    for (const Nombre& r : anglesRemarquables()) {
-        ExprPtr s;
-        if (sinusExact(r, s) && s.get() == arg.get()) return foisPi(Nombre::rationnel(1, 2) - r); // pi/2 - asin
+    for (const ValeurRemarquable& v : valeursRemarquables(false)) {
+        if (v.valeur.get() == arg.get()) return foisPi(Nombre::rationnel(1, 2) - v.angle); // pi/2 - asin
     }
     if (argumentReel(arg, v) && std::abs(v) <= 1.0) return nombre(Nombre::reel(std::acos(v)));
     return fabriquer<ArcCosinus>(arg);
@@ -875,10 +900,8 @@ ExprPtr ast_acos(const ExprPtr& arg) {
 
 ExprPtr ast_atan(const ExprPtr& arg) {
     double v;
-    for (const Nombre& r : anglesRemarquables()) {
-        ExprPtr s, c;
-        if (r.valeurAbsolue() == Nombre::rationnel(1, 2)) continue; // tan non définie
-        if (sinusExact(r, s) && cosinusExact(r, c) && (s / c).get() == arg.get()) return foisPi(r);
+    for (const ValeurRemarquable& v : valeursRemarquables(true)) {
+        if (v.valeur.get() == arg.get()) return foisPi(v.angle); // atan(1) = pi/4
     }
     if (argumentReel(arg, v)) return nombre(Nombre::reel(std::atan(v)));
     return fabriquer<ArcTangente>(arg);
