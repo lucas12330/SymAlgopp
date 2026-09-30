@@ -203,6 +203,22 @@ TEST_CASE(derivee_comparee_a_la_derivee_numerique) {
     }
 }
 
+TEST_CASE(derivees_successives_contre_series) {
+    // f^(k)(a) = k! * c_k : la dérivée symbolique k-ième (graphe partagé, cache par appel)
+    // est comparée au coefficient de Taylor obtenu par arithmétique des séries
+    const ExprPtr f = ast_exp(ast_sin(X)) * ast_pow(X, 2.0);
+    EquationClassique d(f);
+    double factorielle = 1.0;
+    for (int k = 1; k <= 10; ++k) {
+        d = d.derivee();
+        factorielle *= k;
+        for (double a : {0.3, 1.1}) {
+            const double ck = f->DL(a, k)->eval(a + 1.0) - f->DL(a, k - 1)->eval(a + 1.0);
+            CHECK_NEAR(d.eval(a), ck * factorielle, 1e-10 * std::max(1.0, std::abs(ck * factorielle)));
+        }
+    }
+}
+
 TEST_CASE(derivee_tangente) {
     EquationClassique eq(ast_tan(X));
     const EquationClassique d = eq.derivee();

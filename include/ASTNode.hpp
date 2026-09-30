@@ -4,6 +4,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "Ref.hpp"
@@ -45,6 +46,12 @@ enum class TypeNoeud : std::uint8_t {
  * ExprPtr : pointeur partagé vers un noeud immuable de l'AST (compteur intrusif, voir Ref.hpp).
  */
 using ExprPtr = Ref<ASTNode>;
+
+/*
+ * Nom : CacheDerivees
+ * Description : Dérivées déjà calculées pendant un appel à derivee(), par noeud.
+ */
+using CacheDerivees = std::unordered_map<const ASTNode*, ExprPtr>;
 
 /*
  * Nom : CleFabrique
@@ -160,10 +167,19 @@ public:
 
     /*
      * Nom : derivee
-     * Description : Calcule la dérivée symbolique de l'expression.
+     * Description : Calcule la dérivée symbolique de l'expression. Les sous-expressions
+     *               partagées (fréquentes grâce au hash-consing) ne sont dérivées qu'une
+     *               fois par appel.
      * Utilisation : ExprPtr d = noeud->derivee();
      */
-    virtual ExprPtr derivee() const = 0;
+    ExprPtr derivee() const;
+
+    /*
+     * Nom : derivee (avec cache)
+     * Description : Variante utilisée par les règles de dérivation : réutilise les dérivées
+     *               déjà calculées pendant l'appel en cours.
+     */
+    ExprPtr derivee(CacheDerivees& cache) const;
 
     /*
      * Nom : simplifier
@@ -238,6 +254,13 @@ public:
 
 protected:
     explicit ASTNode(TypeNoeud type) : m_type(type) {}
+
+    /*
+     * Nom : calculerDerivee
+     * Description : Règle de dérivation propre au noeud ; les enfants se dérivent par
+     *               enfant->derivee(cache).
+     */
+    virtual ExprPtr calculerDerivee(CacheDerivees& cache) const = 0;
 
     /*
      * Nom : calculerSimplification
@@ -332,13 +355,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : La dérivée d'une constante est toujours zéro.
-     * Utilisation : ExprPtr d = c.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche la valeur de la constante.
@@ -369,6 +385,7 @@ public:
     double getValeurConstante() const override { return m_valeur; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -394,7 +411,6 @@ public:
     static Signature signature(int64_t num, int64_t den);
 
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
@@ -404,6 +420,7 @@ public:
     int64_t getDen() const { return m_den; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -434,13 +451,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : La dérivée de x par rapport à x est 1.
-     * Utilisation : ExprPtr d = v.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche le nom textuel de la variable.
@@ -461,6 +471,7 @@ public:
     const std::string& getNom() const { return m_nom; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -499,14 +510,7 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : La dérivée d'une constante symbolique est nulle.
-     * Utilisation : ExprPtr d = p->derivee();
-     */
-    ExprPtr derivee() const override;
-
-    void afficher(std::ostream& os) const override;
+void afficher(std::ostream& os) const override;
 
     /*
      * Nom : estEgal
@@ -518,6 +522,7 @@ public:
     const std::string& getNom() const { return m_nom; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -566,13 +571,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : Calcule la dérivée d'une addition (u + v)' = u' + v'.
-     * Utilisation : ExprPtr d = add.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche l'addition au format (gauche + droite).
@@ -589,6 +587,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -614,13 +613,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : Calcule la dérivée d'une soustraction (u - v)' = u' - v'.
-     * Utilisation : ExprPtr d = sub.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche la soustraction au format (gauche - droite).
@@ -637,6 +629,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -662,13 +655,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : Calcule la dérivée d'un produit (uv)' = u'v + uv'.
-     * Utilisation : ExprPtr d = mul.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche le produit au format gauche * droite sans parenthèses.
@@ -685,6 +671,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -710,13 +697,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : Calcule la dérivée d'un quotient (u/v)' = (u'v - uv') / v^2.
-     * Utilisation : ExprPtr d = div.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche la division au format (gauche / droite).
@@ -733,6 +713,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -758,13 +739,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : Calcule la dérivée pour un exposant constant (u^n)' = n*u^{n-1}*u'.
-     * Utilisation : ExprPtr d = p.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche la puissance au format (base)^(exposant).
@@ -781,6 +755,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -826,13 +801,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : La dérivée de sin(u) est cos(u)*u'.
-     * Utilisation : ExprPtr d = s.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche sous la forme sin(argument).
@@ -849,6 +817,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -874,13 +843,6 @@ public:
      */
     double eval(double x) const override;
 
-    /*
-     * Nom : derivee
-     * Description : La dérivée de cos(u) est -sin(u)*u'.
-     * Utilisation : ExprPtr d = c.derivee();
-     */
-    ExprPtr derivee() const override;
-
 /*
      * Nom : afficher
      * Description : Affiche sous la forme cos(argument).
@@ -897,6 +859,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -910,11 +873,11 @@ public:
     Tangente(CleFabrique, ExprPtr arg);
     static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -928,12 +891,12 @@ public:
     Exponentielle(CleFabrique, ExprPtr arg);
     static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -947,12 +910,12 @@ public:
     Logarithme(CleFabrique, ExprPtr arg);
     static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -978,7 +941,6 @@ public:
     static Signature signature(const ExprPtr& integrande) { return Signature::unaire(TYPE, integrande.get()); }
 
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
     bool contientVariable() const override { return true; }
@@ -986,6 +948,7 @@ public:
     const ExprPtr& getIntegrande() const { return m_integrande; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
@@ -1014,7 +977,6 @@ public:
     }
 
     double eval(double x) const override;
-    ExprPtr derivee() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
@@ -1022,6 +984,7 @@ public:
     double getPoint() const { return m_point; }
 
 protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
     ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;

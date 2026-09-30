@@ -496,6 +496,28 @@ void ASTNode::detruire() const {
 }
 
 /*
+ * Nom : derivee
+ * Description : Point d'entrée de la dérivation : un cache local à l'appel garantit que
+ *               chaque sous-expression partagée n'est dérivée qu'une fois.
+ * Utilisation : ExprPtr d = noeud->derivee();
+ */
+ExprPtr ASTNode::derivee() const {
+    CacheDerivees cache;
+    return derivee(cache);
+}
+
+ExprPtr ASTNode::derivee(CacheDerivees& cache) const {
+    // Un noeud référencé une seule fois ne peut être atteint qu'une fois : inutile de le
+    // mémoriser (évite le coût de la table pour les expressions sans partage)
+    if (nombreReferences() <= 1) return calculerDerivee(cache);
+    const auto it = cache.find(this);
+    if (it != cache.end()) return it->second;
+    ExprPtr d = calculerDerivee(cache);
+    cache.emplace(this, d);
+    return d;
+}
+
+/*
  * Nom : simplifier
  * Description : Point d'entrée de la simplification, avec mémorisation du résultat.
  * Utilisation : ExprPtr s = noeud->simplifier();
@@ -558,7 +580,7 @@ double Constante::eval(double) const { return m_valeur; }
  * Description : La dérivée d'une constante vaut 0. Renvoie un noeud Constante 0.
  * Utilisation : ExprPtr d = c.derivee();
  */
-ExprPtr Constante::derivee() const { return cst(0.0); }
+ExprPtr Constante::calculerDerivee(CacheDerivees&) const { return cst(0.0); }
 
 /*
  * Nom : simplifier
@@ -608,7 +630,7 @@ Fraction::Fraction(CleFabrique, int64_t num, int64_t den) : ASTNode(TypeNoeud::F
 
 double Fraction::eval(double /*x*/) const { return m_valeur_eval; }
 
-ExprPtr Fraction::derivee() const { return cst(0.0); }
+ExprPtr Fraction::calculerDerivee(CacheDerivees&) const { return cst(0.0); }
 
 ExprPtr Fraction::calculerSimplification() const { return clone(); }
 
@@ -652,7 +674,7 @@ double Variable::eval(double x) const { return x; }
  * Description : Renvoie la dérivée de x qui est 1.
  * Utilisation : ExprPtr d = v.derivee();
  */
-ExprPtr Variable::derivee() const { return cst(1.0); }
+ExprPtr Variable::calculerDerivee(CacheDerivees&) const { return cst(1.0); }
 
 /*
  * Nom : simplifier
@@ -688,7 +710,7 @@ double Parametre::eval(double) const {
                            "' : il n'a pas de valeur numerique");
 }
 
-ExprPtr Parametre::derivee() const { return cst(0.0); }
+ExprPtr Parametre::calculerDerivee(CacheDerivees&) const { return cst(0.0); }
 
 ExprPtr Parametre::calculerSimplification() const { return clone(); }
 
@@ -735,7 +757,7 @@ double Addition::eval(double x) const { return m_gauche->eval(x) + m_droite->eva
  * Description : Renvoie un noeud Addition des dérivées de chaque opérande.
  * Utilisation : ExprPtr d = add.derivee();
  */
-ExprPtr Addition::derivee() const { return m_gauche->derivee() + m_droite->derivee(); }
+ExprPtr Addition::calculerDerivee(CacheDerivees& cache) const { return m_gauche->derivee(cache) + m_droite->derivee(cache); }
 
 /*
  * Nom : simplifier
@@ -801,7 +823,7 @@ double Soustraction::eval(double x) const { return m_gauche->eval(x) - m_droite-
  * Description : Renvoie un noeud Soustraction des dérivées de chaque opérande.
  * Utilisation : ExprPtr d = sub.derivee();
  */
-ExprPtr Soustraction::derivee() const { return m_gauche->derivee() - m_droite->derivee(); }
+ExprPtr Soustraction::calculerDerivee(CacheDerivees& cache) const { return m_gauche->derivee(cache) - m_droite->derivee(cache); }
 
 /*
  * Nom : simplifier
@@ -865,8 +887,8 @@ double Multiplication::eval(double x) const { return m_gauche->eval(x) * m_droit
  * Description : Renvoie la dérivée du produit : u'v + uv'.
  * Utilisation : ExprPtr d = mul.derivee();
  */
-ExprPtr Multiplication::derivee() const {
-    return (m_gauche->derivee() * m_droite) + (m_gauche * m_droite->derivee());
+ExprPtr Multiplication::calculerDerivee(CacheDerivees& cache) const {
+    return (m_gauche->derivee(cache) * m_droite) + (m_gauche * m_droite->derivee(cache));
 }
 
 /*
@@ -921,8 +943,8 @@ double Division::eval(double x) const { return m_gauche->eval(x) / m_droite->eva
  * Description : Renvoie la dérivée du quotient : (u'v - uv') / v^2.
  * Utilisation : ExprPtr d = div.derivee();
  */
-ExprPtr Division::derivee() const { // (u'v - uv') / v^2
-    auto num = (m_gauche->derivee() * m_droite) - (m_gauche * m_droite->derivee());
+ExprPtr Division::calculerDerivee(CacheDerivees& cache) const { // (u'v - uv') / v^2
+    auto num = (m_gauche->derivee(cache) * m_droite) - (m_gauche * m_droite->derivee(cache));
     auto den = m_droite * m_droite;
     return num / den;
 }
@@ -992,19 +1014,19 @@ double Puissance::eval(double x) const { return std::pow(m_gauche->eval(x), m_dr
  * Description : Renvoie la dérivée pour un exposant constant : n*u^{n-1}*u'. Renvoie 0 autrement.
  * Utilisation : ExprPtr d = p.derivee();
  */
-ExprPtr Puissance::derivee() const {
+ExprPtr Puissance::calculerDerivee(CacheDerivees& cache) const {
     if (m_droite->estConstante()) { // (u^n)' = n*u^{n-1}*u'
         double n = m_droite->getValeurConstante();
         if (n == 0) return cst(0.0);
-        return cst(n) * ast_pow(m_gauche, cst(n - 1)) * m_gauche->derivee();
+        return cst(n) * ast_pow(m_gauche, cst(n - 1)) * m_gauche->derivee(cache);
     }
     if (!m_droite->contientVariable()) { // exposant symbolique (paramètre) : même règle
-        return m_droite * ast_pow(m_gauche, m_droite - 1.0) * m_gauche->derivee();
+        return m_droite * ast_pow(m_gauche, m_droite - 1.0) * m_gauche->derivee(cache);
     }
     // Cas general : (u^v)' = u^v * (v' * ln(u) + v * u' / u)
     auto ln_u = ast_ln(m_gauche);
-    auto terme1 = m_droite->derivee() * ln_u;
-    auto terme2 = m_droite * (m_gauche->derivee() / m_gauche);
+    auto terme1 = m_droite->derivee(cache) * ln_u;
+    auto terme2 = m_droite * (m_gauche->derivee(cache) / m_gauche);
     return ast_pow(m_gauche, m_droite) * (terme1 + terme2);
 }
 
@@ -1067,7 +1089,7 @@ double Sinus::eval(double x) const { return std::sin(m_argument->eval(x)); }
  * Description : Renvoie la dérivée de sin(u) : cos(u)*u'.
  * Utilisation : ExprPtr d = s.derivee();
  */
-ExprPtr Sinus::derivee() const { return ast_cos(m_argument) * m_argument->derivee(); }
+ExprPtr Sinus::calculerDerivee(CacheDerivees& cache) const { return ast_cos(m_argument) * m_argument->derivee(cache); }
 
 /*
  * Nom : simplifier
@@ -1121,7 +1143,7 @@ double Cosinus::eval(double x) const { return std::cos(m_argument->eval(x)); }
  * Description : Renvoie la dérivée de cos(u) : -sin(u)*u'.
  * Utilisation : ExprPtr d = c.derivee();
  */
-ExprPtr Cosinus::derivee() const { return (cst(-1.0) * ast_sin(m_argument)) * m_argument->derivee(); }
+ExprPtr Cosinus::calculerDerivee(CacheDerivees& cache) const { return (cst(-1.0) * ast_sin(m_argument)) * m_argument->derivee(cache); }
 
 /*
  * Nom : simplifier
@@ -1160,10 +1182,10 @@ Tangente::Tangente(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Tangent
 
 double Tangente::eval(double x) const { return std::tan(m_argument->eval(x)); }
 
-ExprPtr Tangente::derivee() const {
+ExprPtr Tangente::calculerDerivee(CacheDerivees& cache) const {
     // Dérivée de tan(u) = (1 + tan^2(u)) * u'
     auto tan_u = ast_tan(m_argument);
-    return (cst(1.0) + ast_pow(tan_u, 2.0)) * m_argument->derivee();
+    return (cst(1.0) + ast_pow(tan_u, 2.0)) * m_argument->derivee(cache);
 }
 
 ExprPtr Tangente::calculerSimplification() const {
@@ -1764,8 +1786,8 @@ Exponentielle::Exponentielle(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeu
 
 double Exponentielle::eval(double x) const { return std::exp(m_argument->eval(x)); }
 
-ExprPtr Exponentielle::derivee() const {
-    return ast_exp(m_argument) * m_argument->derivee();
+ExprPtr Exponentielle::calculerDerivee(CacheDerivees& cache) const {
+    return ast_exp(m_argument) * m_argument->derivee(cache);
 }
 
 ExprPtr Exponentielle::calculerSimplification() const {
@@ -1809,8 +1831,8 @@ Logarithme::Logarithme(CleFabrique, ExprPtr arg) : FonctionUnaire(TypeNoeud::Log
 
 double Logarithme::eval(double x) const { return std::log(m_argument->eval(x)); }
 
-ExprPtr Logarithme::derivee() const {
-    return m_argument->derivee() / m_argument;
+ExprPtr Logarithme::calculerDerivee(CacheDerivees& cache) const {
+    return m_argument->derivee(cache) / m_argument;
 }
 
 ExprPtr Logarithme::calculerSimplification() const {
@@ -1858,7 +1880,7 @@ double IntegraleNonEvaluee::eval(double) const {
 }
 
 // Théorème fondamental de l'analyse : (∫f)' = f
-ExprPtr IntegraleNonEvaluee::derivee() const { return m_integrande; }
+ExprPtr IntegraleNonEvaluee::calculerDerivee(CacheDerivees&) const { return m_integrande; }
 
 ExprPtr IntegraleNonEvaluee::calculerSimplification() const {
     return fabriquer<IntegraleNonEvaluee>(m_integrande->simplifier());
@@ -1887,7 +1909,7 @@ double LimiteNonEvaluee::eval(double) const {
     throw std::logic_error("Impossible d'evaluer une limite non determinee");
 }
 
-ExprPtr LimiteNonEvaluee::derivee() const { return cst(0.0); }
+ExprPtr LimiteNonEvaluee::calculerDerivee(CacheDerivees&) const { return cst(0.0); }
 
 ExprPtr LimiteNonEvaluee::calculerSimplification() const { return clone(); }
 
