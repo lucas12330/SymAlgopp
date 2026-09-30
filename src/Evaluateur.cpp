@@ -130,6 +130,10 @@ private:
             case TypeNoeud::Tangente: v = unaire(Code::Tangente, n); break;
             case TypeNoeud::Exponentielle: v = unaire(Code::Exponentielle, n); break;
             case TypeNoeud::Logarithme: v = unaire(Code::Logarithme, n); break;
+            case TypeNoeud::ArcSinus: v = unaire(Code::ArcSinus, n); break;
+            case TypeNoeud::ArcCosinus: v = unaire(Code::ArcCosinus, n); break;
+            case TypeNoeud::ArcTangente: v = unaire(Code::ArcTangente, n); break;
+            case TypeNoeud::Pi: v = constante(n.eval(0.0)); break;
             default:
                 // Paramètre ou noeud non évalué : même erreur que l'évaluation directe
                 n.eval(0.0);
@@ -265,6 +269,9 @@ double ProgrammeEvaluation::evaluer(double x) const {
             case Code::Tangente: d = std::tan(r[ins.a]); break;
             case Code::Exponentielle: d = std::exp(r[ins.a]); break;
             case Code::Logarithme: d = std::log(r[ins.a]); break;
+            case Code::ArcSinus: d = std::asin(r[ins.a]); break;
+            case Code::ArcCosinus: d = std::acos(r[ins.a]); break;
+            case Code::ArcTangente: d = std::atan(r[ins.a]); break;
         }
     }
     return r[m_resultat];
@@ -326,6 +333,15 @@ void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) c
                     break;
                 case Code::Logarithme:
                     for (std::size_t j = 0; j < m; ++j) d[j] = std::log(a[j]);
+                    break;
+                case Code::ArcSinus:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = std::asin(a[j]);
+                    break;
+                case Code::ArcCosinus:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = std::acos(a[j]);
+                    break;
+                case Code::ArcTangente:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = std::atan(a[j]);
                     break;
             }
         }

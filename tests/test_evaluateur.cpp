@@ -32,6 +32,7 @@ std::vector<ExprPtr> expressionsDeTest() {
         ast_tan(X / 3.0) - frac(2, 7) * ast_exp(-X),
         (ast_sin(X) + 1.0) * (ast_sin(X) + 2.0) / ast_pow(ast_sin(X) + 3.0, 2.0), // partage
         ast_exp(ast_sin(X))->derivee()->derivee()->derivee(),                      // gros graphe
+        ast_asin(X / 10.0) + ast_acos(X / 8.0) * ast_atan(X) + pi() * X,           // réciproques, pi
     };
 }
 

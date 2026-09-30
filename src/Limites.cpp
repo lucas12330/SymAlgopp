@@ -184,6 +184,7 @@ bool exposantNumeriqueNegatif(const ExprPtr& e) {
 ExprPtr Constante::calculerLimite(double) const { return clone(); }
 ExprPtr Variable::calculerLimite(double a) const { return cst(a); }
 ExprPtr Parametre::calculerLimite(double) const { return clone(); }
+ExprPtr Pi::calculerLimite(double) const { return clone(); }
 
 ExprPtr Somme::calculerLimite(double a) const {
     double total = m_constante.versDouble();
@@ -339,6 +340,23 @@ ExprPtr Logarithme::calculerLimite(double a) const {
     // ln(u) -> -inf quand u -> 0 ; hors du domaine (u < 0) la limite n'existe pas
     auto lnNum = [](double u) { return estNul(u) ? -INFINI : std::log(u); };
     if (ExprPtr r = limiteUnaire(m_argument, a, lnNum, ast_ln)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr ArcSinus::calculerLimite(double a) const {
+    // Hors de [-1, 1], asin donne NaN : pas de limite réelle
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::asin(u); }, ast_asin)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr ArcCosinus::calculerLimite(double a) const {
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::acos(u); }, ast_acos)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr ArcTangente::calculerLimite(double a) const {
+    // atan(+-inf) = +-pi/2
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::atan(u); }, ast_atan)) return r;
     return limiteNonEvaluee(a);
 }
 

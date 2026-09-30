@@ -75,6 +75,9 @@ private:
         Tangente,
         Exponentielle,
         Logarithme,
+        ArcSinus,
+        ArcCosinus,
+        ArcTangente,
     };
 
     struct Instruction {

@@ -119,6 +119,9 @@ private:
             case TypeNoeud::Tangente: return ast_tan(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             case TypeNoeud::Exponentielle: return ast_exp(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             case TypeNoeud::Logarithme: return ast_ln(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::ArcSinus: return ast_asin(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::ArcCosinus: return ast_acos(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::ArcTangente: return ast_atan(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             default: return e; // constantes, variable, paramètres, noeuds non évalués
         }
     }

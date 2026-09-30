@@ -16,21 +16,22 @@ namespace {
 
 /*
  * Nom : coefficientLineaire
- * Description : Si u est une fonction affine de x (u = a*x + b avec a non nul), renvoie vrai
- *               et écrit a (exact si possible) : sa dérivée, sous forme canonique, est alors
- *               une constante. Sert à la règle d'intégration F(ax+b)/a.
+ * Description : Si u est une fonction affine de x (u = a*x + b avec a non nul, a pouvant
+ *               être symbolique comme pi ou C1), renvoie vrai et écrit a : la dérivée de u
+ *               ne dépend alors pas de x. Sert à la règle d'intégration F(ax+b)/a.
  */
-bool coefficientLineaire(const ExprPtr& u, Nombre& a) {
+bool coefficientLineaire(const ExprPtr& u, ExprPtr& a) {
     if (!u->contientVariable()) return false;
-    const ExprPtr derivee = u->derivee(); // doit survivre à d
-    const Constante* d = comme<Constante>(derivee);
-    if (!d || d->getNombre().estZero() || !d->getNombre().estFini()) return false;
-    a = d->getNombre();
+    const ExprPtr d = u->derivee();
+    if (d->contientVariable()) return false;
+    const Constante* c = comme<Constante>(d);
+    if (c && (c->getNombre().estZero() || !c->getNombre().estFini())) return false;
+    a = d;
     return true;
 }
 
 // e / a
-ExprPtr diviserPar(const ExprPtr& e, const Nombre& a) { return nombre(a.inverse()) * e; }
+ExprPtr diviserPar(const ExprPtr& e, const ExprPtr& a) { return e / a; }
 
 // Dérivée logarithmique d'un facteur b^e : e' ln(b) + e b'/b
 ExprPtr deriveeLogarithmique(const ExprPtr& base, const ExprPtr& exposant, CacheDerivees& cache) {
@@ -68,6 +69,11 @@ double Parametre::eval(double) const {
 ExprPtr Parametre::calculerDerivee(CacheDerivees&) const { return nombre(Nombre(0)); }
 ExprPtr Parametre::calculerSimplification() const { return clone(); }
 ExprPtr Parametre::primitive() const { return clone() * var("x"); }
+
+double Pi::eval(double) const { return 3.14159265358979323846; }
+ExprPtr Pi::calculerDerivee(CacheDerivees&) const { return nombre(Nombre(0)); }
+ExprPtr Pi::calculerSimplification() const { return clone(); }
+ExprPtr Pi::primitive() const { return clone() * var("x"); }
 
 // ============================================================================
 // Somme
@@ -170,21 +176,21 @@ ExprPtr Puissance::calculerSimplification() const {
 }
 
 ExprPtr Puissance::primitive() const {
-    Nombre a;
+    ExprPtr a;
     // (a*x + b)^n, n constant : (ax+b)^(n+1) / (a(n+1)), ou ln(ax+b)/a si n = -1
     if (!m_exposant->contientVariable() && coefficientLineaire(m_base, a)) {
         if (const Constante* n = comme<Constante>(m_exposant)) {
             const Nombre& nv = n->getNombre();
             if (nv.estMoinsUn()) return diviserPar(ast_ln(m_base), a);
             const Nombre suivant = nv + Nombre(1);
-            return diviserPar(ast_pow(m_base, nombre(suivant)), a * suivant);
+            return diviserPar(ast_pow(m_base, nombre(suivant)), a * nombre(suivant));
         }
     }
     // c^(a*x + b), c constante positive différente de 1 : c^u / (a ln c)
     if (!m_base->contientVariable() && coefficientLineaire(m_exposant, a)) {
         const Constante* c = comme<Constante>(m_base);
         if (c && c->getNombre().signe() > 0 && !c->getNombre().estUn()) {
-            return clone() / (nombre(a) * ast_ln(m_base));
+            return clone() / (a * ast_ln(m_base));
         }
     }
     return integraleNonEvaluee();
@@ -216,35 +222,81 @@ ExprPtr Logarithme::calculerSimplification() const { return ast_ln(m_argument->s
 
 // Primitives par substitution linéaire : int f(ax+b) dx = F(ax+b) / a
 ExprPtr Sinus::primitive() const {
-    Nombre a;
+    ExprPtr a;
     if (coefficientLineaire(m_argument, a)) return diviserPar(-ast_cos(m_argument), a);
     return integraleNonEvaluee();
 }
 
 ExprPtr Cosinus::primitive() const {
-    Nombre a;
+    ExprPtr a;
     if (coefficientLineaire(m_argument, a)) return diviserPar(ast_sin(m_argument), a);
     return integraleNonEvaluee();
 }
 
 ExprPtr Tangente::primitive() const {
-    Nombre a;
+    ExprPtr a;
     // -ln(cos(u)), valable là où cos(u) > 0
     if (coefficientLineaire(m_argument, a)) return diviserPar(-ast_ln(ast_cos(m_argument)), a);
     return integraleNonEvaluee();
 }
 
 ExprPtr Exponentielle::primitive() const {
-    Nombre a;
+    ExprPtr a;
     if (coefficientLineaire(m_argument, a)) return diviserPar(clone(), a);
     return integraleNonEvaluee();
 }
 
 ExprPtr Logarithme::primitive() const {
-    Nombre a;
+    ExprPtr a;
     // u ln(u) - u
     if (coefficientLineaire(m_argument, a)) return diviserPar(m_argument * clone() - m_argument, a);
     return integraleNonEvaluee();
+}
+
+// ============================================================================
+// Fonctions réciproques
+// ============================================================================
+
+double ArcSinus::eval(double x) const { return std::asin(m_argument->eval(x)); }
+double ArcCosinus::eval(double x) const { return std::acos(m_argument->eval(x)); }
+double ArcTangente::eval(double x) const { return std::atan(m_argument->eval(x)); }
+
+namespace {
+
+// (1 - u^2)^(-1/2)
+ExprPtr inverseRacineUnMoinsCarre(const ExprPtr& u) { return ast_pow(1.0 - ast_pow(u, 2.0), frac(-1, 2)); }
+
+} // namespace
+
+ExprPtr ArcSinus::calculerDerivee(CacheDerivees& cache) const {
+    return m_argument->derivee(cache) * inverseRacineUnMoinsCarre(m_argument);
+}
+ExprPtr ArcCosinus::calculerDerivee(CacheDerivees& cache) const {
+    return -(m_argument->derivee(cache) * inverseRacineUnMoinsCarre(m_argument));
+}
+ExprPtr ArcTangente::calculerDerivee(CacheDerivees& cache) const {
+    return m_argument->derivee(cache) / (1.0 + ast_pow(m_argument, 2.0));
+}
+
+ExprPtr ArcSinus::calculerSimplification() const { return ast_asin(m_argument->simplifier()); }
+ExprPtr ArcCosinus::calculerSimplification() const { return ast_acos(m_argument->simplifier()); }
+ExprPtr ArcTangente::calculerSimplification() const { return ast_atan(m_argument->simplifier()); }
+
+// Primitives par intégration par parties, pour un argument affine u = a*x + b
+ExprPtr ArcSinus::primitive() const {
+    ExprPtr a;
+    if (!coefficientLineaire(m_argument, a)) return integraleNonEvaluee();
+    return diviserPar(m_argument * clone() + ast_pow(1.0 - ast_pow(m_argument, 2.0), frac(1, 2)), a);
+}
+ExprPtr ArcCosinus::primitive() const {
+    ExprPtr a;
+    if (!coefficientLineaire(m_argument, a)) return integraleNonEvaluee();
+    return diviserPar(m_argument * clone() - ast_pow(1.0 - ast_pow(m_argument, 2.0), frac(1, 2)), a);
+}
+ExprPtr ArcTangente::primitive() const {
+    ExprPtr a;
+    if (!coefficientLineaire(m_argument, a)) return integraleNonEvaluee();
+    return diviserPar(m_argument * clone() - frac(1, 2) * ast_ln(1.0 + ast_pow(m_argument, 2.0)), a);
 }
 
 // ============================================================================

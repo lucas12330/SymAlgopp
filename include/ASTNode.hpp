@@ -50,6 +50,7 @@ enum class TypeNoeud : std::uint8_t {
     Constante,
     Variable,
     Parametre,
+    Pi,
     Somme,
     Produit,
     Puissance,
@@ -59,6 +60,9 @@ enum class TypeNoeud : std::uint8_t {
     Tangente,
     Exponentielle,
     Logarithme,
+    ArcSinus,
+    ArcCosinus,
+    ArcTangente,
     // Noeuds non évalués
     IntegraleNonEvaluee,
     LimiteNonEvaluee,
@@ -387,6 +391,27 @@ private:
     std::string m_nom;
 };
 
+/*
+ * CLASSE PI : la constante exacte pi. Les fonctions trigonométriques en donnent les valeurs
+ * remarquables exactes (sin(pi/6) = 1/2, cos(3*pi/4) = -2^(1/2)/2...).
+ */
+class Pi : public ASTNode {
+public:
+    static constexpr TypeNoeud TYPE = TypeNoeud::Pi;
+    static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
+    static Signature signature() { return Signature{TYPE}; }
+
+    explicit Pi(CleFabrique);
+
+    double eval(double x) const override;
+
+protected:
+    ExprPtr calculerDerivee(CacheDerivees& cache) const override;
+    ExprPtr calculerSimplification() const override;
+    ExprPtr primitive() const override;
+    ExprPtr calculerLimite(double a) const override;
+};
+
 // ============================================================================
 // Sommes, produits, puissances (forme canonique)
 // ============================================================================
@@ -494,7 +519,7 @@ private:
 class FonctionUnaire : public ASTNode {
 public:
     static constexpr bool correspond(TypeNoeud t) {
-        return t >= TypeNoeud::Sinus && t <= TypeNoeud::Logarithme;
+        return t >= TypeNoeud::Sinus && t <= TypeNoeud::ArcTangente;
     }
 
     ExprPtr m_argument;
@@ -524,6 +549,9 @@ SYMALGO_FONCTION_UNAIRE(Cosinus)
 SYMALGO_FONCTION_UNAIRE(Tangente)
 SYMALGO_FONCTION_UNAIRE(Exponentielle)
 SYMALGO_FONCTION_UNAIRE(Logarithme)
+SYMALGO_FONCTION_UNAIRE(ArcSinus)
+SYMALGO_FONCTION_UNAIRE(ArcCosinus)
+SYMALGO_FONCTION_UNAIRE(ArcTangente)
 
 #undef SYMALGO_FONCTION_UNAIRE
 
@@ -609,6 +637,12 @@ ExprPtr var(const std::string& nom = "x");
 ExprPtr param(const std::string& nom);
 
 /*
+ * Nom : pi
+ * Description : La constante exacte pi.
+ */
+ExprPtr pi();
+
+/*
  * Nom : somme / produit
  * Description : Somme et produit canoniques d'une liste d'expressions.
  */
@@ -643,13 +677,23 @@ ExprPtr ast_pow(double base, const ExprPtr& exposant);
 /*
  * Nom : ast_sin / ast_cos / ast_tan / ast_exp / ast_ln
  * Description : Fonctions usuelles (valeurs exactes remarquables : sin(0) = 0, exp(0) = 1,
- *               ln(1) = 0 ; exp(ln(u)) = u, ln(exp(u)) = u ; argument réel évalué).
+ *               ln(1) = 0, sin(pi/6) = 1/2, tan(pi/3) = 3^(1/2) ; exp(ln(u)) = u,
+ *               ln(exp(u)) = u ; argument réel évalué).
  */
 ExprPtr ast_sin(const ExprPtr& arg);
 ExprPtr ast_cos(const ExprPtr& arg);
 ExprPtr ast_tan(const ExprPtr& arg);
 ExprPtr ast_exp(const ExprPtr& arg);
 ExprPtr ast_ln(const ExprPtr& arg);
+
+/*
+ * Nom : ast_asin / ast_acos / ast_atan
+ * Description : Fonctions réciproques (valeurs exactes remarquables : asin(1/2) = pi/6,
+ *               acos(0) = pi/2, atan(1) = pi/4...).
+ */
+ExprPtr ast_asin(const ExprPtr& arg);
+ExprPtr ast_acos(const ExprPtr& arg);
+ExprPtr ast_atan(const ExprPtr& arg);
 
 std::ostream& operator<<(std::ostream& os, const ExprPtr& e);
 

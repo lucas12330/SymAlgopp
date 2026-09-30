@@ -35,6 +35,7 @@ Signature signatureDe(const ASTNode& n) {
         case TypeNoeud::Constante: s.nombre = &static_cast<const Constante&>(n).getNombre(); break;
         case TypeNoeud::Variable: s.nom = &static_cast<const Variable&>(n).getNom(); break;
         case TypeNoeud::Parametre: s.nom = &static_cast<const Parametre&>(n).getNom(); break;
+        case TypeNoeud::Pi: break;
         case TypeNoeud::Somme:
             s.nombre = &static_cast<const Somme&>(n).getConstante();
             s.termes = &static_cast<const Somme&>(n).getTermes();
@@ -262,12 +263,13 @@ namespace {
 int rang(TypeNoeud t) {
     switch (t) {
         case TypeNoeud::Constante: return 0;
-        case TypeNoeud::Parametre: return 1; // C1*x plutôt que x*C1
-        case TypeNoeud::Variable: return 2;
-        case TypeNoeud::Puissance: return 3;
-        case TypeNoeud::Produit: return 4;
-        case TypeNoeud::Somme: return 5;
-        default: return 6 + static_cast<int>(t) - static_cast<int>(TypeNoeud::Sinus);
+        case TypeNoeud::Pi: return 1;        // pi*x
+        case TypeNoeud::Parametre: return 2; // C1*x plutôt que x*C1
+        case TypeNoeud::Variable: return 3;
+        case TypeNoeud::Puissance: return 4;
+        case TypeNoeud::Produit: return 5;
+        case TypeNoeud::Somme: return 6;
+        default: return 7 + static_cast<int>(t) - static_cast<int>(TypeNoeud::Sinus);
     }
 }
 
@@ -286,6 +288,7 @@ int comparer(const ASTNode& a, const ASTNode& b) {
             return signeDe(static_cast<const Variable&>(a).getNom().compare(static_cast<const Variable&>(b).getNom()));
         case TypeNoeud::Parametre:
             return signeDe(static_cast<const Parametre&>(a).getNom().compare(static_cast<const Parametre&>(b).getNom()));
+        case TypeNoeud::Pi: return 0; // noeud unique
         case TypeNoeud::Puissance: {
             const Puissance& pa = static_cast<const Puissance&>(a);
             const Puissance& pb = static_cast<const Puissance&>(b);
@@ -352,6 +355,8 @@ Constante::Constante(CleFabrique, Nombre valeur)
 Variable::Variable(CleFabrique, const std::string& nom) : ASTNode(TYPE, true), m_nom(nom) {}
 
 Parametre::Parametre(CleFabrique, const std::string& nom) : ASTNode(TYPE, false), m_nom(nom) {}
+
+Pi::Pi(CleFabrique) : ASTNode(TYPE, false) {}
 
 namespace {
 
@@ -590,6 +595,8 @@ ExprPtr var(const std::string& nom) { return fabriquer<Variable>(nom); }
 
 ExprPtr param(const std::string& nom) { return fabriquer<Parametre>(nom); }
 
+ExprPtr pi() { return fabriquer<Pi>(); }
+
 ExprPtr somme(const std::vector<ExprPtr>& termes) {
     AccumulateurSomme acc;
     for (const ExprPtr& t : termes) acc.ajouter(t, Nombre(1));
@@ -663,6 +670,12 @@ ExprPtr ast_pow(const ExprPtr& base, const ExprPtr& exposant) {
                     if (e.versFraction(p, q) && b.racineExacte(q, racine) && !(racine.estZero() && p < 0)) {
                         return nombre(racine.puissanceEntiere(p));
                     }
+                    // Forme unique des radicaux : b^(p/q) = b^n * b^(p/q - n), exposant dans ]0, 1[
+                    // (3^(-1/2) s'écrit 3^(1/2)/3, 2^(3/2) s'écrit 2*2^(1/2))
+                    if (e.versFraction(p, q) && !b.estZero()) {
+                        const long long n = p >= 0 ? p / q : -((-p + q - 1) / q); // partie entière
+                        if (n != 0) return nombre(b.puissanceEntiere(n)) * ast_pow(base, nombre(Nombre::rationnel(p - n * q, q)));
+                    }
                 }
             } else {
                 const double v = std::pow(b.versDouble(), e.versDouble());
@@ -708,25 +721,123 @@ bool argumentExactNul(const ExprPtr& arg) {
 
 } // namespace
 
+namespace {
+
+// Si arg = r*pi avec r rationnel exact (ou arg = 0), écrit r
+bool multipleDePi(const ExprPtr& arg, Nombre& r) {
+    if (argumentExactNul(arg)) {
+        r = Nombre(0);
+        return true;
+    }
+    if (arg->type() == TypeNoeud::Pi) {
+        r = Nombre(1);
+        return true;
+    }
+    const Produit* p = comme<Produit>(arg);
+    if (p && p->getCoefficient().estExact() && p->getFacteurs().size() == 1 &&
+        p->getFacteurs()[0].base->type() == TypeNoeud::Pi && p->getFacteurs()[0].exposant.get() == un().get()) {
+        r = p->getCoefficient();
+        return true;
+    }
+    return false;
+}
+
+/*
+ * Nom : sinusExact
+ * Description : Valeur exacte de sin(r*pi) quand r est un multiple de 1/6 ou de 1/4 :
+ *               0, ±1/2, ±2^(1/2)/2, ±3^(1/2)/2, ±1.
+ */
+bool sinusExact(const Nombre& r, ExprPtr& valeur) {
+    long long p, q;
+    if (!r.versFraction(p, q) || 12 % q != 0) return false;
+    long long k = (p % (2 * q)) * (12 / q); // r*12 modulo 24 (période 2*pi)
+    k = ((k % 24) + 24) % 24;
+    const ExprPtr demi = frac(1, 2);
+    auto racine = [&](long long n) { return ast_pow(cst(static_cast<double>(n)), frac(1, 2)) * demi; };
+    switch (k) {
+        case 0: case 12: valeur = nombre(Nombre(0)); return true;
+        case 2: case 10: valeur = demi; return true;
+        case 14: case 22: valeur = -demi; return true;
+        case 3: case 9: valeur = racine(2); return true;
+        case 15: case 21: valeur = -racine(2); return true;
+        case 4: case 8: valeur = racine(3); return true;
+        case 16: case 20: valeur = -racine(3); return true;
+        case 6: valeur = un(); return true;
+        case 18: valeur = nombre(Nombre(-1)); return true;
+        default: return false;
+    }
+}
+
+bool cosinusExact(const Nombre& r, ExprPtr& valeur) { return sinusExact(r + Nombre::rationnel(1, 2), valeur); }
+
+// Multiples r de pi dans [-1/2, 1/2] dont le sinus est tabulé (réciproques exactes)
+const std::vector<Nombre>& anglesRemarquables() {
+    static const std::vector<Nombre>* angles = new std::vector<Nombre>{
+        Nombre::rationnel(-1, 2), Nombre::rationnel(-1, 3), Nombre::rationnel(-1, 4), Nombre::rationnel(-1, 6), Nombre(0),
+        Nombre::rationnel(1, 6),  Nombre::rationnel(1, 4),  Nombre::rationnel(1, 3),  Nombre::rationnel(1, 2)};
+    return *angles;
+}
+
+ExprPtr foisPi(const Nombre& r) { return nombre(r) * pi(); }
+
+} // namespace
+
 ExprPtr ast_sin(const ExprPtr& arg) {
     double v;
-    if (argumentExactNul(arg)) return nombre(Nombre(0));
+    Nombre r;
+    ExprPtr exact;
+    if (multipleDePi(arg, r) && sinusExact(r, exact)) return exact;
     if (argumentReel(arg, v)) return nombre(Nombre::reel(std::sin(v)));
     return fabriquer<Sinus>(arg);
 }
 
 ExprPtr ast_cos(const ExprPtr& arg) {
     double v;
-    if (argumentExactNul(arg)) return un();
+    Nombre r;
+    ExprPtr exact;
+    if (multipleDePi(arg, r) && cosinusExact(r, exact)) return exact;
     if (argumentReel(arg, v)) return nombre(Nombre::reel(std::cos(v)));
     return fabriquer<Cosinus>(arg);
 }
 
 ExprPtr ast_tan(const ExprPtr& arg) {
     double v;
-    if (argumentExactNul(arg)) return nombre(Nombre(0));
+    Nombre r;
+    ExprPtr s, c;
+    if (multipleDePi(arg, r) && sinusExact(r, s) && cosinusExact(r, c) && !argumentExactNul(c)) return s / c;
     if (argumentReel(arg, v)) return nombre(Nombre::reel(std::tan(v)));
     return fabriquer<Tangente>(arg);
+}
+
+ExprPtr ast_asin(const ExprPtr& arg) {
+    double v;
+    for (const Nombre& r : anglesRemarquables()) {
+        ExprPtr s;
+        if (sinusExact(r, s) && s.get() == arg.get()) return foisPi(r); // asin(1/2) = pi/6
+    }
+    if (argumentReel(arg, v) && std::abs(v) <= 1.0) return nombre(Nombre::reel(std::asin(v)));
+    return fabriquer<ArcSinus>(arg);
+}
+
+ExprPtr ast_acos(const ExprPtr& arg) {
+    double v;
+    for (const Nombre& r : anglesRemarquables()) {
+        ExprPtr s;
+        if (sinusExact(r, s) && s.get() == arg.get()) return foisPi(Nombre::rationnel(1, 2) - r); // pi/2 - asin
+    }
+    if (argumentReel(arg, v) && std::abs(v) <= 1.0) return nombre(Nombre::reel(std::acos(v)));
+    return fabriquer<ArcCosinus>(arg);
+}
+
+ExprPtr ast_atan(const ExprPtr& arg) {
+    double v;
+    for (const Nombre& r : anglesRemarquables()) {
+        ExprPtr s, c;
+        if (r.valeurAbsolue() == Nombre::rationnel(1, 2)) continue; // tan non définie
+        if (sinusExact(r, s) && cosinusExact(r, c) && (s / c).get() == arg.get()) return foisPi(r);
+    }
+    if (argumentReel(arg, v)) return nombre(Nombre::reel(std::atan(v)));
+    return fabriquer<ArcTangente>(arg);
 }
 
 ExprPtr ast_exp(const ExprPtr& arg) {

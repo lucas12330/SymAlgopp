@@ -202,6 +202,10 @@ void ecrireBrut(std::ostream& os, const ASTNode& n) {
         case TypeNoeud::Tangente: os << "tan("; break;
         case TypeNoeud::Exponentielle: os << "exp("; break;
         case TypeNoeud::Logarithme: os << "ln("; break;
+        case TypeNoeud::ArcSinus: os << "asin("; break;
+        case TypeNoeud::ArcCosinus: os << "acos("; break;
+        case TypeNoeud::ArcTangente: os << "atan("; break;
+        case TypeNoeud::Pi: os << "pi"; break;
         case TypeNoeud::IntegraleNonEvaluee:
             os << "integrale(";
             ecrire(os, *static_cast<const IntegraleNonEvaluee&>(n).getIntegrande(), 0);

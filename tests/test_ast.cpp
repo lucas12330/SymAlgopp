@@ -669,4 +669,66 @@ TEST_CASE(trace_intervalle_vide) {
     CHECK(eq.genererPointsTrace(2.0, 1.0).empty());
 }
 
+// ============================================================================
+// Pi et fonctions réciproques
+// ============================================================================
+
+TEST_CASE(valeurs_trigonometriques_exactes) {
+    const ExprPtr P = pi();
+    CHECK_EQ(ast_sin(P / 6.0)->texte(), std::string("1/2"));
+    CHECK_EQ(ast_cos(P / 3.0)->texte(), std::string("1/2"));
+    CHECK_EQ(ast_sin(P / 4.0)->texte(), std::string("2^(1/2)/2"));
+    CHECK_EQ(ast_cos(cst(3.0) * P / 4.0)->texte(), std::string("-2^(1/2)/2"));
+    CHECK_EQ(ast_sin(cst(4.0) * P / 3.0)->texte(), std::string("-3^(1/2)/2"));
+    CHECK_EQ(ast_tan(P / 3.0)->texte(), std::string("3^(1/2)"));
+    CHECK_EQ(ast_tan(P / 6.0)->texte(), std::string("3^(1/2)/3"));
+    CHECK_EQ(ast_sin(cst(13.0) * P / 6.0)->texte(), std::string("1/2")); // périodicité
+    CHECK_EQ(ast_cos(P)->texte(), std::string("-1"));
+    CHECK_EQ(ast_sin(cst(-7.0) * P / 2.0)->texte(), std::string("1"));
+    // Hors table : reste symbolique, mais s'évalue
+    CHECK_EQ(ast_sin(P / 5.0)->texte(), std::string("sin(pi/5)"));
+    CHECK_NEAR(ast_sin(P / 5.0)->eval(0.0), std::sin(3.14159265358979323846 / 5.0), 1e-15);
+    CHECK_EQ(ast_tan(P / 2.0)->texte(), std::string("tan(pi/2)")); // non définie
+}
+
+TEST_CASE(reciproques_exactes) {
+    CHECK_EQ(ast_asin(frac(1, 2))->texte(), std::string("pi/6"));
+    CHECK_EQ(ast_asin(-ast_pow(cst(3.0), frac(1, 2)) / 2.0)->texte(), std::string("-pi/3"));
+    CHECK_EQ(ast_acos(cst(0.0))->texte(), std::string("pi/2"));
+    CHECK_EQ(ast_acos(cst(-1.0))->texte(), std::string("pi"));
+    CHECK_EQ(ast_atan(cst(1.0))->texte(), std::string("pi/4"));
+    CHECK_EQ(ast_atan(cst(1.0) / ast_pow(cst(3.0), frac(1, 2)))->texte(), std::string("pi/6"));
+    CHECK_EQ(ast_asin(frac(1, 3))->texte(), std::string("asin(1/3)"));
+    CHECK_NEAR(ast_asin(cst(0.3))->eval(0.0), std::asin(0.3), 1e-16);
+}
+
+TEST_CASE(radicaux_forme_unique) {
+    // Exposant ramené dans ]0, 1[ : une seule écriture pour un même nombre
+    CHECK(ast_pow(cst(3.0), frac(-1, 2)).get() == (ast_pow(cst(3.0), frac(1, 2)) / 3.0).get());
+    CHECK_EQ(ast_pow(cst(2.0), frac(3, 2))->texte(), std::string("2*2^(1/2)"));
+    CHECK_EQ((ast_pow(cst(2.0), frac(1, 2)) * ast_pow(cst(2.0), frac(1, 2)))->texte(), std::string("2"));
+    CHECK_NEAR(ast_pow(cst(5.0), frac(-3, 2))->eval(0.0), std::pow(5.0, -1.5), 1e-16);
+}
+
+TEST_CASE(reciproques_derivees_primitives_series) {
+    const std::vector<ExprPtr> fonctions = {ast_asin(X / 2.0), ast_acos(X / 3.0), ast_atan(cst(2.0) * X + 1.0)};
+    for (const ExprPtr& f : fonctions) {
+        const ExprPtr d = f->derivee();
+        const ExprPtr F = f->integrer();
+        for (double x : {-0.8, 0.2, 1.1}) {
+            CHECK_NEAR(d->eval(x), deriveeNumerique(f, x), 1e-6);
+            CHECK_NEAR(deriveeNumerique(F, x), f->eval(x), 1e-6);
+        }
+        // DL comparé à la fonction : erreur en O(h^7)
+        const ExprPtr dl = f->DL(0.3, 6);
+        CHECK_NEAR(dl->eval(0.31), f->eval(0.31), 1e-13);
+    }
+    // Intégration à coefficient linéaire symbolique : int sin(pi x) = -cos(pi x)/pi
+    const ExprPtr F = ast_sin(pi() * X)->integrer();
+    CHECK_NEAR(deriveeNumerique(F, 0.37), std::sin(3.14159265358979323846 * 0.37), 1e-8);
+    // asin n'a pas de limite réelle hors de [-1, 1]
+    CHECK(limiteNonDeterminee(ast_asin(X + 5.0), 0.0));
+    CHECK_NEAR(ast_atan(X)->limite(1.0)->eval(0.0), 3.14159265358979323846 / 4.0, 1e-15);
+}
+
 int main() { return test::executerTous(); }

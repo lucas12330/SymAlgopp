@@ -81,6 +81,7 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
     w.assign(taille, 0.0);
     switch (e.type()) {
         case TypeNoeud::Constante: w[0] = e.getValeurConstante(); return true;
+        case TypeNoeud::Pi: w[0] = 3.14159265358979323846; return true;
         case TypeNoeud::Variable:
             w[0] = a;
             if (n >= 1) w[1] = 1.0;
@@ -126,6 +127,25 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
                 w[k] = somme / double(k);
             }
             return true;
+        case TypeNoeud::ArcSinus:
+        case TypeNoeud::ArcCosinus:
+        case TypeNoeud::ArcTangente: {
+            // w' = u' s avec s = (1 - u^2)^(-1/2) (asin, acos au signe près) ou (1 + u^2)^(-1)
+            const bool tangente = e.type() == TypeNoeud::ArcTangente;
+            Serie v = produitSeries(u, u), s;
+            for (double& vk : v) vk = tangente ? vk : -vk;
+            v[0] += 1.0;
+            if (!seriePuissance(v, tangente ? -1.0 : -0.5, s)) return false; // |u(a)| = 1 : non dérivable
+            const double signe = e.type() == TypeNoeud::ArcCosinus ? -1.0 : 1.0;
+            w[0] = tangente ? std::atan(u[0]) : (signe > 0 ? std::asin(u[0]) : std::acos(u[0]));
+            if (!std::isfinite(w[0])) return false;
+            for (std::size_t k = 1; k < taille; ++k) {
+                double somme = 0.0;
+                for (std::size_t j = 1; j <= k; ++j) somme += double(j) * u[j] * s[k - j];
+                w[k] = signe * somme / double(k);
+            }
+            return true;
+        }
         case TypeNoeud::Logarithme:
             // w' u = u' : k u_0 w_k = k u_k - sum_{j=1..k-1} j w_j u_{k-j}
             if (u[0] <= 0.0) return false;
