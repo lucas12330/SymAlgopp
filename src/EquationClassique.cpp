@@ -1,4 +1,5 @@
 #include "EquationClassique.hpp"
+#include "Polynome.hpp"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -150,5 +151,13 @@ std::vector<std::pair<double, double>> EquationClassique::genererPointsTrace(dou
 
     return points;
 }
+
+Solutions EquationClassique::resoudre() const { return symalgo::resoudre(m_racine); }
+
+Solutions EquationClassique::resoudre(double a, double b) const { return resoudreSurIntervalle(m_racine, a, b); }
+
+EquationClassique EquationClassique::developper() const { return EquationClassique(symalgo::developper(m_racine)); }
+
+EquationClassique EquationClassique::factoriser() const { return EquationClassique(symalgo::factoriser(m_racine)); }
 
 } // namespace symalgo

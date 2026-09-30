@@ -695,6 +695,26 @@ ExprPtr ast_asin(const ExprPtr& arg);
 ExprPtr ast_acos(const ExprPtr& arg);
 ExprPtr ast_atan(const ExprPtr& arg);
 
+/*
+ * Nom : appliquer
+ * Description : Applique la fonction unaire de type donné (Sinus, Exponentielle...) à arg.
+ */
+ExprPtr appliquer(TypeNoeud fonction, const ExprPtr& arg);
+
+/*
+ * Nom : substituer
+ * Description : Remplace chaque occurrence de la sous-expression cible par remplacement ;
+ *               le résultat est reconstruit sous forme canonique.
+ * Utilisation : substituer(ast_sin(x) + x, x, cst(2.0))  // sin(2) + 2
+ */
+ExprPtr substituer(const ExprPtr& e, const ExprPtr& cible, const ExprPtr& remplacement);
+
+/*
+ * Nom : contient
+ * Description : Indique si la sous-expression cible apparaît dans e.
+ */
+bool contient(const ExprPtr& e, const ExprPtr& cible);
+
 std::ostream& operator<<(std::ostream& os, const ExprPtr& e);
 
 } // namespace symalgo

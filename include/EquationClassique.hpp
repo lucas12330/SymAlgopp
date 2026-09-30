@@ -13,6 +13,7 @@
 #include "Equation.hpp"
 #include "ASTNode.hpp"
 #include "Evaluateur.hpp"
+#include "Solveur.hpp"
 
 #include <memory>
 #include <utility>
@@ -108,6 +109,31 @@ public:
      * Utilisation : EquationClassique dl = eq.DL(x0, ordre);
      */
     EquationClassique DL(double x0, int ordre) const;
+
+    /*
+     * Nom : resoudre
+     * Description : Solutions réelles de l'équation (expression = 0) : exactes quand c'est
+     *               possible, familles paramétrées par un entier pour les équations
+     *               trigonométriques, avec un indicateur de complétude (voir Solveur.hpp).
+     * Utilisation : Solutions s = eq.resoudre();
+     */
+    Solutions resoudre() const;
+
+    /*
+     * Nom : resoudre (intervalle)
+     * Description : Solutions dans [a, b] : familles dépliées, recherche numérique en
+     *               complément des formes non résolues exactement.
+     * Utilisation : Solutions s = eq.resoudre(0.0, 10.0);
+     */
+    Solutions resoudre(double a, double b) const;
+
+    /*
+     * Nom : developper / factoriser
+     * Description : Forme développée, et factorisation sur les rationnels (polynômes).
+     * Utilisation : EquationClassique f = eq.factoriser();
+     */
+    EquationClassique developper() const;
+    EquationClassique factoriser() const;
 
     /*
      * Nom : getExpression

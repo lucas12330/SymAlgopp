@@ -12,6 +12,7 @@
 #include <cmath>
 #include <functional>
 #include <sstream>
+#include <unordered_map>
 
 namespace symalgo {
 
@@ -652,6 +653,35 @@ ExprPtr operator*(double g, const ExprPtr& d) { return cst(g) * d; }
 ExprPtr operator/(const ExprPtr& g, double d) { return g / cst(d); }
 ExprPtr operator/(double g, const ExprPtr& d) { return cst(g) / d; }
 
+namespace {
+
+/*
+ * Nom : extrairePuissances
+ * Description : Écrit l'entier b > 0 (au plus 10^12) sous la forme exterieur^q * interieur
+ *               avec exterieur maximal (division par les nombres premiers jusqu'à b^(1/q)).
+ *               Renvoie faux s'il n'y a rien à extraire.
+ */
+bool extrairePuissances(const Nombre& b, long long q, Nombre& exterieur, Nombre& interieur) {
+    long long v;
+    if (!b.versEntier(v) || v <= 1 || v > 1000000000000LL || q < 2) return false;
+    long long ext = 1, reste = v;
+    for (long long d = 2; d <= 1000000 && d * d <= reste; ++d) {
+        long long multiplicite = 0;
+        while (reste % d == 0) {
+            reste /= d;
+            ++multiplicite;
+        }
+        for (long long i = 0; i < multiplicite / q; ++i) ext *= d;
+    }
+    // Le reste, s'il dépasse 1, est premier (multiplicité 1) : rien à extraire
+    if (ext == 1) return false;
+    exterieur = Nombre(ext);
+    interieur = Nombre(v) / Nombre(ext).puissanceEntiere(q);
+    return true;
+}
+
+} // namespace
+
 ExprPtr ast_pow(const ExprPtr& base, const ExprPtr& exposant) {
     if (const Constante* ce = comme<Constante>(exposant)) {
         const Nombre& e = ce->getNombre();
@@ -675,6 +705,16 @@ ExprPtr ast_pow(const ExprPtr& base, const ExprPtr& exposant) {
                     if (e.versFraction(p, q) && !b.estZero()) {
                         const long long n = p >= 0 ? p / q : -((-p + q - 1) / q); // partie entière
                         if (n != 0) return nombre(b.puissanceEntiere(n)) * ast_pow(base, nombre(Nombre::rationnel(p - n * q, q)));
+                        // Dénominateur rationalisé : (a/d)^(p/q) = (a d^(q-1))^(p/q) / d^p
+                        const Nombre d = b.denominateurNombre();
+                        if (!d.estUn()) {
+                            return ast_pow(nombre(b * d.puissanceEntiere(q)), exposant) * nombre(d.puissanceEntiere(-p));
+                        }
+                        // Puissances q-ièmes parfaites sorties du radical : 8^(1/2) = 2*2^(1/2)
+                        Nombre exterieur, interieur;
+                        if (extrairePuissances(b, q, exterieur, interieur)) {
+                            return nombre(exterieur.puissanceEntiere(p)) * ast_pow(nombre(interieur), exposant);
+                        }
                     }
                 }
             } else {
@@ -850,12 +890,131 @@ ExprPtr ast_exp(const ExprPtr& arg) {
 
 ExprPtr ast_ln(const ExprPtr& arg) {
     double v;
-    if (const Constante* c = comme<Constante>(arg); c && c->getNombre().estExact() && c->getNombre().estUn()) {
-        return nombre(Nombre(0));
+    if (const Constante* c = comme<Constante>(arg); c && c->getNombre().estExact()) {
+        const Nombre& b = c->getNombre();
+        if (b.estUn()) return nombre(Nombre(0));
+        // ln(p/q) = ln(p) - ln(q) et ln(a^n) = n ln(a) : ln(8) = 3*ln(2), ln(1/4) = -2*ln(2)
+        if (b.signe() > 0 && !b.estEntier()) return ast_ln(nombre(b.numerateurNombre())) - ast_ln(nombre(b.denominateurNombre()));
+        long long v64;
+        if (b.versEntier(v64) && v64 > 1) {
+            for (long long n = 62; n >= 2; --n) {
+                Nombre racine;
+                if (b.racineExacte(n, racine)) return nombre(Nombre(n)) * ast_ln(nombre(racine));
+            }
+        }
     }
     if (argumentReel(arg, v) && v > 0.0) return nombre(Nombre::reel(std::log(v)));
     if (const Exponentielle* e = comme<Exponentielle>(arg)) return e->m_argument; // ln(exp u) = u (u réel)
     return fabriquer<Logarithme>(arg);
+}
+
+// ============================================================================
+// Substitution
+// ============================================================================
+
+ExprPtr appliquer(TypeNoeud fonction, const ExprPtr& arg) {
+    switch (fonction) {
+        case TypeNoeud::Sinus: return ast_sin(arg);
+        case TypeNoeud::Cosinus: return ast_cos(arg);
+        case TypeNoeud::Tangente: return ast_tan(arg);
+        case TypeNoeud::Exponentielle: return ast_exp(arg);
+        case TypeNoeud::Logarithme: return ast_ln(arg);
+        case TypeNoeud::ArcSinus: return ast_asin(arg);
+        case TypeNoeud::ArcCosinus: return ast_acos(arg);
+        case TypeNoeud::ArcTangente: return ast_atan(arg);
+        default: throw std::invalid_argument("appliquer : type de fonction inconnu");
+    }
+}
+
+namespace {
+
+class Substitution {
+public:
+    Substitution(const ExprPtr& cible, const ExprPtr& remplacement) : m_cible(cible), m_remplacement(remplacement) {}
+
+    ExprPtr appliquerA(const ExprPtr& e) {
+        if (e.get() == m_cible.get()) return m_remplacement;
+        const auto it = m_memo.find(e.get());
+        if (it != m_memo.end()) return it->second;
+        ExprPtr r = e;
+        switch (e->type()) {
+            case TypeNoeud::Somme: {
+                const Somme& s = static_cast<const Somme&>(*e);
+                AccumulateurSomme acc;
+                acc.ajouter(nombre(s.getConstante()), Nombre(1));
+                for (const Terme& t : s.getTermes()) acc.ajouter(appliquerA(t.expression), t.coefficient);
+                r = acc.construire();
+                break;
+            }
+            case TypeNoeud::Produit: {
+                const Produit& p = static_cast<const Produit&>(*e);
+                AccumulateurProduit acc;
+                acc.multiplier(nombre(p.getCoefficient()));
+                for (const Facteur& f : p.getFacteurs()) acc.multiplier(ast_pow(appliquerA(f.base), appliquerA(f.exposant)));
+                r = acc.construire();
+                break;
+            }
+            case TypeNoeud::Puissance: {
+                const Puissance& p = static_cast<const Puissance&>(*e);
+                r = ast_pow(appliquerA(p.getBase()), appliquerA(p.getExposant()));
+                break;
+            }
+            case TypeNoeud::IntegraleNonEvaluee:
+                r = fabriquer<IntegraleNonEvaluee>(appliquerA(static_cast<const IntegraleNonEvaluee&>(*e).getIntegrande()));
+                break;
+            default:
+                if (const FonctionUnaire* f = comme<FonctionUnaire>(e)) r = appliquer(e->type(), appliquerA(f->m_argument));
+        }
+        m_memo.emplace(e.get(), r);
+        return r;
+    }
+
+private:
+    ExprPtr m_cible, m_remplacement;
+    std::unordered_map<const ASTNode*, ExprPtr> m_memo;
+};
+
+bool contientRecursif(const ASTNode& e, const ASTNode& cible, std::unordered_map<const ASTNode*, bool>& memo) {
+    if (&e == &cible) return true;
+    const auto it = memo.find(&e);
+    if (it != memo.end()) return it->second;
+    bool r = false;
+    switch (e.type()) {
+        case TypeNoeud::Somme:
+            for (const Terme& t : static_cast<const Somme&>(e).getTermes()) r = r || contientRecursif(*t.expression, cible, memo);
+            break;
+        case TypeNoeud::Produit:
+            for (const Facteur& f : static_cast<const Produit&>(e).getFacteurs()) {
+                r = r || contientRecursif(*f.base, cible, memo) || contientRecursif(*f.exposant, cible, memo);
+            }
+            break;
+        case TypeNoeud::Puissance: {
+            const Puissance& p = static_cast<const Puissance&>(e);
+            r = contientRecursif(*p.getBase(), cible, memo) || contientRecursif(*p.getExposant(), cible, memo);
+            break;
+        }
+        case TypeNoeud::IntegraleNonEvaluee:
+            r = contientRecursif(*static_cast<const IntegraleNonEvaluee&>(e).getIntegrande(), cible, memo);
+            break;
+        case TypeNoeud::LimiteNonEvaluee:
+            r = contientRecursif(*static_cast<const LimiteNonEvaluee&>(e).getExpression(), cible, memo);
+            break;
+        default:
+            if (const FonctionUnaire* f = comme<FonctionUnaire>(&e)) r = contientRecursif(*f->m_argument, cible, memo);
+    }
+    memo.emplace(&e, r);
+    return r;
+}
+
+} // namespace
+
+ExprPtr substituer(const ExprPtr& e, const ExprPtr& cible, const ExprPtr& remplacement) {
+    return Substitution(cible, remplacement).appliquerA(e);
+}
+
+bool contient(const ExprPtr& e, const ExprPtr& cible) {
+    std::unordered_map<const ASTNode*, bool> memo;
+    return contientRecursif(*e, *cible, memo);
 }
 
 } // namespace symalgo
