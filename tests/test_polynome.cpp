@@ -74,4 +74,124 @@ TEST_CASE(developper_expression_deja_developpee) {
     CHECK(developper(cst(5.0)).get() == cst(5.0).get());
 }
 
+namespace {
+
+Polynome polynome(const ExprPtr& e) {
+    Polynome p;
+    const bool ok = Polynome::depuisExpression(developper(e), p);
+    CHECK(ok);
+    return p;
+}
+
+std::string texteRacines(const std::vector<RacineReelle>& racines) {
+    std::string t;
+    for (const RacineReelle& r : racines) {
+        if (!t.empty()) t += " ; ";
+        t += r.exacte ? r.exacte->texte() : std::string("~");
+        if (r.multiplicite > 1) t += " (x" + std::to_string(r.multiplicite) + ")";
+    }
+    return t;
+}
+
+} // namespace
+
+TEST_CASE(polynome_reconnaissance) {
+    Polynome p;
+    ExprPtr x;
+    CHECK(Polynome::depuisExpression(developper(ast_pow(X + 1.0, 3.0)), p, &x));
+    CHECK_EQ(p.degre(), 3);
+    CHECK_EQ(p.coefficient(1).texte(), std::string("3"));
+    CHECK(x.get() == X.get());
+    CHECK(Polynome::depuisExpression(cst(7.0), p) && p.degre() == 0);
+    CHECK(!Polynome::depuisExpression(ast_sin(X), p));
+    CHECK(!Polynome::depuisExpression(cst(1.0) / X, p));
+    CHECK(!Polynome::depuisExpression(X + var("y"), p)); // deux variables
+    CHECK(!Polynome::depuisExpression(param("a") * X, p)); // coefficient symbolique
+    CHECK(Polynome::depuisExpression(cst(0.5) * X, p) && !p.estExact());
+}
+
+TEST_CASE(polynome_arithmetique_exacte) {
+    const Polynome a = polynome(ast_pow(X, 3.0) - 1.0), b = polynome(X - 1.0);
+    Polynome q, r;
+    a.diviser(b, q, r);
+    CHECK_EQ(q.versExpression(X)->texte(), std::string("x^2 + x + 1"));
+    CHECK(r.estNul());
+    CHECK_EQ((a * b).versExpression(X)->texte(), std::string("x^4 - x^3 - x + 1"));
+    CHECK_EQ(a.derivee().versExpression(X)->texte(), std::string("3*x^2"));
+    // pgcd((x-1)^2 (x+2), (x-1)(x+3)) = x - 1
+    const Polynome g = Polynome::pgcd(polynome(ast_pow(X - 1.0, 2.0) * (X + 2.0)), polynome((X - 1.0) * (X + 3.0)));
+    CHECK_EQ(g.versExpression(X)->texte(), std::string("x - 1"));
+    CHECK_EQ(polynome(ast_pow(X, 2.0) / 3.0 + frac(1, 7)).evaluer(Nombre(2)).texte(), std::string("31/21"));
+}
+
+TEST_CASE(polynome_sans_carre) {
+    // (x - 1)^3 (x + 2)^2 (x - 5) : facteurs de multiplicités 1, 2 et 3
+    const auto facteurs = polynome(ast_pow(X - 1.0, 3.0) * ast_pow(X + 2.0, 2.0) * (X - 5.0)).sansCarre();
+    CHECK_EQ(facteurs.size(), std::size_t(3));
+    CHECK_EQ(facteurs[0].first.versExpression(X)->texte(), std::string("x - 5"));
+    CHECK_EQ(facteurs[1].first.versExpression(X)->texte(), std::string("x + 2"));
+    CHECK_EQ(facteurs[1].second, 2);
+    CHECK_EQ(facteurs[2].first.versExpression(X)->texte(), std::string("x - 1"));
+    CHECK_EQ(facteurs[2].second, 3);
+}
+
+TEST_CASE(polynome_comptage_de_sturm) {
+    const Polynome p = polynome(ast_pow(X, 5.0) - X); // racines -1, 0, 1
+    CHECK_EQ(p.nombreRacinesReelles(Nombre(-10), Nombre(10)), 3);
+    CHECK_EQ(p.nombreRacinesReelles(Nombre(0), Nombre(10)), 1);   // ]0, 10] : seulement 1
+    CHECK_EQ(p.nombreRacinesReelles(Nombre(-1), Nombre(0)), 1);   // ]-1, 0] : seulement 0
+    CHECK_EQ(polynome(ast_pow(X, 2.0) + 1.0).nombreRacinesReelles(Nombre(-100), Nombre(100)), 0);
+    CHECK_EQ(polynome(ast_pow(X - 1.0, 4.0)).nombreRacinesReelles(Nombre(0), Nombre(2)), 1); // distinctes
+}
+
+TEST_CASE(racines_exactes) {
+    CHECK_EQ(texteRacines(polynome(ast_pow(X, 2.0) - 3.0 * X + 2.0).racinesReelles()), std::string("1 ; 2"));
+    CHECK_EQ(texteRacines(polynome(cst(6.0) * ast_pow(X, 3.0) - cst(11.0) * ast_pow(X, 2.0) + cst(6.0) * X - 1.0).racinesReelles()),
+             std::string("1/3 ; 1/2 ; 1"));
+    CHECK_EQ(texteRacines(polynome(ast_pow(X - 1.0, 3.0) * ast_pow(X + 2.0, 2.0)).racinesReelles()),
+             std::string("-2 (x2) ; 1 (x3)"));
+    // Nombre d'or : racines de degré 2 par radicaux
+    CHECK_EQ(texteRacines(polynome(ast_pow(X, 2.0) - X - 1.0).racinesReelles()),
+             std::string("-5^(1/2)/2 + 1/2 ; 5^(1/2)/2 + 1/2"));
+    CHECK(polynome(ast_pow(X, 2.0) + 1.0).racinesReelles().empty());
+}
+
+TEST_CASE(racines_numeriques_certifiees) {
+    // x^3 - 2 : racine irrationnelle de degré 3, au double le plus proche
+    const auto r = polynome(ast_pow(X, 3.0) - 2.0).racinesReelles();
+    CHECK_EQ(r.size(), std::size_t(1));
+    CHECK(!r[0].exacte);
+    CHECK_EQ(r[0].valeur, std::cbrt(2.0)); // au double près
+    CHECK(r[0].gauche < r[0].droite);
+    // Polynôme de Wilkinson (degré 10, très mal conditionné) : les 10 racines exactes
+    ExprPtr w = cst(1.0);
+    for (int k = 1; k <= 10; ++k) w = w * (X - cst(k));
+    CHECK_EQ(texteRacines(polynome(w).racinesReelles()), std::string("1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 10"));
+    // Coefficient réel : racines certifiées, sans forme exacte
+    const auto s = polynome(ast_pow(X, 2.0) - cst(0.1)).racinesReelles();
+    CHECK_EQ(s.size(), std::size_t(2));
+    CHECK(!s[0].exacte && !s[1].exacte);
+    CHECK_EQ(s[1].valeur, std::sqrt(0.1)); // racine de la valeur exacte du double 0.1
+    CHECK_EQ(s[0].valeur, -std::sqrt(0.1));
+}
+
+TEST_CASE(factorisation) {
+    CHECK_EQ(factoriser(ast_pow(X, 3.0) - X)->texte(), std::string("x*(x - 1)*(x + 1)"));
+    CHECK_EQ(factoriser(ast_pow(X, 5.0) - X)->texte(), std::string("x*(x - 1)*(x + 1)*(x^2 + 1)"));
+    CHECK_EQ(factoriser(cst(6.0) * ast_pow(X, 3.0) - cst(11.0) * ast_pow(X, 2.0) + cst(6.0) * X - 1.0)->texte(),
+             std::string("(x - 1)*(2*x - 1)*(3*x - 1)"));
+    CHECK_EQ(factoriser(developper(ast_pow(X - 1.0, 3.0) * ast_pow(X + 2.0, 2.0)))->texte(),
+             std::string("(x - 1)^3*(x + 2)^2"));
+    CHECK_EQ(factoriser(cst(2.0) * ast_pow(X, 2.0) - 2.0)->texte(), std::string("2*(x - 1)*(x + 1)"));
+    CHECK_EQ(factoriser(ast_pow(X, 2.0) - X - 1.0)->texte(), std::string("x^2 - x - 1")); // irréductible sur Q
+    // Non polynomial ou approché : inchangé
+    const ExprPtr e = ast_sin(X) + 1.0;
+    CHECK(factoriser(e).get() == e.get());
+    const ExprPtr f = ast_pow(X, 2.0) - cst(0.25);
+    CHECK(factoriser(f).get() == f.get());
+    // La factorisation redonne bien le polynôme
+    const ExprPtr g = cst(6.0) * ast_pow(X, 4.0) - cst(5.0) * ast_pow(X, 3.0) - cst(2.0) * X;
+    CHECK(developper(factoriser(g)).get() == developper(g).get());
+}
+
 int main() { return test::executerTous(); }

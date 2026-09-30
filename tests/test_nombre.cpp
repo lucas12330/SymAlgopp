@@ -115,4 +115,21 @@ TEST_CASE(proprietes) {
     CHECK(!Nombre::reel(std::numeric_limits<double>::infinity()).estFini());
 }
 
+TEST_CASE(outils_entiers) {
+    CHECK_EQ(Nombre::pgcd(Nombre(12), Nombre(-18)).texte(), std::string("6"));
+    CHECK_EQ(Nombre::pgcd(Nombre(2).puissanceEntiere(80), Nombre(6).puissanceEntiere(10)).texte(), std::string("1024"));
+    CHECK_THROWS(Nombre::pgcd(Nombre::rationnel(1, 2), Nombre(2)), std::domain_error);
+    CHECK_EQ(Nombre::rationnel(-3, 4).numerateurNombre().texte(), std::string("-3"));
+    CHECK_EQ(Nombre::rationnel(-3, 4).denominateurNombre().texte(), std::string("4"));
+    CHECK_EQ(Nombre::rationnel(-3, 4).valeurAbsolue().texte(), std::string("3/4"));
+    CHECK(Nombre(1) < Nombre(2) && Nombre::rationnel(1, 3) <= Nombre::rationnel(1, 3) && Nombre(5) > Nombre(-5));
+}
+
+TEST_CASE(conversion_exacte_des_doubles) {
+    CHECK_EQ(Nombre::exactDepuisDouble(0.5).texte(), std::string("1/2"));
+    CHECK_EQ(Nombre::exactDepuisDouble(0.1).texte(), std::string("3602879701896397/36028797018963968"));
+    CHECK_EQ(Nombre::exactDepuisDouble(-3.0).texte(), std::string("-3"));
+    CHECK_THROWS(Nombre::exactDepuisDouble(std::nan("")), std::domain_error);
+}
+
 int main() { return test::executerTous(); }

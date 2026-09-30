@@ -53,6 +53,20 @@ public:
     static Nombre depuisDouble(double v);
 
     /*
+     * Nom : exactDepuisDouble
+     * Description : Valeur exacte d'un double fini : tout double est un rationnel dyadique
+     *               (0.1 donne 3602879701896397/36028797018963968). Lève std::domain_error
+     *               pour un infini ou NaN.
+     */
+    static Nombre exactDepuisDouble(double v);
+
+    /*
+     * Nom : pgcd
+     * Description : Plus grand commun diviseur (positif) de deux entiers exacts.
+     */
+    static Nombre pgcd(const Nombre& a, const Nombre& b);
+
+    /*
      * Nom : depuisTexte
      * Description : Rationnel exact de taille arbitraire, écrit « p » ou « p/q » en base 10.
      * Utilisation : Nombre n = Nombre::depuisTexte("123456789012345678901234567890/7");
@@ -111,6 +125,14 @@ public:
     Nombre operator/(const Nombre& b) const; // lève std::domain_error pour une division exacte par 0
     Nombre operator-() const;
     Nombre inverse() const;
+    Nombre valeurAbsolue() const { return signe() < 0 ? -*this : *this; }
+
+    /*
+     * Nom : numerateurNombre / denominateurNombre
+     * Description : Numérateur et dénominateur (entiers exacts) d'un nombre exact.
+     */
+    Nombre numerateurNombre() const;
+    Nombre denominateurNombre() const;
 
     /*
      * Nom : puissanceEntiere
@@ -134,6 +156,10 @@ public:
     bool operator==(const Nombre& b) const;
     bool operator!=(const Nombre& b) const { return !(*this == b); }
     int comparer(const Nombre& b) const;
+    bool operator<(const Nombre& b) const { return comparer(b) < 0; }
+    bool operator<=(const Nombre& b) const { return comparer(b) <= 0; }
+    bool operator>(const Nombre& b) const { return comparer(b) > 0; }
+    bool operator>=(const Nombre& b) const { return comparer(b) >= 0; }
 
     std::size_t hash() const;
 

@@ -111,6 +111,30 @@ Nombre Nombre::depuisDouble(double v) {
     return reel(v);
 }
 
+Nombre Nombre::exactDepuisDouble(double v) {
+    if (!std::isfinite(v)) throw std::domain_error("Nombre : valeur non finie");
+    Grand g{mpq_class(v)}; // conversion exacte (rationnel dyadique)
+    g.q.canonicalize();
+    return depuisGrand(std::move(g));
+}
+
+Nombre Nombre::pgcd(const Nombre& a, const Nombre& b) {
+    if (!a.estEntier() || !b.estEntier()) throw std::domain_error("Nombre::pgcd : entiers exacts attendus");
+    mpz_class r;
+    mpz_gcd(r.get_mpz_t(), a.versGrand().q.get_num().get_mpz_t(), b.versGrand().q.get_num().get_mpz_t());
+    return depuisGrand(Grand{mpq_class(r)});
+}
+
+Nombre Nombre::numerateurNombre() const {
+    if (m_forme == Forme::Reel) throw std::logic_error("Nombre::numerateurNombre : nombre reel");
+    return depuisGrand(Grand{mpq_class(versGrand().q.get_num())});
+}
+
+Nombre Nombre::denominateurNombre() const {
+    if (m_forme == Forme::Reel) throw std::logic_error("Nombre::denominateurNombre : nombre reel");
+    return depuisGrand(Grand{mpq_class(versGrand().q.get_den())});
+}
+
 Nombre Nombre::depuisTexte(const std::string& texte) {
     Grand g;
     if (g.q.set_str(texte, 10) != 0) throw std::invalid_argument("Nombre : texte invalide « " + texte + " »");
