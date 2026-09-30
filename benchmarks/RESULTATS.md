@@ -60,3 +60,26 @@ calculés indépendamment (test `derivees_successives_contre_series`).
 
 **Collecte** : toujours pas de regroupement réel des termes semblables (la somme
 garde 100 termes) ; c'est l'objet du chantier « forme canonique n-aire ».
+
+## Après le chantier « forme canonique n-aire »
+
+Branche `feature/forme-canonique` : sommes et produits n-aires triés, coefficients
+rationnels exacts (`Nombre`, repli GMP), construction canonique automatique.
+Médiane de 3 répétitions.
+
+| Scénario | Après hash-consing | Forme canonique | GiNaC | Rapport actuel |
+| :--- | ---: | ---: | ---: | :--- |
+| Évaluation en un point | 137 ns | 112 ns | 31 409 ns | SymAlgo++ ×280 |
+| Évaluation sur 10 000 points | 1,32 ms | 1,07 ms | 307 ms | SymAlgo++ ×287 |
+| Dérivée première | 3,2 µs | 8,8 µs | 28,3 µs | SymAlgo++ ×3,2 |
+| Dérivée 10e | 0,40 ms | 1,36 ms | 7,23 ms | SymAlgo++ ×5,3 |
+| **Collecte (100 termes)** | 65 µs, *non collectés* | **143 µs, 8 termes** | 238 µs | **SymAlgo++ ×1,7** |
+| Série d'ordre 10 | 6,7 µs | 4,0 µs | 4 757 µs | SymAlgo++ ×1 190 |
+| **Mémoire du résultat (dérivée 6e)** | 4,6 Ko | **4,2 Ko** | 4,9 Ko | **SymAlgo++ −14 %** |
+
+**Lecture** : les dérivées sont plus lentes qu'après le hash-consing seul, car chaque
+construction fait désormais un vrai travail (regroupement des termes, fusion des
+exposants, arithmétique exacte), mais le résultat est une forme réduite : la collecte
+est enfin effective et plus rapide que GiNaC, et deux limites jusque-là non déterminées
+(`x·ln x` et `x^x` en 0) sont résolues grâce à la simplification des quotients.
+Tous les scénarios sont désormais à l'avantage de SymAlgo++.
