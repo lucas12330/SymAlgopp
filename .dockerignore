@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.cache
+build
+bin
+Exec
+vendor
+compile_commands.json
+docs/images

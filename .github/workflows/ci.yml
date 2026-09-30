@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests (Release)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libgmp-dev libeigen3-dev
+      - name: Configuration
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Compilation
+        run: cmake --build build
+      - name: Tests et cas d'usage
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: Tests (AddressSanitizer + UBSan)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libgmp-dev libeigen3-dev
+      - name: Configuration
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSYMALGOPP_SANITIZE=ON
+      - name: Compilation
+        run: cmake --build build
+      - name: Tests
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+
+  paquet:
+    name: Paquet installé (find_package et pkg-config)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libgmp-dev libeigen3-dev
+      - name: Installation dans un préfixe temporaire et compilation d'un projet extérieur
+        run: tests/packaging/verifier.sh
