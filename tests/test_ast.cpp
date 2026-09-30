@@ -93,7 +93,7 @@ TEST_CASE(noeuds_crees_uniquement_par_les_helpers) {
     static_assert(!std::is_constructible_v<Constante, double>);
     static_assert(!std::is_constructible_v<Sinus, ExprPtr>);
     // Via les helpers, le partage fonctionne sans copie
-    const ExprPtr e = cst(5.0);
+    const ExprPtr e = cst(123456.789); // valeur utilisée nulle part ailleurs
     CHECK(e->clone().get() == e.get());
     CHECK_EQ(e->nombreReferences(), 1u);
     {
@@ -132,6 +132,39 @@ TEST_CASE(types_des_noeuds) {
     CHECK(comme<Sinus>(ast_cos(x)) == nullptr);
     CHECK(comme<Constante>(frac(1, 3)) == nullptr);
     CHECK(comme<Sinus>(ExprPtr()) == nullptr);
+}
+
+TEST_CASE(hash_consing_expressions_uniques) {
+    // Deux constructions identiques donnent le même noeud en mémoire
+    const ExprPtr a = ast_sin(var("x") * 2.0) + frac(1, 3);
+    const ExprPtr b = ast_sin(var("x") * 2.0) + frac(1, 3);
+    CHECK(a.get() == b.get());
+    CHECK(a->hash() == b->hash());
+    // Des expressions différentes restent distinctes
+    CHECK((var("x") + 1.0).get() != (var("x") + 2.0).get());
+    CHECK((var("x") - var("y")).get() != (var("y") - var("x")).get());
+    CHECK(cst(0.0).get() == cst(-0.0).get());
+    CHECK(frac(2, 4).get() == frac(1, 2).get());
+    CHECK(var("x").get() != param("x").get());
+}
+
+TEST_CASE(hash_consing_liberation) {
+    const std::size_t avant = nombreNoeudsVivants();
+    {
+        const ExprPtr e = ast_exp(ast_sin(var("zz")) * 12345.0);
+        const ExprPtr d = e->derivee()->simplifier();
+        CHECK(nombreNoeudsVivants() > avant);
+    }
+    // Tous les noeuds créés dans le bloc ont été libérés et retirés de la table
+    CHECK_EQ(nombreNoeudsVivants(), avant);
+}
+
+TEST_CASE(simplification_memorisee) {
+    const ExprPtr e = (cst(2.0) * ast_sin(var("x")) + cst(3.0) * ast_sin(var("x")));
+    const ExprPtr s1 = e->simplifier();
+    const ExprPtr s2 = e->simplifier();
+    CHECK(s1.get() == s2.get());
+    CHECK(s1->simplifier().get() == s1.get()); // une forme simplifiée est stable
 }
 
 TEST_CASE(fraction_dans_expression) {

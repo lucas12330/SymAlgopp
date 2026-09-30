@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <ostream>
 #include <stdexcept>
@@ -10,6 +11,7 @@
 namespace symalgo {
 
 class ASTNode;
+class TableNoeuds;
 
 /*
  * Nom : TypeNoeud
@@ -57,13 +59,66 @@ class CleFabrique {
 };
 
 /*
+ * Nom : Signature
+ * Description : Description d'un noeud (type, valeurs, enfants) sans le construire. Sert au
+ *               hash-consing : on cherche d'abord un noeud identique existant, et l'on
+ *               n'alloue un nouveau noeud que s'il n'existe pas encore.
+ */
+struct Signature {
+    TypeNoeud type;
+    const ASTNode* enfants[2] = {nullptr, nullptr};
+    double reel = 0.0;                // Constante, point d'une LimiteNonEvaluee
+    std::int64_t num = 0, den = 1;    // Fraction (normalisée)
+    const std::string* nom = nullptr; // Variable, Parametre
+
+    static Signature unaire(TypeNoeud type, const ASTNode* a) {
+        Signature s{type};
+        s.enfants[0] = a;
+        return s;
+    }
+    static Signature binaire(TypeNoeud type, const ASTNode* a, const ASTNode* b) {
+        Signature s{type};
+        s.enfants[0] = a;
+        s.enfants[1] = b;
+        return s;
+    }
+};
+
+/*
+ * Nom : hashSignature
+ * Description : Empreinte d'une signature (les enfants contribuent par leur propre empreinte).
+ */
+std::size_t hashSignature(const Signature& s);
+
+/*
+ * Nom : chercherNoeud / enregistrerNoeud
+ * Description : Table de hash-consing : recherche d'un noeud existant de même signature, et
+ *               enregistrement d'un noeud nouvellement créé.
+ */
+const ASTNode* chercherNoeud(const Signature& s, std::size_t hash);
+ExprPtr enregistrerNoeud(ASTNode* nouveau, std::size_t hash);
+
+/*
+ * Nom : nombreNoeudsVivants
+ * Description : Nombre de noeuds distincts actuellement en mémoire (diagnostic, tests).
+ */
+std::size_t nombreNoeudsVivants();
+
+/*
  * Nom : fabriquer
- * Description : Crée un noeud de type T et renvoie un ExprPtr qui le possède.
+ * Description : Crée un noeud de type T, ou renvoie le noeud identique déjà existant
+ *               (hash-consing) : chaque expression n'existe qu'une fois en mémoire et deux
+ *               expressions identiques sont le même pointeur.
  * Utilisation : ExprPtr s = fabriquer<Sinus>(argument);
  */
 template <class T, class... Args>
 ExprPtr fabriquer(Args&&... args) {
-    return ExprPtr(new T(CleFabrique(), std::forward<Args>(args)...));
+    const Signature signature = T::signature(static_cast<const Args&>(args)...);
+    const std::size_t hash = hashSignature(signature);
+    if (const ASTNode* existant = chercherNoeud(signature, hash)) {
+        return ExprPtr(const_cast<ASTNode*>(existant));
+    }
+    return enregistrerNoeud(new T(CleFabrique(), std::forward<Args>(args)...), hash);
 }
 
 // Classe abstraite de base pour tous les noeuds de l'arbre
@@ -75,6 +130,12 @@ public:
      * Utilisation : if (noeud->type() == TypeNoeud::Sinus) { ... }
      */
     TypeNoeud type() const { return m_type; }
+
+    /*
+     * Nom : hash
+     * Description : Empreinte structurelle du noeud (type, valeurs, empreintes des enfants).
+     */
+    std::size_t hash() const { return m_hash; }
 
     /*
      * Nom : ~ASTNode
@@ -106,10 +167,12 @@ public:
 
     /*
      * Nom : simplifier
-     * Description : Simplifie mathématiquement l'expression de l'arbre.
+     * Description : Simplifie mathématiquement l'expression. Le résultat est mémorisé dans le
+     *               noeud : simplifier deux fois la même expression (ou une expression déjà
+     *               simplifiée) est immédiat.
      * Utilisation : ExprPtr simp = noeud->simplifier();
      */
-    virtual ExprPtr simplifier() const = 0;
+    ExprPtr simplifier() const;
 
     /*
      * Nom : afficher
@@ -177,6 +240,13 @@ protected:
     explicit ASTNode(TypeNoeud type) : m_type(type) {}
 
     /*
+     * Nom : calculerSimplification
+     * Description : Règles de simplification propres au noeud, appelées par simplifier()
+     *               lorsque le résultat n'est pas déjà connu.
+     */
+    virtual ExprPtr calculerSimplification() const = 0;
+
+    /*
      * Nom : primitive
      * Description : Règles d'intégration propres au noeud, appelées par integrer()
      *               lorsque l'expression dépend de x.
@@ -201,8 +271,24 @@ protected:
      */
     ExprPtr limiteNonEvaluee(double a) const;
 
+    /*
+     * Nom : detruire
+     * Description : Retire le noeud de la table de hash-consing avant de le libérer.
+     */
+    void detruire() const override;
+
 private:
     TypeNoeud m_type;
+    std::size_t m_hash = 0;
+    // Mémo de simplifier() : m_estSimplifie si le noeud est sa propre forme simplifiée,
+    // sinon m_formeSimplifiee une fois calculée (elle ne peut pas contenir ce noeud)
+    mutable bool m_estSimplifie = false;
+    mutable ExprPtr m_formeSimplifiee;
+    // Chaînage intrusif dans la table de hash-consing (aucune allocation par insertion)
+    mutable const ASTNode* m_suivantTable = nullptr;
+
+    friend ExprPtr enregistrerNoeud(ASTNode* nouveau, std::size_t hash);
+    friend class TableNoeuds;
 };
 
 /*
@@ -233,6 +319,11 @@ public:
      * Utilisation : ExprPtr c = cst(5.0);
      */
     Constante(CleFabrique, double valeur);
+    static Signature signature(double valeur) {
+        Signature s{TYPE};
+        s.reel = valeur;
+        return s;
+    }
 
     /*
      * Nom : eval
@@ -248,14 +339,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie la constante (renvoie une copie d'elle-même).
-     * Utilisation : ExprPtr simp = c.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche la valeur de la constante.
      * Utilisation : c.afficher(std::cout);
@@ -285,6 +369,7 @@ public:
     double getValeurConstante() const override { return m_valeur; }
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -306,10 +391,10 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     Fraction(CleFabrique, int64_t num, int64_t den);
+    static Signature signature(int64_t num, int64_t den);
 
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
@@ -319,6 +404,7 @@ public:
     int64_t getDen() const { return m_den; }
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -335,6 +421,11 @@ public:
      * Utilisation : ExprPtr v = var("y");
      */
     Variable(CleFabrique, const std::string& nom);
+    static Signature signature(const std::string& nom) {
+        Signature s{TYPE};
+        s.nom = &nom;
+        return s;
+    }
 
     /*
      * Nom : eval
@@ -350,14 +441,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Renvoie la variable elle-même (pas de simplification possible).
-     * Utilisation : ExprPtr simp = v.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche le nom textuel de la variable.
      * Utilisation : v.afficher(std::cout);
@@ -374,7 +458,10 @@ public:
 
     bool contientVariable() const override { return true; }
 
+    const std::string& getNom() const { return m_nom; }
+
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -399,6 +486,11 @@ public:
      * Utilisation : ExprPtr c = param("C1");
      */
     Parametre(CleFabrique, const std::string& nom);
+    static Signature signature(const std::string& nom) {
+        Signature s{TYPE};
+        s.nom = &nom;
+        return s;
+    }
 
     /*
      * Nom : eval
@@ -414,7 +506,6 @@ public:
      */
     ExprPtr derivee() const override;
 
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
 
     /*
@@ -427,6 +518,7 @@ public:
     const std::string& getNom() const { return m_nom; }
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -465,6 +557,7 @@ public:
      * Utilisation : ExprPtr add = expr1 + expr2;
      */
     Addition(CleFabrique, ExprPtr gauche, ExprPtr droite);
+    static Signature signature(const ExprPtr& g, const ExprPtr& d) { return Signature::binaire(TYPE, g.get(), d.get()); }
 
     /*
      * Nom : eval
@@ -480,14 +573,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie les zéros et regroupe les termes similaires de l'addition.
-     * Utilisation : ExprPtr simp = add.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche l'addition au format (gauche + droite).
      * Utilisation : add.afficher(std::cout);
@@ -503,6 +589,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -518,6 +605,7 @@ public:
      * Utilisation : ExprPtr sub = expr1 - expr2;
      */
     Soustraction(CleFabrique, ExprPtr gauche, ExprPtr droite);
+    static Signature signature(const ExprPtr& g, const ExprPtr& d) { return Signature::binaire(TYPE, g.get(), d.get()); }
 
     /*
      * Nom : eval
@@ -533,14 +621,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie les zéros, constantes et annule (a - a).
-     * Utilisation : ExprPtr simp = sub.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche la soustraction au format (gauche - droite).
      * Utilisation : sub.afficher(std::cout);
@@ -556,6 +637,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -571,6 +653,7 @@ public:
      * Utilisation : ExprPtr mul = expr1 * expr2;
      */
     Multiplication(CleFabrique, ExprPtr gauche, ExprPtr droite);
+    static Signature signature(const ExprPtr& g, const ExprPtr& d) { return Signature::binaire(TYPE, g.get(), d.get()); }
 
     /*
      * Nom : eval
@@ -586,14 +669,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie les multiplications par 0 ou 1 et associe les constantes.
-     * Utilisation : ExprPtr simp = mul.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche le produit au format gauche * droite sans parenthèses.
      * Utilisation : mul.afficher(std::cout);
@@ -609,6 +685,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -624,6 +701,7 @@ public:
      * Utilisation : ExprPtr div = expr1 / expr2;
      */
     Division(CleFabrique, ExprPtr gauche, ExprPtr droite);
+    static Signature signature(const ExprPtr& g, const ExprPtr& d) { return Signature::binaire(TYPE, g.get(), d.get()); }
 
     /*
      * Nom : eval
@@ -639,14 +717,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie les divisions par 1 et les termes identiques.
-     * Utilisation : ExprPtr simp = div.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche la division au format (gauche / droite).
      * Utilisation : div.afficher(std::cout);
@@ -662,6 +733,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -677,6 +749,7 @@ public:
      * Utilisation : ExprPtr p = ast_pow(base, exposant);
      */
     Puissance(CleFabrique, ExprPtr base, ExprPtr exposant);
+    static Signature signature(const ExprPtr& g, const ExprPtr& d) { return Signature::binaire(TYPE, g.get(), d.get()); }
 
     /*
      * Nom : eval
@@ -692,14 +765,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie les puissances 0 et 1.
-     * Utilisation : ExprPtr simp = p.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche la puissance au format (base)^(exposant).
      * Utilisation : p.afficher(std::cout);
@@ -715,6 +781,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -750,6 +817,7 @@ public:
      * Utilisation : ExprPtr s = ast_sin(expr);
      */
     Sinus(CleFabrique, ExprPtr arg);
+    static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
 
     /*
      * Nom : eval
@@ -765,14 +833,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie en évaluant la constante si possible.
-     * Utilisation : ExprPtr simp = s.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche sous la forme sin(argument).
      * Utilisation : s.afficher(std::cout);
@@ -788,6 +849,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -803,6 +865,7 @@ public:
      * Utilisation : ExprPtr c = ast_cos(expr);
      */
     Cosinus(CleFabrique, ExprPtr arg);
+    static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
 
     /*
      * Nom : eval
@@ -818,14 +881,7 @@ public:
      */
     ExprPtr derivee() const override;
 
-    /*
-     * Nom : simplifier
-     * Description : Simplifie en évaluant la constante si possible.
-     * Utilisation : ExprPtr simp = c.simplifier();
-     */
-    ExprPtr simplifier() const override;
-
-    /*
+/*
      * Nom : afficher
      * Description : Affiche sous la forme cos(argument).
      * Utilisation : c.afficher(std::cout);
@@ -841,6 +897,7 @@ public:
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -851,13 +908,14 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     Tangente(CleFabrique, ExprPtr arg);
+    static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -868,14 +926,15 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     Exponentielle(CleFabrique, ExprPtr arg);
+    static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -886,14 +945,15 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     Logarithme(CleFabrique, ExprPtr arg);
+    static Signature signature(const ExprPtr& a) { return Signature::unaire(TYPE, a.get()); }
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
 
     bool estEgal(const ASTNode& autre) const override;
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -915,10 +975,10 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     IntegraleNonEvaluee(CleFabrique, ExprPtr integrande);
+    static Signature signature(const ExprPtr& integrande) { return Signature::unaire(TYPE, integrande.get()); }
 
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
     bool contientVariable() const override { return true; }
@@ -926,6 +986,7 @@ public:
     const ExprPtr& getIntegrande() const { return m_integrande; }
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };
@@ -946,10 +1007,14 @@ public:
     static constexpr bool correspond(TypeNoeud t) { return t == TYPE; }
 
     LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point);
+    static Signature signature(const ExprPtr& expression, double point) {
+        Signature s = Signature::unaire(TYPE, expression.get());
+        s.reel = point;
+        return s;
+    }
 
     double eval(double x) const override;
     ExprPtr derivee() const override;
-    ExprPtr simplifier() const override;
     void afficher(std::ostream& os) const override;
     bool estEgal(const ASTNode& autre) const override;
 
@@ -957,6 +1022,7 @@ public:
     double getPoint() const { return m_point; }
 
 protected:
+    ExprPtr calculerSimplification() const override;
     ExprPtr primitive() const override;
     ExprPtr calculerLimite(double a) const override;
 };

@@ -329,6 +329,186 @@ ExprPtr limiteParQuotientUnique(const ExprPtr& g, const ExprPtr& d, bool estDivi
 
 } // namespace
 
+// ============== HASH-CONSING ==================
+
+namespace {
+
+// Combinaison d'empreintes (constante de hash_combine de Boost)
+void combiner(std::size_t& graine, std::size_t valeur) {
+    graine ^= valeur + 0x9e3779b97f4a7c15ULL + (graine << 6) + (graine >> 2);
+}
+
+std::size_t hashReel(double v) { return std::hash<double>()(v == 0.0 ? 0.0 : v); } // -0 == +0
+
+/*
+ * Nom : signatureDe
+ * Description : Signature d'un noeud existant (même description que T::signature).
+ */
+Signature signatureDe(const ASTNode& n) {
+    Signature s{n.type()};
+    switch (n.type()) {
+        case TypeNoeud::Constante: s.reel = n.getValeurConstante(); break;
+        case TypeNoeud::Fraction:
+            s.num = static_cast<const Fraction&>(n).getNum();
+            s.den = static_cast<const Fraction&>(n).getDen();
+            break;
+        case TypeNoeud::Variable: s.nom = &static_cast<const Variable&>(n).getNom(); break;
+        case TypeNoeud::Parametre: s.nom = &static_cast<const Parametre&>(n).getNom(); break;
+        case TypeNoeud::IntegraleNonEvaluee:
+            s.enfants[0] = static_cast<const IntegraleNonEvaluee&>(n).getIntegrande().get();
+            break;
+        case TypeNoeud::LimiteNonEvaluee:
+            s.enfants[0] = static_cast<const LimiteNonEvaluee&>(n).getExpression().get();
+            s.reel = static_cast<const LimiteNonEvaluee&>(n).getPoint();
+            break;
+        default:
+            if (const OperateurBinaire* op = comme<OperateurBinaire>(&n)) {
+                s.enfants[0] = op->m_gauche.get();
+                s.enfants[1] = op->m_droite.get();
+            } else {
+                s.enfants[0] = static_cast<const FonctionUnaire&>(n).m_argument.get();
+            }
+    }
+    return s;
+}
+
+/*
+ * Nom : memeSignature
+ * Description : Égalité structurelle en un seul niveau : les enfants étant eux-mêmes uniques
+ *               (hash-consing), il suffit de comparer leurs adresses.
+ */
+bool memeSignature(const Signature& a, const Signature& b) {
+    if (a.type != b.type || a.enfants[0] != b.enfants[0] || a.enfants[1] != b.enfants[1]) return false;
+    switch (a.type) {
+        case TypeNoeud::Constante:
+        case TypeNoeud::LimiteNonEvaluee: return a.reel == b.reel;
+        case TypeNoeud::Fraction: return a.num == b.num && a.den == b.den;
+        case TypeNoeud::Variable:
+        case TypeNoeud::Parametre: return *a.nom == *b.nom;
+        default: return true;
+    }
+}
+
+} // namespace
+
+std::size_t hashSignature(const Signature& s) {
+    std::size_t h = static_cast<std::size_t>(s.type);
+    for (const ASTNode* enfant : s.enfants) {
+        if (enfant) combiner(h, enfant->hash());
+    }
+    switch (s.type) {
+        case TypeNoeud::Constante:
+        case TypeNoeud::LimiteNonEvaluee: combiner(h, hashReel(s.reel)); break;
+        case TypeNoeud::Fraction:
+            combiner(h, std::hash<std::int64_t>()(s.num));
+            combiner(h, std::hash<std::int64_t>()(s.den));
+            break;
+        case TypeNoeud::Variable:
+        case TypeNoeud::Parametre: combiner(h, std::hash<std::string>()(*s.nom)); break;
+        default: break;
+    }
+    return h;
+}
+
+/*
+ * Nom : TableNoeuds
+ * Description : Table de hachage des noeuds vivants, à chaînage intrusif (le lien vers le
+ *               noeud suivant du seau est stocké dans le noeud) : ni allocation à
+ *               l'insertion, ni recopie ; la taille des seaux double quand la table se remplit.
+ */
+class TableNoeuds {
+public:
+    const ASTNode* trouver(const Signature& signature, std::size_t hash) const {
+        if (m_seaux.empty()) return nullptr;
+        for (const ASTNode* n = m_seaux[indice(hash)]; n; n = n->m_suivantTable) {
+            if (n->m_hash == hash && memeSignature(signatureDe(*n), signature)) return n;
+        }
+        return nullptr;
+    }
+
+    void inserer(ASTNode* n) {
+        if (m_taille + 1 > m_seaux.size()) redimensionner(m_seaux.empty() ? 1024 : 2 * m_seaux.size());
+        const ASTNode*& tete = m_seaux[indice(n->m_hash)];
+        n->m_suivantTable = tete;
+        tete = n;
+        ++m_taille;
+    }
+
+    void retirer(const ASTNode* n) {
+        if (m_seaux.empty()) return;
+        const ASTNode** lien = &m_seaux[indice(n->m_hash)];
+        while (*lien && *lien != n) lien = &(*lien)->m_suivantTable;
+        if (*lien) {
+            *lien = n->m_suivantTable;
+            --m_taille;
+        }
+    }
+
+    std::size_t taille() const { return m_taille; }
+
+private:
+    std::size_t indice(std::size_t h) const { return h & (m_seaux.size() - 1); }
+
+    void redimensionner(std::size_t nouvelleTaille) {
+        std::vector<const ASTNode*> anciens(nouvelleTaille, nullptr);
+        anciens.swap(m_seaux);
+        for (const ASTNode* tete : anciens) {
+            while (tete) {
+                const ASTNode* suivant = tete->m_suivantTable;
+                const ASTNode*& nouvelleTete = m_seaux[indice(tete->m_hash)];
+                tete->m_suivantTable = nouvelleTete;
+                nouvelleTete = tete;
+                tete = suivant;
+            }
+        }
+    }
+
+    std::vector<const ASTNode*> m_seaux; // taille puissance de 2
+    std::size_t m_taille = 0;
+};
+
+namespace {
+
+// Table volontairement jamais détruite : des expressions globales peuvent être
+// libérées après la fin de main(), elles doivent encore pouvoir s'en retirer
+TableNoeuds& table() {
+    static TableNoeuds* t = new TableNoeuds();
+    return *t;
+}
+
+} // namespace
+
+const ASTNode* chercherNoeud(const Signature& signature, std::size_t hash) {
+    return table().trouver(signature, hash);
+}
+
+ExprPtr enregistrerNoeud(ASTNode* nouveau, std::size_t hash) {
+    nouveau->m_hash = hash;
+    table().inserer(nouveau);
+    return ExprPtr(nouveau);
+}
+
+std::size_t nombreNoeudsVivants() { return table().taille(); }
+
+void ASTNode::detruire() const {
+    table().retirer(this);
+    delete this;
+}
+
+/*
+ * Nom : simplifier
+ * Description : Point d'entrée de la simplification, avec mémorisation du résultat.
+ * Utilisation : ExprPtr s = noeud->simplifier();
+ */
+ExprPtr ASTNode::simplifier() const {
+    if (m_estSimplifie) return clone();
+    if (m_formeSimplifiee) return m_formeSimplifiee;
+    ExprPtr resultat = calculerSimplification();
+    resultat->m_estSimplifie = true;
+    if (resultat.get() != this) m_formeSimplifiee = resultat;
+    return resultat;
+}
+
 // ============== ASTNODE ==================
 
 /*
@@ -385,7 +565,7 @@ ExprPtr Constante::derivee() const { return cst(0.0); }
  * Description : Ne simplifie rien, renvoie une copie d'elle-même.
  * Utilisation : ExprPtr simp = c.simplifier();
  */
-ExprPtr Constante::simplifier() const { return clone(); }
+ExprPtr Constante::calculerSimplification() const { return clone(); }
 
 /*
  * Nom : afficher
@@ -400,22 +580,29 @@ void Constante::afficher(std::ostream& os) const { os << m_valeur; }
  * Utilisation : bool eq = c.estEgal(autre);
  */
 bool Constante::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     return autre.estConstante() && std::abs(autre.getValeurConstante() - m_valeur) < 1e-9;
 }
 
 // ============== FRACTION ==================
 
+Signature Fraction::signature(int64_t num, int64_t den) {
+    if (den == 0) throw std::invalid_argument("Denominateur nul dans une Fraction");
+    const int64_t g = std::gcd(num, den);
+    Signature s{TYPE};
+    s.num = num / g;
+    s.den = den / g;
+    if (s.den < 0) {
+        s.num = -s.num;
+        s.den = -s.den;
+    }
+    return s;
+}
+
 Fraction::Fraction(CleFabrique, int64_t num, int64_t den) : ASTNode(TypeNoeud::Fraction) {
-    if (den == 0) {
-        throw std::invalid_argument("Denominateur nul dans une Fraction");
-    }
-    int64_t g = std::gcd(num, den);
-    m_num = num / g;
-    m_den = den / g;
-    if (m_den < 0) {
-        m_num = -m_num;
-        m_den = -m_den;
-    }
+    const Signature s = signature(num, den);
+    m_num = s.num;
+    m_den = s.den;
     m_valeur_eval = static_cast<double>(m_num) / static_cast<double>(m_den);
 }
 
@@ -423,7 +610,7 @@ double Fraction::eval(double /*x*/) const { return m_valeur_eval; }
 
 ExprPtr Fraction::derivee() const { return cst(0.0); }
 
-ExprPtr Fraction::simplifier() const { return clone(); }
+ExprPtr Fraction::calculerSimplification() const { return clone(); }
 
 void Fraction::afficher(std::ostream& os) const {
     if (m_den == 1) os << m_num;
@@ -431,6 +618,7 @@ void Fraction::afficher(std::ostream& os) const {
 }
 
 bool Fraction::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     if (const Fraction* f = comme<Fraction>(&autre)) {
         return m_num == f->m_num && m_den == f->m_den;
     }
@@ -471,7 +659,7 @@ ExprPtr Variable::derivee() const { return cst(1.0); }
  * Description : Ne simplifie rien, renvoie une copie.
  * Utilisation : ExprPtr simp = v.simplifier();
  */
-ExprPtr Variable::simplifier() const { return clone(); }
+ExprPtr Variable::calculerSimplification() const { return clone(); }
 
 /*
  * Nom : afficher
@@ -486,6 +674,7 @@ void Variable::afficher(std::ostream& os) const { os << m_nom; }
  * Utilisation : bool eq = v.estEgal(autre);
  */
 bool Variable::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Variable* v = comme<Variable>(&autre);
     return v != nullptr && v->m_nom == m_nom;
 }
@@ -501,11 +690,12 @@ double Parametre::eval(double) const {
 
 ExprPtr Parametre::derivee() const { return cst(0.0); }
 
-ExprPtr Parametre::simplifier() const { return clone(); }
+ExprPtr Parametre::calculerSimplification() const { return clone(); }
 
 void Parametre::afficher(std::ostream& os) const { os << m_nom; }
 
 bool Parametre::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Parametre* p = comme<Parametre>(&autre);
     return p != nullptr && p->m_nom == m_nom;
 }
@@ -552,7 +742,7 @@ ExprPtr Addition::derivee() const { return m_gauche->derivee() + m_droite->deriv
  * Description : Simplifie les termes constants, supprime les zéros inutiles, et factorise a*U + b*U en (a+b)*U.
  * Utilisation : ExprPtr simp = add.simplifier();
  */
-ExprPtr Addition::simplifier() const {
+ExprPtr Addition::calculerSimplification() const {
     const ExprPtr g = m_gauche->simplifier();
     const ExprPtr d = m_droite->simplifier();
     if (g->estConstante() && d->estConstante()) return plierConstantes(g, d, '+');
@@ -583,6 +773,7 @@ void Addition::afficher(std::ostream& os) const {
  * Utilisation : bool eq = add.estEgal(autre);
  */
 bool Addition::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Addition* a = comme<Addition>(&autre);
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
@@ -617,7 +808,7 @@ ExprPtr Soustraction::derivee() const { return m_gauche->derivee() - m_droite->d
  * Description : Simplifie les termes constants, supprime -0 et factorise a*U - b*U en (a-b)*U.
  * Utilisation : ExprPtr simp = sub.simplifier();
  */
-ExprPtr Soustraction::simplifier() const {
+ExprPtr Soustraction::calculerSimplification() const {
     const ExprPtr g = m_gauche->simplifier();
     const ExprPtr d = m_droite->simplifier();
     if (g->estConstante() && d->estConstante()) return plierConstantes(g, d, '-');
@@ -648,6 +839,7 @@ void Soustraction::afficher(std::ostream& os) const {
  * Utilisation : bool eq = sub.estEgal(autre);
  */
 bool Soustraction::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Soustraction* a = comme<Soustraction>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
@@ -682,7 +874,7 @@ ExprPtr Multiplication::derivee() const {
  * Description : Evalue les constantes, simplifie les multiplications par 0 ou 1. Place les constantes à gauche.
  * Utilisation : ExprPtr simp = mul.simplifier();
  */
-ExprPtr Multiplication::simplifier() const {
+ExprPtr Multiplication::calculerSimplification() const {
     return combinerProduit(m_gauche->simplifier(), m_droite->simplifier());
 }
 
@@ -701,6 +893,7 @@ void Multiplication::afficher(std::ostream& os) const {
  * Utilisation : bool eq = mul.estEgal(autre);
  */
 bool Multiplication::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Multiplication* a = comme<Multiplication>(&autre);
     if (!a) return false;
     return (m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite))) ||
@@ -739,7 +932,7 @@ ExprPtr Division::derivee() const { // (u'v - uv') / v^2
  * Description : Evalue les constantes, simplifie 0/u, u/1, et u/u.
  * Utilisation : ExprPtr simp = div.simplifier();
  */
-ExprPtr Division::simplifier() const {
+ExprPtr Division::calculerSimplification() const {
     const ExprPtr g = m_gauche->simplifier();
     const ExprPtr d = m_droite->simplifier();
     if (d->estConstante()) {
@@ -773,6 +966,7 @@ void Division::afficher(std::ostream& os) const {
  * Utilisation : bool eq = div.estEgal(autre);
  */
 bool Division::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Division* a = comme<Division>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
@@ -819,7 +1013,7 @@ ExprPtr Puissance::derivee() const {
  * Description : Evalue les constantes, simplifie u^0 = 1, u^1 = u, 0^p = 0, 1^p = 1.
  * Utilisation : ExprPtr simp = p.simplifier();
  */
-ExprPtr Puissance::simplifier() const {
+ExprPtr Puissance::calculerSimplification() const {
     return combinerPuissance(m_gauche->simplifier(), m_droite->simplifier());
 }
 
@@ -838,6 +1032,7 @@ void Puissance::afficher(std::ostream& os) const {
  * Utilisation : bool eq = p.estEgal(autre);
  */
 bool Puissance::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Puissance* a = comme<Puissance>(&autre);
     return a && m_gauche->estEgal(*(a->m_gauche)) && m_droite->estEgal(*(a->m_droite));
 }
@@ -879,7 +1074,7 @@ ExprPtr Sinus::derivee() const { return ast_cos(m_argument) * m_argument->derive
  * Description : Evalue la constante si possible.
  * Utilisation : ExprPtr simp = s.simplifier();
  */
-ExprPtr Sinus::simplifier() const {
+ExprPtr Sinus::calculerSimplification() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::sin(arg->getValeurConstante()));
     return ast_sin(arg);
@@ -900,6 +1095,7 @@ void Sinus::afficher(std::ostream& os) const {
  * Utilisation : bool eq = s.estEgal(autre);
  */
 bool Sinus::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Sinus* a = comme<Sinus>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
@@ -932,7 +1128,7 @@ ExprPtr Cosinus::derivee() const { return (cst(-1.0) * ast_sin(m_argument)) * m_
  * Description : Evalue la constante si possible.
  * Utilisation : ExprPtr simp = c.simplifier();
  */
-ExprPtr Cosinus::simplifier() const {
+ExprPtr Cosinus::calculerSimplification() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::cos(arg->getValeurConstante()));
     return ast_cos(arg);
@@ -953,6 +1149,7 @@ void Cosinus::afficher(std::ostream& os) const {
  * Utilisation : bool eq = c.estEgal(autre);
  */
 bool Cosinus::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Cosinus* a = comme<Cosinus>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
@@ -969,7 +1166,7 @@ ExprPtr Tangente::derivee() const {
     return (cst(1.0) + ast_pow(tan_u, 2.0)) * m_argument->derivee();
 }
 
-ExprPtr Tangente::simplifier() const {
+ExprPtr Tangente::calculerSimplification() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::tan(arg->getValeurConstante()));
     return ast_tan(arg);
@@ -980,6 +1177,7 @@ void Tangente::afficher(std::ostream& os) const {
 }
 
 bool Tangente::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Tangente* a = comme<Tangente>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
@@ -1570,7 +1768,7 @@ ExprPtr Exponentielle::derivee() const {
     return ast_exp(m_argument) * m_argument->derivee();
 }
 
-ExprPtr Exponentielle::simplifier() const {
+ExprPtr Exponentielle::calculerSimplification() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::exp(arg->getValeurConstante()));
     if (const Logarithme* ln_node = comme<Logarithme>(arg)) {
@@ -1584,6 +1782,7 @@ void Exponentielle::afficher(std::ostream& os) const {
 }
 
 bool Exponentielle::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Exponentielle* a = comme<Exponentielle>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
@@ -1614,7 +1813,7 @@ ExprPtr Logarithme::derivee() const {
     return m_argument->derivee() / m_argument;
 }
 
-ExprPtr Logarithme::simplifier() const {
+ExprPtr Logarithme::calculerSimplification() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::log(arg->getValeurConstante()));
     return ast_ln(arg);
@@ -1625,6 +1824,7 @@ void Logarithme::afficher(std::ostream& os) const {
 }
 
 bool Logarithme::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const Logarithme* a = comme<Logarithme>(&autre);
     return a && m_argument->estEgal(*(a->m_argument));
 }
@@ -1660,7 +1860,7 @@ double IntegraleNonEvaluee::eval(double) const {
 // Théorème fondamental de l'analyse : (∫f)' = f
 ExprPtr IntegraleNonEvaluee::derivee() const { return m_integrande; }
 
-ExprPtr IntegraleNonEvaluee::simplifier() const {
+ExprPtr IntegraleNonEvaluee::calculerSimplification() const {
     return fabriquer<IntegraleNonEvaluee>(m_integrande->simplifier());
 }
 
@@ -1669,6 +1869,7 @@ void IntegraleNonEvaluee::afficher(std::ostream& os) const {
 }
 
 bool IntegraleNonEvaluee::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const IntegraleNonEvaluee* i = comme<IntegraleNonEvaluee>(&autre);
     return i && m_integrande->estEgal(*(i->m_integrande));
 }
@@ -1688,13 +1889,14 @@ double LimiteNonEvaluee::eval(double) const {
 
 ExprPtr LimiteNonEvaluee::derivee() const { return cst(0.0); }
 
-ExprPtr LimiteNonEvaluee::simplifier() const { return clone(); }
+ExprPtr LimiteNonEvaluee::calculerSimplification() const { return clone(); }
 
 void LimiteNonEvaluee::afficher(std::ostream& os) const {
     os << "lim(x->" << m_point << ", "; m_expression->afficher(os); os << ")";
 }
 
 bool LimiteNonEvaluee::estEgal(const ASTNode& autre) const {
+    if (this == &autre) return true;
     const LimiteNonEvaluee* l = comme<LimiteNonEvaluee>(&autre);
     return l && l->m_point == m_point && m_expression->estEgal(*(l->m_expression));
 }
