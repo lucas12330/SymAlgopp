@@ -1,17 +1,45 @@
 #pragma once
 #include <cstdint>
-#include <memory>
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+
+#include "Ref.hpp"
 
 namespace symalgo {
 
 class ASTNode;
-using ExprPtr = std::shared_ptr<ASTNode>;
+
+/*
+ * ExprPtr : pointeur partagé vers un noeud immuable de l'AST (compteur intrusif, voir Ref.hpp).
+ */
+using ExprPtr = Ref<ASTNode>;
+
+/*
+ * Nom : CleFabrique
+ * Description : Clé de construction (idiome « passkey ») : seuls les helpers de fabrication
+ *               peuvent créer des noeuds, qui sont donc toujours gérés par un ExprPtr.
+ *               Un noeud ne peut pas être créé sur la pile.
+ */
+class CleFabrique {
+    CleFabrique() = default;
+    template <class T, class... Args>
+    friend ExprPtr fabriquer(Args&&... args);
+};
+
+/*
+ * Nom : fabriquer
+ * Description : Crée un noeud de type T et renvoie un ExprPtr qui le possède.
+ * Utilisation : ExprPtr s = fabriquer<Sinus>(argument);
+ */
+template <class T, class... Args>
+ExprPtr fabriquer(Args&&... args) {
+    return ExprPtr(new T(CleFabrique(), std::forward<Args>(args)...));
+}
 
 // Classe abstraite de base pour tous les noeuds de l'arbre
-class ASTNode : public std::enable_shared_from_this<ASTNode> {
+class ASTNode : public ObjetCompte {
 public:
     /*
      * Nom : ~ASTNode
@@ -57,20 +85,11 @@ public:
 
     /*
      * Nom : clone
-     * Description : Renvoie un pointeur partagé vers ce noeud (l'arbre est immuable, les
-     *               sous-arbres sont donc partagés sans copie). Les noeuds doivent être
-     *               gérés par un std::shared_ptr (helpers cst(), var(), opérateurs...) :
-     *               un noeud créé sur la pile lève std::logic_error.
+     * Description : Renvoie un pointeur partagé vers ce noeud : l'arbre est immuable, les
+     *               sous-arbres sont donc partagés sans jamais être copiés.
      * Utilisation : ExprPtr copie = noeud->clone();
      */
-    virtual ExprPtr clone() const {
-        ExprPtr soi = std::const_pointer_cast<ASTNode>(weak_from_this().lock());
-        if (!soi) {
-            throw std::logic_error("Noeud d'AST hors d'un std::shared_ptr : creer les noeuds "
-                                   "avec les helpers (cst, var, ast_sin...) ou std::make_shared");
-        }
-        return soi;
-    }
+    ExprPtr clone() const { return ExprPtr(const_cast<ASTNode*>(this)); }
 
     /*
      * Nom : integrer
@@ -146,6 +165,15 @@ protected:
     ExprPtr limiteNonEvaluee(double a) const;
 };
 
+/*
+ * Nom : comme
+ * Description : Accès typé à un noeud : renvoie le noeud converti en T, ou nullptr s'il est
+ *               d'un autre type (équivalent de std::dynamic_pointer_cast).
+ * Utilisation : if (const Sinus* s = comme<Sinus>(expr)) { ... s->m_argument ... }
+ */
+template <class T>
+const T* comme(const ExprPtr& e) { return dynamic_cast<const T*>(e.get()); }
+
 // --- Noeuds Terminaux ---
 
 class Constante : public ASTNode {
@@ -156,7 +184,7 @@ public:
      * Description : Constructeur initialisant la constante avec sa valeur numérique.
      * Utilisation : ExprPtr c = cst(5.0);
      */
-    explicit Constante(double valeur);
+    Constante(CleFabrique, double valeur);
 
     /*
      * Nom : eval
@@ -226,7 +254,7 @@ private:
     double m_valeur_eval; // Cache pour eval()
 
 public:
-    Fraction(int64_t num, int64_t den);
+    Fraction(CleFabrique, int64_t num, int64_t den);
 
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -252,7 +280,7 @@ public:
      * Description : Constructeur d'une variable mathématique avec un nom (par défaut "x").
      * Utilisation : ExprPtr v = var("y");
      */
-    explicit Variable(const std::string& nom = "x");
+    Variable(CleFabrique, const std::string& nom);
 
     /*
      * Nom : eval
@@ -313,7 +341,7 @@ public:
      * Description : Construit une constante symbolique nommée.
      * Utilisation : ExprPtr c = param("C1");
      */
-    explicit Parametre(const std::string& nom);
+    Parametre(CleFabrique, const std::string& nom);
 
     /*
      * Nom : eval
@@ -372,7 +400,7 @@ public:
      * Description : Construit un noeud d'addition de deux expressions.
      * Utilisation : ExprPtr add = expr1 + expr2;
      */
-    Addition(ExprPtr gauche, ExprPtr droite);
+    Addition(CleFabrique, ExprPtr gauche, ExprPtr droite);
 
     /*
      * Nom : eval
@@ -422,7 +450,7 @@ public:
      * Description : Construit un noeud de soustraction.
      * Utilisation : ExprPtr sub = expr1 - expr2;
      */
-    Soustraction(ExprPtr gauche, ExprPtr droite);
+    Soustraction(CleFabrique, ExprPtr gauche, ExprPtr droite);
 
     /*
      * Nom : eval
@@ -472,7 +500,7 @@ public:
      * Description : Construit un noeud de multiplication de deux expressions.
      * Utilisation : ExprPtr mul = expr1 * expr2;
      */
-    Multiplication(ExprPtr gauche, ExprPtr droite);
+    Multiplication(CleFabrique, ExprPtr gauche, ExprPtr droite);
 
     /*
      * Nom : eval
@@ -522,7 +550,7 @@ public:
      * Description : Construit un noeud de division de deux expressions.
      * Utilisation : ExprPtr div = expr1 / expr2;
      */
-    Division(ExprPtr gauche, ExprPtr droite);
+    Division(CleFabrique, ExprPtr gauche, ExprPtr droite);
 
     /*
      * Nom : eval
@@ -572,7 +600,7 @@ public:
      * Description : Construit un noeud de puissance (base^exposant).
      * Utilisation : ExprPtr p = ast_pow(base, exposant);
      */
-    Puissance(ExprPtr base, ExprPtr exposant);
+    Puissance(CleFabrique, ExprPtr base, ExprPtr exposant);
 
     /*
      * Nom : eval
@@ -638,7 +666,7 @@ public:
      * Description : Construit un noeud pour la fonction sinus.
      * Utilisation : ExprPtr s = ast_sin(expr);
      */
-    explicit Sinus(ExprPtr arg);
+    Sinus(CleFabrique, ExprPtr arg);
 
     /*
      * Nom : eval
@@ -688,7 +716,7 @@ public:
      * Description : Construit un noeud pour la fonction cosinus.
      * Utilisation : ExprPtr c = ast_cos(expr);
      */
-    explicit Cosinus(ExprPtr arg);
+    Cosinus(CleFabrique, ExprPtr arg);
 
     /*
      * Nom : eval
@@ -733,7 +761,7 @@ protected:
 
 class Tangente : public FonctionUnaire {
 public:
-    explicit Tangente(ExprPtr arg);
+    Tangente(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
     ExprPtr simplifier() const override;
@@ -747,7 +775,7 @@ protected:
 
 class Exponentielle : public FonctionUnaire {
 public:
-    explicit Exponentielle(ExprPtr arg);
+    Exponentielle(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
     ExprPtr simplifier() const override;
@@ -762,7 +790,7 @@ protected:
 
 class Logarithme : public FonctionUnaire {
 public:
-    explicit Logarithme(ExprPtr arg);
+    Logarithme(CleFabrique, ExprPtr arg);
     double eval(double x) const override;
     ExprPtr derivee() const override;
     ExprPtr simplifier() const override;
@@ -788,7 +816,7 @@ protected:
 class IntegraleNonEvaluee : public ASTNode {
     ExprPtr m_integrande;
 public:
-    explicit IntegraleNonEvaluee(ExprPtr integrande);
+    IntegraleNonEvaluee(CleFabrique, ExprPtr integrande);
 
     double eval(double x) const override;
     ExprPtr derivee() const override;
@@ -816,7 +844,7 @@ class LimiteNonEvaluee : public ASTNode {
     ExprPtr m_expression;
     double m_point;
 public:
-    LimiteNonEvaluee(ExprPtr expression, double point);
+    LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point);
 
     double eval(double x) const override;
     ExprPtr derivee() const override;

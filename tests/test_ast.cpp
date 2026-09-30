@@ -6,6 +6,7 @@
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <type_traits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -68,13 +69,15 @@ TEST_CASE(eval_fonctions_usuelles) {
 // ============================================================================
 
 TEST_CASE(fraction_reduction_et_signe) {
-    auto f = std::dynamic_pointer_cast<Fraction>(frac(2, 6));
+    const ExprPtr ef = frac(2, 6);
+    const Fraction* f = comme<Fraction>(ef);
     CHECK(f != nullptr);
     CHECK_EQ(f->getNum(), 1);
     CHECK_EQ(f->getDen(), 3);
     CHECK_EQ(texte(frac(2, 6)), std::string("(1/3)"));
 
-    auto g = std::dynamic_pointer_cast<Fraction>(frac(1, -2));
+    const ExprPtr eg = frac(1, -2);
+    const Fraction* g = comme<Fraction>(eg);
     CHECK_EQ(g->getNum(), -1);
     CHECK_EQ(g->getDen(), 2);
     CHECK_NEAR(g->eval(0.0), -0.5, 1e-15);
@@ -84,13 +87,20 @@ TEST_CASE(fraction_denominateur_nul) {
     CHECK_THROWS(frac(1, 0), std::invalid_argument);
 }
 
-TEST_CASE(noeud_hors_shared_ptr) {
-    // Bug corrigé : levait std::bad_weak_ptr sans explication
-    Constante c(5.0);
-    CHECK_THROWS(c.simplifier(), std::logic_error);
+TEST_CASE(noeuds_crees_uniquement_par_les_helpers) {
+    // Un noeud sur la pile serait libéré par erreur par son premier ExprPtr :
+    // la construction directe est interdite à la compilation (clé CleFabrique)
+    static_assert(!std::is_constructible_v<Constante, double>);
+    static_assert(!std::is_constructible_v<Sinus, ExprPtr>);
     // Via les helpers, le partage fonctionne sans copie
     const ExprPtr e = cst(5.0);
     CHECK(e->clone().get() == e.get());
+    CHECK_EQ(e->nombreReferences(), 1u);
+    {
+        const ExprPtr copie = e;
+        CHECK_EQ(e->nombreReferences(), 2u);
+    }
+    CHECK_EQ(e->nombreReferences(), 1u);
 }
 
 TEST_CASE(equation_expression_nulle) {
@@ -302,7 +312,7 @@ TEST_CASE(integrale_non_evaluee) {
     // x * sin(x) demanderait une intégration par parties : pas de résultat faux
     const ExprPtr f = X * ast_sin(X);
     const ExprPtr F = f->integrer();
-    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>(F) != nullptr);
+    CHECK(comme<IntegraleNonEvaluee>(F) != nullptr);
     CHECK_EQ(texte(F), std::string("integrale(x * sin(x))"));
     CHECK_THROWS(F->eval(1.0), std::logic_error);
     // (∫f)' = f
@@ -311,8 +321,8 @@ TEST_CASE(integrale_non_evaluee) {
     const ExprPtr G = (ast_cos(X) + ast_sin(ast_pow(X, 2.0)))->integrer()->simplifier();
     CHECK_EQ(texte(G), std::string("(sin(x) + integrale(sin((x)^(2))))"));
     // Plus aucun 0 silencieux
-    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>(ast_exp(ast_pow(X, 2.0))->integrer()) != nullptr);
-    CHECK(std::dynamic_pointer_cast<IntegraleNonEvaluee>((ast_ln(X) / X)->integrer()) != nullptr);
+    CHECK(comme<IntegraleNonEvaluee>(ast_exp(ast_pow(X, 2.0))->integrer()) != nullptr);
+    CHECK(comme<IntegraleNonEvaluee>((ast_ln(X) / X)->integrer()) != nullptr);
 }
 
 // ============================================================================
@@ -342,7 +352,7 @@ namespace {
 double valeurLimite(const ExprPtr& f, double a) { return f->limite(a)->simplifier()->eval(0.0); }
 
 bool limiteNonDeterminee(const ExprPtr& f, double a) {
-    return std::dynamic_pointer_cast<LimiteNonEvaluee>(f->limite(a)->simplifier()) != nullptr;
+    return comme<LimiteNonEvaluee>(f->limite(a)->simplifier()) != nullptr;
 }
 
 const double INF = std::numeric_limits<double>::infinity();

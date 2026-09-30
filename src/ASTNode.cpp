@@ -132,7 +132,7 @@ ExprPtr combinerProduit(ExprPtr g, ExprPtr d) {
         if (m && m->m_gauche->estConstante()) {
             return combinerProduit(plierConstantes(g, m->m_gauche, '*'), m->m_droite);
         }
-        return std::make_shared<Multiplication>(g, d);
+        return fabriquer<Multiplication>(g, d);
     }
     // Les constantes remontent à gauche : u * (c * v) = c * (u * v)
     if (const Multiplication* m = dynamic_cast<const Multiplication*>(d.get()); m && m->m_gauche->estConstante()) {
@@ -147,7 +147,7 @@ ExprPtr combinerProduit(ExprPtr g, ExprPtr d) {
     if (eg->estConstante() && ed->estConstante() && bg->estEgal(*bd)) {
         return combinerPuissance(bg, plierConstantes(eg, ed, '+'));
     }
-    return std::make_shared<Multiplication>(g, d);
+    return fabriquer<Multiplication>(g, d);
 }
 
 /*
@@ -350,11 +350,11 @@ ExprPtr ASTNode::integrer() const {
 ExprPtr ASTNode::limite(double a) const { return calculerLimite(a); }
 
 ExprPtr ASTNode::integraleNonEvaluee() const {
-    return std::make_shared<IntegraleNonEvaluee>(clone());
+    return fabriquer<IntegraleNonEvaluee>(clone());
 }
 
 ExprPtr ASTNode::limiteNonEvaluee(double a) const {
-    return std::make_shared<LimiteNonEvaluee>(clone(), a);
+    return fabriquer<LimiteNonEvaluee>(clone(), a);
 }
 
 // ============== CONSTANTE ==================
@@ -364,7 +364,7 @@ ExprPtr ASTNode::limiteNonEvaluee(double a) const {
  * Description : Constructeur de constante qui stocke la valeur passée.
  * Utilisation : Constante c(3.14);
  */
-Constante::Constante(double valeur) : m_valeur(valeur) {}
+Constante::Constante(CleFabrique, double valeur) : m_valeur(valeur) {}
 
 /*
  * Nom : eval
@@ -405,7 +405,7 @@ bool Constante::estEgal(const ASTNode& autre) const {
 
 // ============== FRACTION ==================
 
-Fraction::Fraction(int64_t num, int64_t den) {
+Fraction::Fraction(CleFabrique, int64_t num, int64_t den) {
     if (den == 0) {
         throw std::invalid_argument("Denominateur nul dans une Fraction");
     }
@@ -450,7 +450,7 @@ ExprPtr Fraction::calculerLimite(double /*a*/) const { return clone(); }
  * Description : Constructeur de variable qui l'initialise avec le nom donné.
  * Utilisation : Variable v("t");
  */
-Variable::Variable(const std::string& nom) : m_nom(nom) {}
+Variable::Variable(CleFabrique, const std::string& nom) : m_nom(nom) {}
 
 /*
  * Nom : eval
@@ -492,7 +492,7 @@ bool Variable::estEgal(const ASTNode& autre) const {
 
 // ============== PARAMETRE ==================
 
-Parametre::Parametre(const std::string& nom) : m_nom(nom) {}
+Parametre::Parametre(CleFabrique, const std::string& nom) : m_nom(nom) {}
 
 double Parametre::eval(double) const {
     throw std::logic_error("Impossible d'evaluer le parametre symbolique '" + m_nom +
@@ -530,7 +530,7 @@ OperateurBinaire::OperateurBinaire(ExprPtr gauche, ExprPtr droite) : m_gauche(ga
  * Description : Constructeur de l'addition.
  * Utilisation : Addition add(gauche, droite);
  */
-Addition::Addition(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Addition::Addition(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
 
 /*
  * Nom : eval
@@ -564,7 +564,7 @@ ExprPtr Addition::simplifier() const {
     extraireCoefficient(d, cD, uD);
     if (uG->estEgal(*uD)) return combinerProduit(plierConstantes(cG, cD, '+'), uG);
 
-    return std::make_shared<Addition>(g, d);
+    return fabriquer<Addition>(g, d);
 }
 
 /*
@@ -595,7 +595,7 @@ bool Addition::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la soustraction.
  * Utilisation : Soustraction sub(gauche, droite);
  */
-Soustraction::Soustraction(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Soustraction::Soustraction(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
 
 /*
  * Nom : eval
@@ -629,7 +629,7 @@ ExprPtr Soustraction::simplifier() const {
     extraireCoefficient(d, cD, uD);
     if (uG->estEgal(*uD)) return combinerProduit(plierConstantes(cG, cD, '-'), uG);
 
-    return std::make_shared<Soustraction>(g, d);
+    return fabriquer<Soustraction>(g, d);
 }
 
 /*
@@ -658,7 +658,7 @@ bool Soustraction::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la multiplication.
  * Utilisation : Multiplication mul(gauche, droite);
  */
-Multiplication::Multiplication(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Multiplication::Multiplication(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
 
 /*
  * Nom : eval
@@ -713,7 +713,7 @@ bool Multiplication::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la division.
  * Utilisation : Division div(gauche, droite);
  */
-Division::Division(ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
+Division::Division(CleFabrique, ExprPtr gauche, ExprPtr droite) : OperateurBinaire(gauche, droite) {}
 
 /*
  * Nom : eval
@@ -742,7 +742,7 @@ ExprPtr Division::simplifier() const {
     const ExprPtr g = m_gauche->simplifier();
     const ExprPtr d = m_droite->simplifier();
     if (d->estConstante()) {
-        if (estValeur(d, 0.0)) return std::make_shared<Division>(g, d); // division par zéro conservée
+        if (estValeur(d, 0.0)) return fabriquer<Division>(g, d); // division par zéro conservée
         if (g->estConstante()) return plierConstantes(g, d, '/');
         if (estValeur(d, 1.0)) return g;
         // (c * u) / k = (c/k) * u
@@ -750,11 +750,11 @@ ExprPtr Division::simplifier() const {
         if (m && m->m_gauche->estConstante()) {
             return combinerProduit(plierConstantes(m->m_gauche, d, '/'), m->m_droite);
         }
-        return std::make_shared<Division>(g, d);
+        return fabriquer<Division>(g, d);
     }
     if (estValeur(g, 0.0)) return cst(0.0);
     if (g->estEgal(*d)) return cst(1.0);
-    return std::make_shared<Division>(g, d);
+    return fabriquer<Division>(g, d);
 }
 
 /*
@@ -783,7 +783,7 @@ bool Division::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la puissance (base^exposant).
  * Utilisation : Puissance p(base, exposant);
  */
-Puissance::Puissance(ExprPtr base, ExprPtr exposant) : OperateurBinaire(base, exposant) {}
+Puissance::Puissance(CleFabrique, ExprPtr base, ExprPtr exposant) : OperateurBinaire(base, exposant) {}
 
 /*
  * Nom : eval
@@ -857,7 +857,7 @@ FonctionUnaire::FonctionUnaire(ExprPtr arg) : m_argument(arg) {}
  * Description : Constructeur de la fonction sinus avec l'argument.
  * Utilisation : Sinus s(expr);
  */
-Sinus::Sinus(ExprPtr arg) : FonctionUnaire(arg) {}
+Sinus::Sinus(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
 
 /*
  * Nom : eval
@@ -910,7 +910,7 @@ bool Sinus::estEgal(const ASTNode& autre) const {
  * Description : Constructeur de la fonction cosinus avec l'argument.
  * Utilisation : Cosinus c(expr);
  */
-Cosinus::Cosinus(ExprPtr arg) : FonctionUnaire(arg) {}
+Cosinus::Cosinus(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
 
 /*
  * Nom : eval
@@ -958,7 +958,7 @@ bool Cosinus::estEgal(const ASTNode& autre) const {
 
 // ============== TANGENTE ==================
 
-Tangente::Tangente(ExprPtr arg) : FonctionUnaire(arg) {}
+Tangente::Tangente(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
 
 double Tangente::eval(double x) const { return std::tan(m_argument->eval(x)); }
 
@@ -1004,148 +1004,148 @@ ExprPtr Tangente::calculerLimite(double a) const {
  * Description : Helper générant un noeud Constante à partir d'un double.
  * Utilisation : ExprPtr noeud = cst(3.14);
  */
-ExprPtr cst(double valeur) { return std::make_shared<Constante>(valeur); }
-ExprPtr frac(int64_t num, int64_t den) { return std::make_shared<Fraction>(num, den); }
+ExprPtr cst(double valeur) { return fabriquer<Constante>(valeur); }
+ExprPtr frac(int64_t num, int64_t den) { return fabriquer<Fraction>(num, den); }
 
 /*
  * Nom : var
  * Description : Helper générant un noeud Variable à partir d'un nom de variable.
  * Utilisation : ExprPtr noeud = var("y");
  */
-ExprPtr var(const std::string& nom) { return std::make_shared<Variable>(nom); }
+ExprPtr var(const std::string& nom) { return fabriquer<Variable>(nom); }
 
 /*
  * Nom : param
  * Description : Helper générant un noeud Parametre (constante symbolique).
  * Utilisation : ExprPtr noeud = param("C1");
  */
-ExprPtr param(const std::string& nom) { return std::make_shared<Parametre>(nom); }
+ExprPtr param(const std::string& nom) { return fabriquer<Parametre>(nom); }
 
 /*
  * Nom : operator+
  * Description : Surcharge de l'addition entre deux ExprPtr générant un noeud Addition.
  * Utilisation : ExprPtr resultat = e1 + e2;
  */
-ExprPtr operator+(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Addition>(gauche, droite); }
+ExprPtr operator+(ExprPtr gauche, ExprPtr droite) { return fabriquer<Addition>(gauche, droite); }
 
 /*
  * Nom : operator+
  * Description : Surcharge de l'addition entre ExprPtr et double générant un noeud Addition.
  * Utilisation : ExprPtr resultat = e + 2.0;
  */
-ExprPtr operator+(ExprPtr gauche, double droite) { return std::make_shared<Addition>(gauche, cst(droite)); }
+ExprPtr operator+(ExprPtr gauche, double droite) { return fabriquer<Addition>(gauche, cst(droite)); }
 
 /*
  * Nom : operator+
  * Description : Surcharge de l'addition entre double et ExprPtr générant un noeud Addition.
  * Utilisation : ExprPtr resultat = 2.0 + e;
  */
-ExprPtr operator+(double gauche, ExprPtr droite) { return std::make_shared<Addition>(cst(gauche), droite); }
+ExprPtr operator+(double gauche, ExprPtr droite) { return fabriquer<Addition>(cst(gauche), droite); }
 
 /*
  * Nom : operator-
  * Description : Surcharge de la soustraction entre deux ExprPtr générant un noeud Soustraction.
  * Utilisation : ExprPtr resultat = e1 - e2;
  */
-ExprPtr operator-(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Soustraction>(gauche, droite); }
+ExprPtr operator-(ExprPtr gauche, ExprPtr droite) { return fabriquer<Soustraction>(gauche, droite); }
 
 /*
  * Nom : operator-
  * Description : Surcharge de la soustraction entre ExprPtr et double générant un noeud Soustraction.
  * Utilisation : ExprPtr resultat = e - 2.0;
  */
-ExprPtr operator-(ExprPtr gauche, double droite) { return std::make_shared<Soustraction>(gauche, cst(droite)); }
+ExprPtr operator-(ExprPtr gauche, double droite) { return fabriquer<Soustraction>(gauche, cst(droite)); }
 
 /*
  * Nom : operator-
  * Description : Surcharge de la soustraction entre double et ExprPtr générant un noeud Soustraction.
  * Utilisation : ExprPtr resultat = 2.0 - e;
  */
-ExprPtr operator-(double gauche, ExprPtr droite) { return std::make_shared<Soustraction>(cst(gauche), droite); }
+ExprPtr operator-(double gauche, ExprPtr droite) { return fabriquer<Soustraction>(cst(gauche), droite); }
 
 /*
  * Nom : operator*
  * Description : Surcharge de la multiplication entre deux ExprPtr générant un noeud Multiplication.
  * Utilisation : ExprPtr resultat = e1 * e2;
  */
-ExprPtr operator*(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Multiplication>(gauche, droite); }
+ExprPtr operator*(ExprPtr gauche, ExprPtr droite) { return fabriquer<Multiplication>(gauche, droite); }
 
 /*
  * Nom : operator*
  * Description : Surcharge de la multiplication entre ExprPtr et double générant un noeud Multiplication.
  * Utilisation : ExprPtr resultat = e * 2.0;
  */
-ExprPtr operator*(ExprPtr gauche, double droite) { return std::make_shared<Multiplication>(gauche, cst(droite)); }
+ExprPtr operator*(ExprPtr gauche, double droite) { return fabriquer<Multiplication>(gauche, cst(droite)); }
 
 /*
  * Nom : operator*
  * Description : Surcharge de la multiplication entre double et ExprPtr générant un noeud Multiplication.
  * Utilisation : ExprPtr resultat = 2.0 * e;
  */
-ExprPtr operator*(double gauche, ExprPtr droite) { return std::make_shared<Multiplication>(cst(gauche), droite); }
+ExprPtr operator*(double gauche, ExprPtr droite) { return fabriquer<Multiplication>(cst(gauche), droite); }
 
 /*
  * Nom : operator/
  * Description : Surcharge de la division entre deux ExprPtr générant un noeud Division.
  * Utilisation : ExprPtr resultat = e1 / e2;
  */
-ExprPtr operator/(ExprPtr gauche, ExprPtr droite) { return std::make_shared<Division>(gauche, droite); }
+ExprPtr operator/(ExprPtr gauche, ExprPtr droite) { return fabriquer<Division>(gauche, droite); }
 
 /*
  * Nom : operator/
  * Description : Surcharge de la division entre ExprPtr et double générant un noeud Division.
  * Utilisation : ExprPtr resultat = e / 2.0;
  */
-ExprPtr operator/(ExprPtr gauche, double droite) { return std::make_shared<Division>(gauche, cst(droite)); }
+ExprPtr operator/(ExprPtr gauche, double droite) { return fabriquer<Division>(gauche, cst(droite)); }
 
 /*
  * Nom : operator/
  * Description : Surcharge de la division entre double et ExprPtr générant un noeud Division.
  * Utilisation : ExprPtr resultat = 2.0 / e;
  */
-ExprPtr operator/(double gauche, ExprPtr droite) { return std::make_shared<Division>(cst(gauche), droite); }
+ExprPtr operator/(double gauche, ExprPtr droite) { return fabriquer<Division>(cst(gauche), droite); }
 
 /*
  * Nom : ast_pow
  * Description : Helper générant un noeud Puissance entre deux ExprPtr.
  * Utilisation : ExprPtr resultat = ast_pow(base, exposant);
  */
-ExprPtr ast_pow(ExprPtr base, ExprPtr exposant) { return std::make_shared<Puissance>(base, exposant); }
+ExprPtr ast_pow(ExprPtr base, ExprPtr exposant) { return fabriquer<Puissance>(base, exposant); }
 
 /*
  * Nom : ast_pow
  * Description : Helper générant un noeud Puissance avec un exposant double constant.
  * Utilisation : ExprPtr resultat = ast_pow(base, 2.0);
  */
-ExprPtr ast_pow(ExprPtr base, double exposant) { return std::make_shared<Puissance>(base, cst(exposant)); }
+ExprPtr ast_pow(ExprPtr base, double exposant) { return fabriquer<Puissance>(base, cst(exposant)); }
 
 /*
  * Nom : ast_pow
  * Description : Helper générant un noeud Puissance avec une base double constante.
  * Utilisation : ExprPtr resultat = ast_pow(2.0, exposant);
  */
-ExprPtr ast_pow(double base, ExprPtr exposant) { return std::make_shared<Puissance>(cst(base), exposant); }
+ExprPtr ast_pow(double base, ExprPtr exposant) { return fabriquer<Puissance>(cst(base), exposant); }
 
 /*
  * Nom : ast_sin
  * Description : Helper générant un noeud Sinus.
  * Utilisation : ExprPtr resultat = ast_sin(e);
  */
-ExprPtr ast_sin(ExprPtr arg) { return std::make_shared<Sinus>(arg); }
+ExprPtr ast_sin(ExprPtr arg) { return fabriquer<Sinus>(arg); }
 
 /*
  * Nom : ast_cos
  * Description : Helper générant un noeud Cosinus.
  * Utilisation : ExprPtr resultat = ast_cos(e);
  */
-ExprPtr ast_cos(ExprPtr arg) { return std::make_shared<Cosinus>(arg); }
+ExprPtr ast_cos(ExprPtr arg) { return fabriquer<Cosinus>(arg); }
 
 /*
  * Nom : ast_tan
  * Description : Helper générant un noeud Tangente.
  * Utilisation : ExprPtr resultat = ast_tan(e);
  */
-ExprPtr ast_tan(ExprPtr arg) { return std::make_shared<Tangente>(arg); }
+ExprPtr ast_tan(ExprPtr arg) { return fabriquer<Tangente>(arg); }
 
 // ============================================================================
 // IMPLÉMENTATION DES LIMITES, INTÉGRALES, DL ET LOGARITHME
@@ -1561,7 +1561,7 @@ ExprPtr Cosinus::calculerLimite(double a) const {
 
 // ============== EXPONENTIELLE ==================
 
-Exponentielle::Exponentielle(ExprPtr arg) : FonctionUnaire(arg) {}
+Exponentielle::Exponentielle(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
 
 double Exponentielle::eval(double x) const { return std::exp(m_argument->eval(x)); }
 
@@ -1572,7 +1572,7 @@ ExprPtr Exponentielle::derivee() const {
 ExprPtr Exponentielle::simplifier() const {
     auto arg = m_argument->simplifier();
     if (arg->estConstante()) return cst(std::exp(arg->getValeurConstante()));
-    if (auto ln_node = std::dynamic_pointer_cast<Logarithme>(arg)) {
+    if (const Logarithme* ln_node = comme<Logarithme>(arg)) {
         return ln_node->m_argument->simplifier();
     }
     return ast_exp(arg);
@@ -1600,12 +1600,12 @@ ExprPtr Exponentielle::calculerLimite(double a) const {
 }
 
 ExprPtr ast_exp(ExprPtr arg) {
-    return std::make_shared<Exponentielle>(arg);
+    return fabriquer<Exponentielle>(arg);
 }
 
 // ============== LOGARITHME ==================
 
-Logarithme::Logarithme(ExprPtr arg) : FonctionUnaire(arg) {}
+Logarithme::Logarithme(CleFabrique, ExprPtr arg) : FonctionUnaire(arg) {}
 
 double Logarithme::eval(double x) const { return std::log(m_argument->eval(x)); }
 
@@ -1645,12 +1645,12 @@ ExprPtr Logarithme::calculerLimite(double a) const {
 }
 
 ExprPtr ast_ln(ExprPtr arg) {
-    return std::make_shared<Logarithme>(arg);
+    return fabriquer<Logarithme>(arg);
 }
 
 // ============== INTEGRALE NON EVALUEE ==================
 
-IntegraleNonEvaluee::IntegraleNonEvaluee(ExprPtr integrande) : m_integrande(std::move(integrande)) {}
+IntegraleNonEvaluee::IntegraleNonEvaluee(CleFabrique, ExprPtr integrande) : m_integrande(std::move(integrande)) {}
 
 double IntegraleNonEvaluee::eval(double) const {
     throw std::logic_error("Impossible d'evaluer une primitive non calculee symboliquement");
@@ -1660,7 +1660,7 @@ double IntegraleNonEvaluee::eval(double) const {
 ExprPtr IntegraleNonEvaluee::derivee() const { return m_integrande; }
 
 ExprPtr IntegraleNonEvaluee::simplifier() const {
-    return std::make_shared<IntegraleNonEvaluee>(m_integrande->simplifier());
+    return fabriquer<IntegraleNonEvaluee>(m_integrande->simplifier());
 }
 
 void IntegraleNonEvaluee::afficher(std::ostream& os) const {
@@ -1678,7 +1678,7 @@ ExprPtr IntegraleNonEvaluee::calculerLimite(double a) const { return limiteNonEv
 
 // ============== LIMITE NON EVALUEE ==================
 
-LimiteNonEvaluee::LimiteNonEvaluee(ExprPtr expression, double point)
+LimiteNonEvaluee::LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point)
     : m_expression(std::move(expression)), m_point(point) {}
 
 double LimiteNonEvaluee::eval(double) const {
