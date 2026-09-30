@@ -1,10 +1,7 @@
-#include <iostream>
 #include <iomanip>
-#include "EquationClassique.hpp"
-#include "EquationDifferentielle.hpp"
-#include "ASTNode.hpp"
-#include "Lecture.hpp"
-#include "Solveur.hpp"
+#include <iostream>
+
+#include <symalgopp>
 
 using namespace symalgo;
 

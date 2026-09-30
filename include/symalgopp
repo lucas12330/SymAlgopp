@@ -1,0 +1,9 @@
+// En-tête unique de SymAlgo++, sans extension comme ceux de la bibliothèque standard :
+//
+//   #include <symalgopp>
+//
+// Voir symalgopp.hpp.
+
+#pragma once
+
+#include "symalgopp.hpp"

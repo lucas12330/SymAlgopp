@@ -49,6 +49,8 @@
 
 Le projet repose sur la Programmation Orientée Objet et le polymorphisme C++17. Tout le code est dans `namespace symalgo`.
 
+**En-tête unique** : `#include <symalgopp>` (fichier `include/symalgopp`, qui inclut `include/symalgopp.hpp`) donne toute l'API publique. Tout nouvel en-tête public doit y être ajouté ; `Canonique.hpp` reste interne.
+
 1. **`Equation`** (`include/Equation.hpp`) : Classe abstraite fondamentale.
    * `virtual double eval(double x) const = 0;`
    * `virtual std::unique_ptr<Equation> deriveeGenerique() const = 0;` (dérivée polymorphe ; chaque classe dérivée expose aussi `derivee()` qui renvoie son propre type **par valeur**)

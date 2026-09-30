@@ -10,6 +10,7 @@ Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèqu
 * **Aller-retour** : le texte affiché d'une expression exacte se relit en le même nœud (test aléatoire : 19 997 expressions sur 20 000, les 3 autres contiennent `1/0` ou NaN).
 * Benchmark de lecture contre `GiNaC::parser` : ×3,6 (expression courante) et ×3,9 (grande expression), mémoire équivalente.
 * Démo : équations saisies en texte et résolues.
+* **En-tête unique** : `#include <symalgopp>` (ou `<symalgopp.hpp>`) donne toute l'API publique ; utilisé par la démo et les exemples du README.
 * README réécrit avec six schémas SVG en thème clair et sombre (architecture, construction, graphe partagé, résolution, performances, matrice compagnon), générés par `docs/generer_images.py` ; mesures de la matrice compagnon rafraîchies (841 ns à l'ordre 29).
 
 ### Correctifs (Patches)

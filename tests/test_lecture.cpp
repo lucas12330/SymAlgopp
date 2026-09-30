@@ -8,11 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "ASTNode.hpp"
-#include "EquationClassique.hpp"
-#include "Lecture.hpp"
-#include "Polynome.hpp"
-#include "Solveur.hpp"
+#include <symalgopp> // l'en-tête unique suffit (et vérifie qu'il compile seul)
+
 #include "test_framework.hpp"
 
 using namespace symalgo;

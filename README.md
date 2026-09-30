@@ -34,6 +34,8 @@ Toute la bibliothèque est dans l'espace de noms `symalgo`.
 
 ### Construction
 
+Un seul en-tête donne accès à toute la bibliothèque : `#include <symalgopp>` (ou `<symalgopp.hpp>`). Les en-têtes restent utilisables un par un pour réduire le temps de compilation.
+
 **Depuis du texte** (`include/Lecture.hpp`) :
 
 ```cpp
@@ -134,8 +136,7 @@ Chaque `Solution` porte sa valeur exacte, son approximation, sa multiplicité et
 ### 1. Dérivation, intégration et limite
 ```cpp
 #include <iostream>
-#include "EquationClassique.hpp"
-#include "ASTNode.hpp"
+#include <symalgopp>
 
 using namespace symalgo;
 
@@ -170,10 +171,7 @@ int main() {
 ### 2. Développement, factorisation et résolution
 ```cpp
 #include <iostream>
-#include "ASTNode.hpp"
-#include "EquationClassique.hpp"
-#include "Polynome.hpp"
-#include "Solveur.hpp"
+#include <symalgopp>
 
 using namespace symalgo;
 
@@ -204,8 +202,7 @@ int main() {
 ### 3. Équations différentielles (littérale et numérique RK4)
 ```cpp
 #include <iostream>
-#include "EquationDifferentielle.hpp"
-#include "EquationClassique.hpp"
+#include <symalgopp>
 
 using namespace symalgo;
 
