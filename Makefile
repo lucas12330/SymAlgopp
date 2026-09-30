@@ -7,6 +7,8 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++17 -O2 -Iinclude -isystem vendor/eigen
 # Génère un fichier .d par objet pour recompiler quand un header change
 DEPFLAGS = -MMD -MP
+# Arithmétique exacte de taille arbitraire (GMP)
+LDLIBS = -lgmpxx -lgmp
 
 # Répertoires
 SRC_DIR = src
@@ -53,10 +55,10 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 
 # Règles pour compiler les tests en liant les objets de la bibliothèque
 $(BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
 
 $(DEMO_BIN): demo.cpp $(OBJS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
 
 # Lancer tous les tests : s'arrête (code de retour non nul) au premier échec
 run_tests: $(TEST_BINS)
@@ -74,7 +76,7 @@ $(SAN_BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(SAN_BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(SAN_BIN_DIR)/test_%: $(TEST_DIR)/test_%.cpp $(SAN_OBJS) | $(SAN_BIN_DIR)
-	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $(SAN_FLAGS) $(DEPFLAGS) $^ -o $@ $(LDLIBS)
 
 check: $(SAN_TEST_BINS)
 	@for t in $(SAN_TEST_BINS); do \
@@ -84,7 +86,7 @@ check: $(SAN_TEST_BINS)
 
 # Règle pour compiler les benchmarks (avec optimisation maximale)
 $(BENCH_BIN): $(BENCH_SRC) $(SRCS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ -lbenchmark -lpthread -lginac -lcln
+	$(CXX) $(CXXFLAGS) -O3 -DNDEBUG $^ -o $@ $(LDLIBS) -lbenchmark -lpthread -lginac -lcln
 
 bench: $(BENCH_BIN)
 	@printf '\n--- EXECUTION DES BENCHMARKS ---\n'
