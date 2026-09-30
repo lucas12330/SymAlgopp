@@ -23,6 +23,16 @@ EquationClassique::EquationClassique(ExprPtr racine) : m_racine(std::move(racine
 EquationClassique::EquationClassique() : m_racine(cst(0.0)) {}
 
 /*
+ * Nom : EquationClassique (texte)
+ * Description : Lit « gauche = droite » et garde gauche - droite.
+ * Utilisation : EquationClassique eq("sin(x) = 1/2");
+ */
+EquationClassique::EquationClassique(const std::string& texte, const OptionsLecture& options) {
+    const EgaliteLue lue = lireEquation(texte, options);
+    m_racine = lue.gauche - lue.droite;
+}
+
+/*
  * Nom : eval
  * Description : Calcule la valeur de l'équation en un point x.
  * Utilisation : double y = eq.eval(x);

@@ -13,9 +13,12 @@
 #include "Equation.hpp"
 #include "ASTNode.hpp"
 #include "Evaluateur.hpp"
+#include "Lecture.hpp"
 #include "Solveur.hpp"
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +33,16 @@ public:
      * Utilisation : EquationClassique eq(racine_ast);
      */
     explicit EquationClassique(ExprPtr racine);
+    explicit EquationClassique(std::nullptr_t) : EquationClassique(ExprPtr()) {} // lève, sans ambiguïté avec le texte
+
+    /*
+     * Nom : EquationClassique (texte)
+     * Description : Équation lue depuis le texte (voir Lecture.hpp) : « gauche = droite »
+     *               devient gauche - droite = 0. Lève ErreurLecture si le texte est mal formé.
+     * Utilisation : EquationClassique eq("x^2 = 2");
+     *               Solutions s = eq.resoudre();
+     */
+    explicit EquationClassique(const std::string& texte, const OptionsLecture& options = {});
 
     /*
      * Nom : EquationClassique

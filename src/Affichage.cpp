@@ -80,6 +80,7 @@ std::string joindre(const std::vector<std::string>& parties) {
  */
 void ecrireProduit(std::ostream& os, const Nombre& coefficient, const std::vector<Facteur>& facteurs) {
     std::vector<std::string> numerateur, denominateur;
+    int sommesAuDenominateur = 0; // sommes d'exposant -1
     if (coefficient.estExact()) {
         if (coefficient.numerateur() != "1") numerateur.push_back(coefficient.numerateur());
         if (coefficient.denominateur() != "1") denominateur.push_back(coefficient.denominateur());
@@ -88,12 +89,19 @@ void ecrireProduit(std::ostream& os, const Nombre& coefficient, const std::vecto
     }
     for (const Facteur& f : facteurs) {
         if (exposantNegatif(f.exposant)) {
+            if (f.base->type() == TypeNoeud::Somme && (-f.exposant).get() == un().get()) ++sommesAuDenominateur;
             denominateur.push_back(textePuissance(os, f.base, -f.exposant));
         } else {
             numerateur.push_back(textePuissance(os, f.base, f.exposant));
         }
     }
     os << (numerateur.empty() ? std::string("1") : joindre(numerateur));
+    // « 5/(7*(x + a)) » se relirait 5/(7*x + 7*a), une autre forme : on écrit « 5/7/(x + a) »
+    if (denominateur.size() == 2 && sommesAuDenominateur == 1 && coefficient.estExact() &&
+        coefficient.denominateur() != "1") {
+        os << '/' << denominateur[0] << '/' << denominateur[1];
+        return;
+    }
     if (!denominateur.empty()) {
         os << '/' << (denominateur.size() == 1 ? denominateur[0] : "(" + joindre(denominateur) + ")");
     }
