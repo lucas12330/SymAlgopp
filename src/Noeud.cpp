@@ -690,14 +690,18 @@ ExprPtr ast_pow(const ExprPtr& base, const ExprPtr& exposant) {
         if (const Constante* cb = comme<Constante>(base)) {
             const Nombre& b = cb->getNombre();
             if (b.estExact() && e.estExact()) {
+                // 0^e (e < 0) est infini : une seule forme, 1/0 (0^(-3) et 0^(-1/2) aussi)
+                if (b.estZero() && e.signe() < 0) {
+                    return e.estMoinsUn() ? fabriquer<Puissance>(base, exposant) : ast_pow(base, nombre(Nombre(-1)));
+                }
                 long long k;
                 if (e.versEntier(k)) {
-                    if (!(b.estZero() && k < 0)) return nombre(b.puissanceEntiere(k)); // 0^(-k) conservé
+                    return nombre(b.puissanceEntiere(k));
                 } else if (b.signe() >= 0) {
                     // Exposant p/q : exact si b est une puissance q-ième parfaite (4^(1/2) = 2)
                     long long p, q;
                     Nombre racine;
-                    if (e.versFraction(p, q) && b.racineExacte(q, racine) && !(racine.estZero() && p < 0)) {
+                    if (e.versFraction(p, q) && b.racineExacte(q, racine)) {
                         return nombre(racine.puissanceEntiere(p));
                     }
                     // Forme unique des radicaux : b^(p/q) = b^n * b^(p/q - n), exposant dans ]0, 1[

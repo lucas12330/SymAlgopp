@@ -398,6 +398,16 @@ TEST_CASE(simplification_division_par_zero_conservee) {
     CHECK(std::isinf((X / cst(0.0))->simplifier()->eval(1.0)));
 }
 
+TEST_CASE(zero_puissance_negative_forme_unique) {
+    // 0^(-3), 0^(-1/2) et 1/0 sont tous infinis : une seule forme, 1/0
+    const ExprPtr inverseDeZero = 1.0 / cst(0.0);
+    CHECK(ast_pow(cst(0.0), -3.0).get() == inverseDeZero.get());
+    CHECK(ast_pow(cst(0.0), frac(-1, 2)).get() == inverseDeZero.get());
+    CHECK(std::isinf(inverseDeZero->eval(0.0)));
+    CHECK(ast_pow(cst(0.0), frac(1, 2)).get() == cst(0.0).get());
+    CHECK(ast_pow(cst(0.0), 3.0).get() == cst(0.0).get());
+}
+
 // ============================================================================
 // Intégration
 // ============================================================================
