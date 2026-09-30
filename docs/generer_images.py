@@ -99,10 +99,11 @@ COUCHES = [
         ("EquationClassique", ["dérivée · primitive · DL", "limite · résolution · tracé"], False),
         ("EquationDifferentielle", ["somme a_i y^(i) = 0", "littérale · Cauchy · RK4"], False),
     ]),
-    ("Algèbre", "Polynome.hpp · Solveur.hpp", "manipule", [
+    ("Algèbre", "Polynome · Solveur", "manipule", [
         ("developper · factoriser", ["(x - 1)*(x^2 - 2)", "facteurs sur Q"], False),
         ("Polynome exact", ["suites de Sturm · Yun · PGCD", "racines réelles certifiées"], True),
         ("Solveur", ["isolement · produit nul", "familles en k · Brent"], False),
+        ("Plusieurs variables", ["Multivariable.hpp · d/dy", "gradient · hessienne"], False),
     ]),
     ("Expressions", "include/ASTNode.hpp", "calcule avec", [
         ("Forme canonique", ["Noeud.cpp : x + x = 2*x", "sommes et produits n-aires"], True),

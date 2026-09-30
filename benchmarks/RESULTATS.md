@@ -139,3 +139,29 @@ Texte courant : `3*x^4 - 2*x^3 + sin(x)*exp(-x^2/2) + log(x^2 + 1)/(x + 1) - 5/7
   d'adresses (0,38 µs, ×115). Gain valable pour `asin`, `acos` et `atan` partout.
 * Un lexème occupait ~72 octets (nom et nombre déjà convertis) ; il ne désigne plus qu'un
   morceau du texte (12 octets), converti à l'analyse : mémoire allouée divisée par 2.
+
+## Chantier « plusieurs variables »
+
+Branche `feature/multivariable-packaging` : les variables sont identifiées par leur nom
+(identifiant de 16 bits dans le noeud). Contrôle de non-régression pour une seule variable,
+avant (`da6c9db`) et après, même machine, `-O3`, médiane de 2 à 3 répétitions.
+
+| Scénario | Avant | Après |
+| :--- | ---: | ---: |
+| Évaluation d'un point (petite expression) | 112 ns | 114 ns |
+| Évaluation d'un point (dérivée 8e, compilée) | 1 075 ns | 1 110 à 1 170 ns |
+| Dérivée 6e | 8,8 µs · 4,2 Ko | 9,0 µs · 4,2 Ko |
+| Dérivée 10 fois | 1,36 ms · 556 Ko | 1,37 ms · 556 Ko |
+| Collecte | 142 µs | 145 µs |
+| Série (DL) | 4,04 µs | 3,99 µs |
+| Mémoire du résultat | 297 µs · 4,2 Ko | 297 µs · 4,2 Ko |
+| Lecture (73 caractères) | 15,0 µs · 5,9 Ko | 15,2 µs · 5,9 Ko |
+
+Taille des noeuds inchangée (80 octets pour une constante ou une variable, 96 pour une
+somme). Seule l'évaluation ponctuelle compilée de la grande expression varie (+4 à +9 %) :
+le programme est identique (157 instructions, 7 registres), l'écart change avec la
+disposition du code généré (différences d'alignement de la boucle d'interprétation d'une
+compilation à l'autre).
+
+**Programme à plusieurs sorties** (`examples/incertitudes.cpp`) : `g`, son gradient et les
+trois dérivées secondes pures sont compilés ensemble en 54 instructions pour 7 sorties.

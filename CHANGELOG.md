@@ -2,6 +2,27 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
+## [Unreleased] - Plusieurs variables, packaging et cas d'usage (branche feature/multivariable-packaging)
+
+### Ajouts (Additions)
+* **Dérivées partielles** : `f->derivee("y")` (ou `derivee(var("y"))`) dérive par rapport à une variable et traite les autres comme des constantes. Les variables sont désormais distinguées par leur nom ; `derivee()` sans argument garde son comportement pour une seule variable et lève `std::invalid_argument` s'il y en a plusieurs.
+* **`Multivariable.hpp`** : `variables()`, `gradient()`, `jacobienne()`, `hessienne()`, `laplacien()`, `divergence()`, `deriveeMixte()` et `evaluer(expression, valeurs)`.
+* **`ProgrammeEvaluation` à plusieurs entrées et plusieurs sorties** : `ProgrammeEvaluation(expressions, entrees)` et `evaluerEn(valeurs)` ; les sous-expressions communes d'un gradient et de sa hessienne ne sont calculées qu'une fois (54 instructions pour g, son gradient et trois dérivées secondes, dans le cas d'usage des incertitudes).
+* **Lecture** : `OptionsLecture::autresVariables` (`lire("x*y", {"x", {"y"}})`) ; **`EquationClassique`** : `eval(valeurs)`, `derivee("y")`, `gradient()`, `variables()`.
+* **Cas d'usage** dans `examples/`, qui vérifient leur résultat (`make run_examples`, `ctest`) : propagation d'incertitudes d'une mesure de g par gradient et hessienne exacts, confirmée par Monte-Carlo ; ajustement non linéaire d'une décharge de condensateur par Newton avec hessienne exacte.
+* **Packaging CMake** : `CMakeLists.txt` (bibliothèque statique ou partagée, `SOVERSION`, options tests/exemples/benchmarks/sanitizers), installation avec `symalgoppConfig.cmake` et `symalgoppConfigVersion.cmake` (`find_package(symalgopp)`, cible `symalgopp::symalgopp`), `FindGMP.cmake`, `symalgopp.pc` pour pkg-config, archive `cpack` (`-G TGZ` ou `-G DEB`), utilisable par `FetchContent` / `add_subdirectory`. `#include <symalgopp>` fonctionne depuis un préfixe installé.
+* `tests/packaging/verifier.sh` : installe dans un préfixe temporaire (statique puis partagée) et compile un projet extérieur avec `find_package` et avec pkg-config.
+* `Dockerfile` (construction, tests et essai des cas d'usage dans un environnement reproductible) et intégration continue GitHub Actions (tests en Release, sous sanitizers, et vérification du paquet).
+* 14 nouveaux cas de test (`test_multivariable`) : dérivées partielles comparées aux différences finies, symétrie des dérivées croisées, cache de dérivation avec sous-expressions partagées, refus des opérations à une variable.
+
+### Correctifs (Patches)
+* L'intégrale, la limite, le DL, la résolution et l'évaluation en un réel traitaient toute variable comme `x` : une expression à plusieurs variables est désormais refusée (`std::invalid_argument`, `std::logic_error`, `std::domain_error`) ou laissée non évaluée (intégrale, limite).
+* Makefile : l'édition de liens ne reçoit plus les en-têtes sans extension (`include/symalgopp`) que les fichiers `.d` ajoutaient aux dépendances.
+
+### Performances
+* Une seule variable, mesures avant/après sur la même machine : dérivée, dérivée 10 fois, séries, mémoire, lecture et évaluation ponctuelle inchangées à ±2 %. La taille des noeuds est identique (l'identifiant de variable de 16 bits remplace un booléen dans l'octet de remplissage).
+* Seule l'évaluation ponctuelle compilée d'une grande expression (`BM_SymAlgo_EvalGrandeExpression`) est plus lente, de 1,07 µs à 1,11-1,17 µs (+4 à +9 %) : le programme compilé est identique (157 instructions), l'écart varie avec la disposition du code généré par le compilateur d'une compilation à l'autre.
+
 ## [Unreleased] - Lecture depuis du texte (branche feature/lecture-expressions)
 
 ### Ajouts (Additions)

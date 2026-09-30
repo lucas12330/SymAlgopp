@@ -28,6 +28,13 @@
   ```bash
   make bench
   ```
+* **Construire avec CMake** (paquet installable ; le Makefile reste l'outil de développement) :
+  ```bash
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+  ctest --test-dir build --output-on-failure
+  tests/packaging/verifier.sh          # installation dans un préfixe temporaire + projet extérieur
+  ```
+  Tout nouveau fichier de `src/`, `tests/test_*.cpp` ou `examples/*.cpp` est pris en compte par les deux systèmes (jokers) ; tout nouvel en-tête public doit aussi être ajouté à `include/symalgopp.hpp`.
 * **Nettoyer les artéfacts de compilation** :
   ```bash
   make clean
@@ -39,8 +46,10 @@
   * `./bin/test_evaluateur` : Tests de l'évaluation compilée.
   * `./bin/test_polynome` : Tests de `developper`, `Polynome` (Sturm, racines certifiées) et `factoriser`.
   * `./bin/test_lecture` : Tests de la lecture depuis du texte (nombres exacts, précédences, erreurs, aller-retour avec l'affichage).
+  * `./bin/test_multivariable` : Tests des fonctions de plusieurs variables (dérivées partielles, gradient, hessienne, évaluation).
   * `./bin/test_solveur` : Tests du solveur d'équations (exact, familles, intervalles, numérique).
   * `./bin/demo` : Programme de démonstration.
+  * `make run_examples` (`bin/exemples/*`) : cas d'usage de `examples/`, qui renvoient un code non nul si leur résultat est faux.
   * `./bin/bench_suite` : Exécutable du benchmark de performance.
 
 ---
@@ -72,9 +81,11 @@ Le projet repose sur la Programmation Orientée Objet et le polymorphisme C++17.
    * **Points d'entrée non virtuels** (`derivee`, `simplifier`, `integrer`, `limite`) ; règles par nœud dans les méthodes protégées `calculerDerivee`, `calculerSimplification`, `primitive`, `calculerLimite`. Modules : `Regles.cpp` (éval, dérivées, primitives), `Limites.cpp`, `Series.cpp` (DL), `Affichage.cpp`, `Evaluateur.cpp` (programme compilé).
    * **Helpers** : `cst()`, `frac()`, `nombre()`, `var()`, `param()`, `pi()`, `somme()`, `produit()`, `ast_pow()`, `ast_sin()`, `ast_cos()`, `ast_tan()`, `ast_exp()`, `ast_ln()`, `ast_asin()`, `ast_acos()`, `ast_atan()`, `appliquer()`, `substituer()`, `contient()`, opérateurs `+ - * /` et moins unaire.
 
-5. **Lecture** (`include/Lecture.hpp`, `src/Lecture.cpp`) : `lire(texte, options)`, `lireEquation(texte)` (`EgaliteLue { gauche, droite }`), littéral `"..."_expr` (`namespace symalgo::litteraux`), `ErreurLecture` (`position()`, `raison()`). Nombres décimaux exacts ; la variable est `OptionsLecture::variable` (« x »), les autres identifiants sont des paramètres. Invariant testé : `lire(e->texte())` est le même nœud que `e` pour toute expression exacte — toute modification de `Affichage.cpp` doit le préserver.
+5. **Plusieurs variables** (`include/Multivariable.hpp`, `src/Multivariable.cpp`) : chaque `var("nom")` est une variable distincte (identifiant interne de 16 bits stocké dans le noeud ; `identifiantVariable()`, `plusieursVariables()`). `derivee(var)` / `derivee("y")` est la dérivée partielle (les autres variables sont des constantes) ; `derivee()` sans argument lève `std::invalid_argument` s'il y a plusieurs variables. `variables(e)`, `gradient`, `jacobienne`, `hessienne`, `laplacien`, `divergence`, `deriveeMixte`, `evaluer(e, valeurs)`. `ProgrammeEvaluation(expressions, entrees)` compile plusieurs sorties de plusieurs variables (`evaluerEn`). Intégrale, limite, DL, résolution et `eval(x)` sont des opérations à une variable : elles refusent ou laissent non évaluées les expressions à plusieurs variables. Lecture : `OptionsLecture{"x", {"y", "z"}}`.
 
-6. **Algèbre** :
+6. **Lecture** (`include/Lecture.hpp`, `src/Lecture.cpp`) : `lire(texte, options)`, `lireEquation(texte)` (`EgaliteLue { gauche, droite }`), littéral `"..."_expr` (`namespace symalgo::litteraux`), `ErreurLecture` (`position()`, `raison()`). Nombres décimaux exacts ; la variable est `OptionsLecture::variable` (« x »), les autres identifiants sont des paramètres. Invariant testé : `lire(e->texte())` est le même nœud que `e` pour toute expression exacte — toute modification de `Affichage.cpp` doit le préserver.
+
+7. **Algèbre** :
    * `include/Polynome.hpp`, `src/Polynome.cpp` : `developper()`, `Polynome` (coefficients `Nombre` exacts, `estExact()` faux si un coefficient était réel ; PGCD, `sansCarre()` de Yun, `racinesReelles()` certifiées par Sturm), `factoriser()` sur Q.
    * `include/Solveur.hpp`, `src/Solveur.cpp` : `resoudre(gauche, droite)`, `resoudreSurIntervalle(e, a, b)`, `resoudreNumerique(f, a, b)` ; `Solutions { liste, complet, toutReel }`, `Solution { valeur, approximation, multiplicite, exacte, entiers }` (familles trigonométriques paramétrées par `k`, `k2`...).
 

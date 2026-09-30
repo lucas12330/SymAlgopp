@@ -1,6 +1,6 @@
 # SymAlgo++
 
-SymAlgo++ est une bibliothèque C++17 de calcul symbolique. Elle représente, évalue, dérive, intègre, développe, factorise et **résout** des expressions algébriques, lues depuis du texte ou écrites en C++, ainsi que des équations différentielles ordinaires (EDO) linéaires.
+SymAlgo++ est une bibliothèque C++17 de calcul symbolique. Elle représente, évalue, dérive (dérivées **partielles** comprises), intègre, développe, factorise et **résout** des expressions algébriques, lues depuis du texte ou écrites en C++, ainsi que des équations différentielles ordinaires (EDO) linéaires.
 
 ```cpp
 EquationClassique eq("exp(2x) - 3exp(x) + 2 = 0");
@@ -9,7 +9,8 @@ Solutions s = eq.resoudre();          // x = 0 ; x = ln(2), exactes
 
 * **Exacte** : rationnels de taille arbitraire (`0.1 + 0.2` vaut `3/10`), constante `pi`, radicaux et valeurs remarquables exacts (`sin(pi/3) = 3^(1/2)/2`), racines de polynômes certifiées.
 * **Rapide et sobre** : face à GiNaC, bibliothèque C++ de calcul formel de référence, SymAlgo++ est plus rapide sur tous les scénarios mesurés (de ×1,7 à ×1 450), et ses résultats occupent moins de mémoire ([mesures](#-performances)).
-* **Sûre** : 125 cas de test, tous exécutés aussi sous AddressSanitizer et UndefinedBehaviorSanitizer (`make check`).
+* **Sûre** : 139 cas de test, tous exécutés aussi sous AddressSanitizer et UndefinedBehaviorSanitizer (`make check`), et deux [cas d'usage](#-cas-dusage) qui vérifient leur propre résultat.
+* **Installable** : `find_package(symalgopp)` (CMake), pkg-config ou `FetchContent`, en-tête unique `#include <symalgopp>` ([installation](#-installation)).
 
 Le fonctionnement interne est détaillé dans [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -103,6 +104,7 @@ std::cout << expr;   // x^2/3 + sin(x) + ln(x)
 * **Dérivation (`derivee()`)** : sur le graphe partagé, chaque sous-expression n'est dérivée qu'une fois par appel ; le résultat est directement sous forme canonique.
 * **Intégration (`integrer()`)** : polynômes, fonctions usuelles et réciproques, linéarité, substitution linéaire $\int f(ax+b)\,dx = F(ax+b)/a$. Hors de ces règles, le résultat est une `IntegraleNonEvaluee`.
 * **Limites (`limite(x0)`)** : règle de L'Hôpital pour $0/0$ et $\infty/\infty$, formes $0 \cdot \infty$, $1^\infty$, $0^0$, $\infty^0$, signe de l'infini. $\sin(x)/x \to 1$, $x \ln x \to 0$, $x^x \to 1$ en 0 ; une limite inexistante ($1/x$ en 0) est une `LimiteNonEvaluee`.
+* **Dérivées partielles** : `f->derivee("y")` dérive par rapport à `y` et traite les autres variables comme des constantes ; `gradient`, `jacobienne`, `hessienne`, `laplacien`, `divergence` et `deriveeMixte` (voir [plusieurs variables](#plusieurs-variables)).
 * **Développements limités (`DL(x0, ordre)`)** : arithmétique des séries tronquées (technique de la différentiation automatique) ; l'ordre 20 de $e^{\sin x}$ s'obtient en quelques microsecondes.
 
 ### Algèbre
@@ -117,6 +119,36 @@ std::cout << expr;   // x^2/3 + sin(x) + ln(x)
 </picture>
 
 Chaque `Solution` porte sa valeur exacte, son approximation, sa multiplicité et, pour une famille, ses entiers libres (`k`). L'indicateur `complet` signale qu'une forme n'a pas pu être résolue : les solutions listées sont justes, mais il peut en manquer.
+
+### Plusieurs variables
+
+Toute `var("nom")` est une variable distincte (à la lecture : `OptionsLecture`, par exemple `{"x", {"y", "z"}}`) ; les paramètres (`a`, `C1`) restent des constantes symboliques.
+
+```cpp
+#include <iostream>
+#include <symalgopp>
+
+using namespace symalgo;
+
+int main() {
+    // x et y sont des variables, a est un paramètre symbolique
+    ExprPtr f = lire("x^2*y + sin(x*y) + a", {"x", {"y"}});
+
+    std::cout << f->derivee("y")->simplifier() << "\n";     // x^2 + x*cos(x*y)
+    for (const ExprPtr& d : gradient(f)) std::cout << d << "\n";  // (d/dx, d/dy)
+    std::cout << laplacien(f) << "\n";                      // 2*y - x^2*sin(x*y) - y^2*sin(x*y)
+
+    auto H = hessienne(f);                                  // matrice symétrique
+    std::cout << H[0][1] << "\n";                           // 2*x - x*y*sin(x*y) + cos(x*y)
+
+    // évaluation numérique : les sorties partagent leurs sous-expressions communes
+    ProgrammeEvaluation p({f->derivee("x"), f->derivee("y")}, {var("x"), var("y")});
+    std::vector<double> g = p.evaluerEn({1.0, 2.0});        // 3.16771, 0.583853
+    return 0;
+}
+```
+
+`derivee()` sans argument refuse une expression à plusieurs variables (`std::invalid_argument`) plutôt que de deviner. Les opérations à une seule variable (résolution, DL, évaluation en un réel) la refusent aussi ; l'intégrale et la limite restent non évaluées.
 
 ### Évaluation et tracé
 
@@ -233,9 +265,101 @@ int main() {
 
 ---
 
+## 🔬 Cas d'usage
+
+Deux programmes complets dans [`examples/`](examples), construits par `make examples` (ou CMake) et lancés avec `make run_examples`. Chacun vérifie son propre résultat (code de retour non nul en cas d'écart) : ce sont aussi des tests.
+
+### Propagation d'incertitudes : mesurer g avec un pendule
+
+[`examples/incertitudes.cpp`](examples/incertitudes.cpp) : la formule $g = 4\pi^2 L (1 + \theta^2/16)^2 / T^2$ est lue depuis du texte, ses dérivées partielles sont exactes, et un seul programme compilé calcule $g$, son gradient et la diagonale de sa hessienne. Résultat : l'incertitude sur $g$, la part de chaque mesure, et le biais dû à la non-linéarité, confirmés par un Monte-Carlo de un million de tirages.
+
+```
+  dg/dT = -8*pi^2*L*(th^2/16 + 1)^2/T^3
+  g = 9.7793 m/s²,  incertitude-type (au premier ordre) = 0.4877 m/s²
+  part de chaque mesure dans la variance :  L : 0.2 %   T : 99.8 %   th : 0.0 %
+  Monte-Carlo : écart-type = 0.4898 (prévu 0.4877), moyenne - g = 0.0175 ± 0.0005 (biais prévu 0.0183)
+```
+
+La période du chronométrage à la main domine tout : c'est elle qu'il faut améliorer.
+
+### Ajustement non linéaire par la méthode de Newton
+
+[`examples/ajustement.cpp`](examples/ajustement.cpp) : décharge d'un condensateur $V(t) = a\,e^{-t/b} + c$ mesurée avec du bruit. Le critère des moindres carrés $S(a, b, c)$ est construit symboliquement sur 40 mesures ; son gradient et sa **hessienne exacte** sont dérivés et compilés (1 927 instructions, environ 5 ms), puis Newton amorti converge en 8 itérations depuis un point de départ grossier, sans différences finies. La hessienne donne aussi les incertitudes :
+
+```
+  a = 4.21154 ± 0.03295   (valeur vraie 4.20000)
+  b = 1.78259 ± 0.02986   (valeur vraie 1.80000)
+  c = 0.35231 ± 0.01396   (valeur vraie 0.35000)
+```
+
+---
+
+## 📦 Installation
+
+### CMake : `find_package`
+
+```bash
+git clone git@github.com:lucas12330/SymAlgopp.git && cd SymAlgopp
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure      # 10 tests : 8 suites + 2 cas d'usage
+cmake --install build --prefix /usr/local       # (ou un préfixe personnel, sans sudo)
+```
+
+```cmake
+find_package(symalgopp REQUIRED)
+add_executable(mon_programme main.cpp)
+target_link_libraries(mon_programme PRIVATE symalgopp::symalgopp)
+```
+
+```cpp
+#include <symalgopp>     // toute l'API
+```
+
+Sans installation, `FetchContent` ou `add_subdirectory` suffisent :
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(symalgopp GIT_REPOSITORY https://github.com/lucas12330/SymAlgopp.git GIT_TAG main)
+FetchContent_MakeAvailable(symalgopp)
+target_link_libraries(mon_programme PRIVATE symalgopp::symalgopp)
+```
+
+### pkg-config (sans CMake)
+
+```bash
+g++ -std=c++17 main.cpp $(pkg-config --cflags --libs symalgopp) -o mon_programme
+```
+
+### Options CMake
+
+| Option | Défaut | Effet |
+| :--- | :--- | :--- |
+| `BUILD_SHARED_LIBS` | `OFF` | bibliothèque partagée au lieu de statique |
+| `SYMALGOPP_BUILD_TESTS` | `ON` (projet racine) | tests, lancés par `ctest` |
+| `SYMALGOPP_BUILD_EXAMPLES` | `ON` (projet racine) | démo et cas d'usage |
+| `SYMALGOPP_BUILD_BENCHMARKS` | `OFF` | benchmarks (Google Benchmark et GiNaC requis) |
+| `SYMALGOPP_SANITIZE` | `OFF` | AddressSanitizer et UBSan |
+
+Dépendances : **GMP** (`libgmp-dev`) et **Eigen ≥ 3.3** (`libeigen3-dev`), ce dernier faisant partie de l'API publique (`getMatriceCompagnon()` renvoie une `Eigen::MatrixXd`). À défaut d'Eigen sur le système, la construction utilise `vendor/eigen`, mais un paquet installé demandera alors Eigen à son utilisateur. `cpack -G TGZ` (ou `-G DEB`) produit une archive depuis le dossier de construction. Les en-têtes s'installent dans `<préfixe>/include/symalgopp/`, dossier ajouté au chemin d'inclusion de la cible pour que `#include <symalgopp>` fonctionne.
+
+`tests/packaging/verifier.sh` reproduit le parcours d'un utilisateur : installation dans un préfixe temporaire (bibliothèque statique, puis partagée), puis compilation d'un projet extérieur avec `find_package` et avec pkg-config.
+
+### Docker
+
+```bash
+docker build -t symalgopp .                  # compile et lance tous les tests
+docker run --rm symalgopp                    # démo
+docker run --rm symalgopp exemple_ajustement
+```
+
+L'image sert à obtenir un environnement reproductible (g++, CMake, GMP, Eigen) ; pour utiliser la bibliothèque dans un projet, préférez `find_package`.
+
+---
+
 ## 🛠️ Compilation et tests
 
-Dépendances : un compilateur C++17 (GCC ou Clang), **GMP** (arithmétique exacte) et **Eigen** (fourni dans `vendor/eigen`).
+Le `Makefile` sert au développement (voir [installation](#-installation) pour CMake). Dépendances : un compilateur C++17 (GCC ou Clang), **GMP** (arithmétique exacte) et **Eigen** (fourni dans `vendor/eigen`).
 
 ```bash
 sudo pacman -S gmp            # Arch / EndeavourOS  (Debian/Ubuntu : libgmp-dev)
@@ -243,14 +367,15 @@ sudo pacman -S gmp            # Arch / EndeavourOS  (Debian/Ubuntu : libgmp-dev)
 
 | Commande | Effet |
 | :--- | :--- |
-| `make` | compile la bibliothèque, les tests et la démo |
-| `make run_tests` | lance les 125 cas de test (code de retour non nul au premier échec) |
+| `make` | compile la bibliothèque, les tests, la démo et les cas d'usage |
+| `make run_tests` | lance les 139 cas de test (code de retour non nul au premier échec) |
+| `make run_examples` | lance les cas d'usage (propagation d'incertitudes, ajustement) |
 | `make check` | relance tous les tests sous AddressSanitizer et UndefinedBehaviorSanitizer |
 | `make bench` | benchmarks comparatifs contre GiNaC (voir ci-dessous) |
 | `./bin/demo` | démonstration : physique, DL, EDO, équations lues et résolues |
 | `make clean` | supprime `build/` et `bin/` |
 
-Suites de tests (`tests/`, mini-framework sans dépendance `tests/test_framework.hpp`) : `test_ast` (expressions, dérivées, primitives, limites, DL), `test_nombre`, `test_evaluateur`, `test_polynome` (Sturm, factorisation), `test_solveur`, `test_lecture` et `test_differentielle`.
+Suites de tests (`tests/`, mini-framework sans dépendance `tests/test_framework.hpp`) : `test_ast` (expressions, dérivées, primitives, limites, DL), `test_nombre`, `test_evaluateur`, `test_polynome` (Sturm, factorisation), `test_solveur`, `test_lecture`, `test_multivariable` (dérivées partielles comparées aux différences finies, gradient, hessienne, évaluation) et `test_differentielle`.
 
 ---
 
@@ -303,7 +428,9 @@ La matrice compagnon d'une EDO d'ordre 29 se construit en moins d'une microsecon
 
 * **Arborescence** :
   * `include/`, `src/` : en-têtes et sources, un module par responsabilité (voir [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) ;
-  * `tests/` : suite de tests automatisés ;
+  * `tests/` : suite de tests automatisés, et `tests/packaging/` (vérification du paquet installé) ;
+  * `examples/` : cas d'usage qui vérifient leur résultat ;
+  * `CMakeLists.txt`, `cmake/` : construction et paquet (`find_package`, pkg-config) ; `Dockerfile` ; `.github/workflows/ci.yml` : intégration continue ;
   * `benchmarks/` : benchmarks Google Benchmark et historique des résultats ;
   * `docs/` : architecture, schémas SVG (`docs/images/`) et leur générateur (`python3 docs/generer_images.py`).
 * **Branches** : travail exclusivement sur des branches `feature/nom-de-la-tache` ; aucun commit direct sur `main`.
