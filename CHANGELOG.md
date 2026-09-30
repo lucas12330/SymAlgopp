@@ -2,6 +2,22 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
+## [Unreleased] - Lecture depuis du texte (branche feature/lecture-expressions)
+
+### Ajouts (Additions)
+* **`lire()`**, **`lireEquation()`**, **`EquationClassique("x^2 = 2")`** et le littéral **`"..."_expr`** : lecture d'expressions et d'équations. Nombres décimaux exacts (`0.1` = 1/10), multiplication implicite (`2x`, `3(x + 1)`), fonctions usuelles et réciproques, `pi`/`π`, `e`, paramètres, symboles Unicode (`× · ÷ − ² ³`).
+* **`ErreurLecture`** : position (en caractères) et repère visuel ; fonctions inconnues refusées (`sinh(x)`) ; imbrication bornée, jamais de dépassement de pile.
+* **Aller-retour** : le texte affiché d'une expression exacte se relit en le même nœud (test aléatoire : 19 997 expressions sur 20 000, les 3 autres contiennent `1/0` ou NaN).
+* Benchmark de lecture contre `GiNaC::parser` : ×3,6 (expression courante) et ×3,9 (grande expression), mémoire équivalente.
+* Démo : équations saisies en texte et résolues.
+
+### Correctifs (Patches)
+* `0^(-3)` et `0^(-1/2)` sont normalisés en `1/0` (une seule forme pour l'infini).
+* Affichage : `5/7/(x + a)` au lieu de `5/(7*(x + a))`, qui se relisait en une autre forme.
+
+### Performances
+* `asin`, `acos`, `atan` : valeurs remarquables précalculées, construction de `atan(2*x)` de 44 µs à 0,38 µs.
+
 ## [Unreleased] - Résolution d'équations (branches feature/solveur-equations → feature/resolution-equations)
 
 ### Ajouts (Additions)

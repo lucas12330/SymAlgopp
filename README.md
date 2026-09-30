@@ -43,7 +43,15 @@ Le projet est structuré autour d'une hiérarchie de classes exploitant le polym
 
 ### Construction
 
-Des helpers (`cst`, `frac`, `nombre`, `var`, `param`, `pi`, `somme`, `produit`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`, `ast_asin`, `ast_acos`, `ast_atan`, `substituer`) et les opérateurs `+ - * /` (y compris le moins unaire) permettent une écriture proche des mathématiques :
+**Depuis du texte** (`include/Lecture.hpp`) : `lire("x^2 + 3*sin(x)")`, `lireEquation("sin(x) = 1/2")`, `EquationClassique eq("x^2 = 2")` ou le littéral `"x^2 + 1"_expr` (`using namespace symalgo::litteraux`).
+
+* Nombres **exacts**, décimaux compris : `0.1` est le rationnel 1/10 (et `0.1 + 0.2` vaut exactement `3/10`), entiers de taille arbitraire.
+* Précédences usuelles, `^` (ou `**`) associatif à droite, multiplication implicite : `2x`, `3(x + 1)`, `(x + 1)(x - 1)`, `x sin(x)`.
+* Fonctions `sin cos tan exp ln log sqrt asin acos atan` (et `arcsin`...), constantes `pi` (ou `π`) et `e`. La variable est `x` (modifiable : `lire("t^2", {"t"})`), tout autre nom est un paramètre (`a*x + b`).
+* Symboles `× · ÷ − ² ³` acceptés. Les erreurs (`ErreurLecture`) indiquent la position : `lecture, position 5 : expression attendue`.
+* Le texte affiché d'une expression exacte se relit en **le même nœud** : `lire(e->texte()) == e`.
+
+**En C++** : des helpers (`cst`, `frac`, `nombre`, `var`, `param`, `pi`, `somme`, `produit`, `ast_pow`, `ast_sin`, `ast_cos`, `ast_tan`, `ast_exp`, `ast_ln`, `ast_asin`, `ast_acos`, `ast_atan`, `substituer`) et les opérateurs `+ - * /` (y compris le moins unaire) permettent une écriture proche des mathématiques :
 
 ```cpp
 auto X = var("x");
@@ -112,12 +120,16 @@ int main() {
 ```cpp
 #include <iostream>
 #include "ASTNode.hpp"
+#include "EquationClassique.hpp"
 #include "Polynome.hpp"
 #include "Solveur.hpp"
 
 using namespace symalgo;
 
 int main() {
+    // Depuis du texte : x = 0, x = ln(2)
+    Solutions depuisTexte = EquationClassique("exp(2x) - 3exp(x) + 2 = 0").resoudre();
+
     auto X = var("x");
     std::cout << developper(ast_pow(X + 1.0, 3)) << "\n";                         // x^3 + 3*x^2 + 3*x + 1
     std::cout << factoriser(ast_pow(X, 3) - ast_pow(X, 2) - 2.0 * X + 2.0) << "\n"; // (x - 1)*(x^2 - 2)
@@ -218,6 +230,7 @@ Médiane de 3 répétitions, Intel Celeron N4120 @ 1.10 GHz (Arch Linux, GCC 16,
 | Dérivée 10e de $e^{\sin x} x^2$ | 1,38 ms | 7,45 ms | 🚀 ×5,4 |
 | Collecte de 100 termes semblables | 146 µs | 255 µs | 🚀 ×1,7 |
 | Série de Taylor d'ordre 10 | 4,1 µs | 4 784 µs | 🚀 ×1 170 |
+| Lecture d'une expression depuis du texte (73 caractères) | 15,2 µs | 54,3 µs | 🚀 ×3,6 |
 | Mémoire du résultat (dérivée 6e) | 4,2 Ko | 4,9 Ko | 🚀 −14 % |
 
 ![Comparaison SymAlgo++ vs GiNaC](docs/images/bench_comparison.svg)
@@ -225,6 +238,7 @@ Médiane de 3 répétitions, Intel Celeron N4120 @ 1.10 GHz (Arch Linux, GCC 16,
 * **Analyse** :
   * **Évaluation** : SymAlgo++ évalue directement en `double` (programme compilé pour les grandes expressions), là où GiNaC substitue puis évalue symboliquement.
   * **Calcul symbolique** : forme canonique, hash-consing et dérivation sur graphe partagé évitent toute copie et tout recalcul.
+  * **Lecture** : descente récursive sur des lexèmes de 12 octets, construction directe de la forme canonique.
   * *Comparaison à nuancer* : GiNaC est un système de calcul formel complet, plus général (plusieurs variables, polynômes multivariés, nombres complexes...).
 * L'historique détaillé des mesures, chantier par chantier, est consigné dans [`benchmarks/RESULTATS.md`](benchmarks/RESULTATS.md).
 

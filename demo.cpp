@@ -3,6 +3,8 @@
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
 #include "ASTNode.hpp"
+#include "Lecture.hpp"
+#include "Solveur.hpp"
 
 using namespace symalgo;
 
@@ -73,6 +75,24 @@ void exemple_edo() {
     std::cout << "Position a t=2s (solution exacte)        : " << eqExacte.eval(2.0) << " m\n";
 }
 
+// Exemple 4 : Équations saisies en texte, résolues exactement
+void exemple_resolution() {
+    std::cout << "\n--- 4. Exemple : Lecture et Resolution d'Equations ---\n";
+    for (const char* texte : {"x^3 - x^2 - 2x + 2 = 0", "exp(2x) - 3exp(x) + 2 = 0", "sin(x) = 1/2", "2^x = 8"}) {
+        const EquationClassique eq(texte);
+        const Solutions s = eq.resoudre();
+        std::cout << texte << "  :  ";
+        for (std::size_t i = 0; i < s.liste.size(); ++i) {
+            std::cout << (i ? " ; " : "") << "x = " << s.liste[i].valeur;
+            if (s.liste[i].estFamille()) std::cout << " (k entier)";
+        }
+        std::cout << "\n";
+    }
+    // Sans forme exacte : solution numérique sur un intervalle
+    const Solutions s = EquationClassique("exp(x) + x = 0").resoudre(-5.0, 5.0);
+    std::cout << "exp(x) + x = 0  :  x ~ " << std::setprecision(15) << s.liste[0].approximation << "\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "=== TEST EN CONDITION REELLE : SymAlgo++ \n";
@@ -81,6 +101,7 @@ int main() {
     exemple_physique();
     exemple_math_dl();
     exemple_edo();
+    exemple_resolution();
     
     return 0;
 }

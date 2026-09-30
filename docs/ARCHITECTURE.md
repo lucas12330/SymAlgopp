@@ -32,6 +32,7 @@ flowchart TB
         EI["Eigen<br/>matrice compagnon · RK4"]
         RF["Ref<br/>compteur intrusif"]
     end
+    TX["Texte : « x^2 = 2 »<br/>Lecture.cpp"] -->|"lire · lireEquation"| EX
     EQ -->|"construit et transforme"| EX
     EQ -->|"résout"| AL
     AL -->|"manipule"| EX
@@ -39,6 +40,8 @@ flowchart TB
 ```
 
 ## 2. Construction d'une expression
+
+Une expression se construit par les helpers C++ ou se lit depuis du texte (`lire`, `src/Lecture.cpp`) : le lecteur découpe le texte en lexèmes de 12 octets (type, position, longueur), puis une descente récursive appelle les mêmes helpers. Les facteurs d'un terme sont multipliés en une fois, si bien que le texte affiché d'une expression se relit en le même nœud.
 
 Il n'y a pas d'étape de simplification séparée : chaque opérateur produit directement la forme réduite, puis vérifie si elle existe déjà en mémoire.
 
@@ -160,6 +163,7 @@ flowchart TB
 | `src/Limites.cpp` | limites : quotients, L'Hôpital, signe de l'infini |
 | `src/Series.cpp` | développements limités par séries tronquées |
 | `src/Affichage.cpp` | écriture lisible avec précédences et quotients |
+| `include/Lecture.hpp`, `src/Lecture.cpp` | lecture depuis du texte : lexèmes compacts, descente récursive, erreurs positionnées |
 | `include/Polynome.hpp`, `src/Polynome.cpp` | `developper`, `Polynome` exact (Sturm, Yun), `factoriser` |
 | `include/Solveur.hpp`, `src/Solveur.cpp` | résolution exacte, familles trigonométriques, recherche numérique |
 | `include/Evaluateur.hpp`, `src/Evaluateur.cpp` | compilation en programme linéaire, évaluation par blocs |
