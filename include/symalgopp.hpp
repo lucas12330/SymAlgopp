@@ -5,7 +5,7 @@
  * Utilisation : #include <symalgopp>      (ou <symalgopp.hpp>)
  *
  * Expressions, nombres exacts, lecture depuis du texte, fonctions de plusieurs variables,
- * polynômes, solveur, évaluation compilée, équations classiques et différentielles. Canonique.hpp reste interne.
+ * polynômes, solveur, intégrale définie, évaluation compilée, équations classiques et différentielles. Canonique.hpp reste interne.
  * Les en-têtes peuvent aussi être inclus un par un, pour réduire le temps de compilation
  * (EquationDifferentielle.hpp inclut Eigen).
  */
@@ -18,6 +18,7 @@
 #include "Multivariable.hpp"
 #include "Polynome.hpp"
 #include "Solveur.hpp"
+#include "Integration.hpp"
 #include "Evaluateur.hpp"
 #include "Equation.hpp"
 #include "EquationClassique.hpp"

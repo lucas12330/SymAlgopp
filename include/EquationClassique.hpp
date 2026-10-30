@@ -13,6 +13,7 @@
 #include "Equation.hpp"
 #include "ASTNode.hpp"
 #include "Evaluateur.hpp"
+#include "Integration.hpp"
 #include "Lecture.hpp"
 #include "Multivariable.hpp"
 #include "Solveur.hpp"
@@ -130,6 +131,17 @@ public:
      * Utilisation : EquationClassique primitive = eq.integrer();
      */
     EquationClassique integrer() const;
+
+    /*
+     * Nom : integrer (intégrale définie)
+     * Description : Intégrale sur [a, b] : valeur exacte quand la primitive le permet, sinon
+     *               quadrature adaptative (voir Integration.hpp). Bornes ±infini permises
+     *               avec la surcharge double (résultat numérique).
+     * Utilisation : ResultatIntegrale r = eq.integrer(0.0, 1.0);
+     *               ResultatIntegrale s = eq.integrer(cst(0.0), pi());
+     */
+    ResultatIntegrale integrer(const ExprPtr& a, const ExprPtr& b, const OptionsIntegration& options = {}) const;
+    ResultatIntegrale integrer(double a, double b, const OptionsIntegration& options = {}) const;
 
     /*
      * Nom : limite
