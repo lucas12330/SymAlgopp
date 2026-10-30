@@ -213,6 +213,11 @@ void ecrireBrut(std::ostream& os, const ASTNode& n) {
         case TypeNoeud::ArcSinus: os << "asin("; break;
         case TypeNoeud::ArcCosinus: os << "acos("; break;
         case TypeNoeud::ArcTangente: os << "atan("; break;
+        case TypeNoeud::ValeurAbsolue: os << "abs("; break;
+        case TypeNoeud::Signe: os << "sign("; break;
+        case TypeNoeud::SinusHyperbolique: os << "sinh("; break;
+        case TypeNoeud::CosinusHyperbolique: os << "cosh("; break;
+        case TypeNoeud::TangenteHyperbolique: os << "tanh("; break;
         case TypeNoeud::Pi: os << "pi"; break;
         case TypeNoeud::IntegraleNonEvaluee:
             os << "integrale(";

@@ -74,6 +74,12 @@ ExprPtr produitSansCoefficient(const Produit& p);
 const ExprPtr& un();
 
 /*
+ * Nom : signeReel
+ * Description : Signe de x (-1, 0 ou 1 ; 0 aussi pour NaN), sans branchement.
+ */
+inline double signeReel(double x) { return static_cast<double>((x > 0.0) - (x < 0.0)); }
+
+/*
  * Nom : puissanceEntiereReelle
  * Description : b^k par exponentiation rapide (bien plus rapide que std::pow pour les
  *               petits exposants entiers, cas courant des polynômes).
