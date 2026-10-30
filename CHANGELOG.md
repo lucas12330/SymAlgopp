@@ -12,6 +12,7 @@ Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèqu
 * **Cas d'usage** dans `examples/`, qui vérifient leur résultat (`make run_examples`, `ctest`) : propagation d'incertitudes d'une mesure de g par gradient et hessienne exacts, confirmée par Monte-Carlo ; ajustement non linéaire d'une décharge de condensateur par Newton avec hessienne exacte.
 * **Packaging CMake** : `CMakeLists.txt` (bibliothèque statique ou partagée, `SOVERSION`, options tests/exemples/benchmarks/sanitizers), installation avec `symalgoppConfig.cmake` et `symalgoppConfigVersion.cmake` (`find_package(symalgopp)`, cible `symalgopp::symalgopp`), `FindGMP.cmake`, `symalgopp.pc` pour pkg-config, archive `cpack` (`-G TGZ` ou `-G DEB`), utilisable par `FetchContent` / `add_subdirectory`. `#include <symalgopp>` fonctionne depuis un préfixe installé.
 * `tests/packaging/verifier.sh` : installe dans un préfixe temporaire (statique puis partagée) et compile un projet extérieur avec `find_package` et avec pkg-config.
+* **Licence MIT** (`LICENSE`), installée avec la documentation et intégrée à l'archive `cpack`.
 * `Dockerfile` (construction, tests et essai des cas d'usage dans un environnement reproductible) et intégration continue GitHub Actions (tests en Release, sous sanitizers, et vérification du paquet).
 * 14 nouveaux cas de test (`test_multivariable`) : dérivées partielles comparées aux différences finies, symétrie des dérivées croisées, cache de dérivation avec sous-expressions partagées, refus des opérations à une variable.
 

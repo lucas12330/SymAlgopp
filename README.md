@@ -435,3 +435,9 @@ La matrice compagnon d'une EDO d'ordre 29 se construit en moins d'une microsecon
   * `docs/` : architecture, schémas SVG (`docs/images/`) et leur générateur (`python3 docs/generer_images.py`).
 * **Branches** : travail exclusivement sur des branches `feature/nom-de-la-tache` ; aucun commit direct sur `main`.
 * **Commits (en français)** : `feat:` fonctionnalité, `fix:` correction, `refactor:` restructuration, `perf:` optimisation mesurée, `docs:` documentation, `chore:` configuration.
+
+---
+
+## 📜 Licence
+
+SymAlgo++ est distribuée sous licence MIT (voir [`LICENSE`](LICENSE)). Ses dépendances gardent leurs propres licences : GMP (LGPLv3 ou GPLv2), Eigen (MPL 2.0).
