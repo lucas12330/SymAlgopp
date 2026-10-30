@@ -21,6 +21,7 @@
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
 #include "Lecture.hpp"
+#include "Polynome.hpp"
 
 using namespace symalgo;
 
@@ -393,6 +394,52 @@ static void BM_SymAlgo_EqDiff_MatriceCompagnon(benchmark::State& state) {
 BENCHMARK(BM_SymAlgo_EqDiff_MatriceCompagnon)->DenseRange(1, 30, 2);
 
 // ============================================================================
+// 9. Simplification rationnelle (feature/simplification-rationnelle)
+//    N/D, N = (x+1)^5 (x-2)^3 et D = (x+1)^2 (x-3) développés : PGCD (x+1)^2.
+//    Le quotient est reconstruit à chaque itération (sinon simplifier() rendrait le
+//    résultat mémorisé dans le noeud) ; GiNaC : normal().
+// ============================================================================
+
+static void BM_SymAlgo_SimplificationRationnelle(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr N = developper(ast_pow(x + 1.0, 5.0) * ast_pow(x - 2.0, 3.0));
+    const ExprPtr D = developper(ast_pow(x + 1.0, 2.0) * (x - 3.0));
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        ExprPtr r = (N / D)->simplifier();
+        benchmark::DoNotOptimize(r);
+    }
+    rapporterAllocations(state, debut);
+}
+BENCHMARK(BM_SymAlgo_SimplificationRationnelle);
+
+static void BM_GiNaC_SimplificationRationnelle(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    const GiNaC::ex N = GiNaC::expand(GiNaC::pow(x + 1, 5) * GiNaC::pow(x - 2, 3));
+    const GiNaC::ex D = GiNaC::expand(GiNaC::pow(x + 1, 2) * (x - 3));
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        GiNaC::ex r = GiNaC::normal(N / D);
+        benchmark::DoNotOptimize(r);
+    }
+    rapporterAllocations(state, debut);
+}
+BENCHMARK(BM_GiNaC_SimplificationRationnelle);
+
+// Coût du rejet rapide sur le chemin courant : dérivée simplifiée (comme
+// EquationClassique::derivee) d'une expression dont les quotients ne se réduisent pas
+static void BM_SymAlgo_DeriveeQuotientSimplifiee(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_sin(x) / (ast_pow(x, 2.0) + 1.0) + x / (x + 1.0) + ast_exp(x) / x;
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        ExprPtr d = f->derivee()->simplifier();
+        benchmark::DoNotOptimize(d);
+    }
+    rapporterAllocations(state, debut);
+}
+BENCHMARK(BM_SymAlgo_DeriveeQuotientSimplifiee);
+
 // Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
 // ============================================================================
 

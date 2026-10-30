@@ -112,11 +112,16 @@ std::unique_ptr<Equation> EquationClassique::deriveeGenerique() const {
 
 /*
  * Nom : simplifier
- * Description : Simplifie l'expression mathématique de l'équation (factorisation, etc.).
+ * Description : Simplifie l'expression mathématique de l'équation (fractions rationnelles
+ *               réduites par défaut, voir OptionsSimplification).
  * Utilisation : eq.simplifier();
  */
-void EquationClassique::simplifier() {
-    m_racine = m_racine->simplifier();
+void EquationClassique::simplifier() { simplifier(OptionsSimplification()); }
+
+void EquationClassique::simplifier(const OptionsSimplification& options) {
+    const ExprPtr simplifiee = m_racine->simplifier(options);
+    if (simplifiee.get() == m_racine.get()) return; // inchangée : le programme compilé reste valable
+    m_racine = simplifiee;
     m_programme.reset(); // le programme compilé correspondait à l'ancienne expression
     m_programmeMulti.reset();
     m_evaluations = 0;
