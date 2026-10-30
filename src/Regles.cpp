@@ -302,6 +302,69 @@ ExprPtr ArcTangente::primitive() const {
 }
 
 // ============================================================================
+// Valeur absolue, signe et fonctions hyperboliques
+// ============================================================================
+
+double ValeurAbsolue::eval(double x) const { return std::fabs(m_argument->eval(x)); }
+double Signe::eval(double x) const { return signeReel(m_argument->eval(x)); }
+double SinusHyperbolique::eval(double x) const { return sinhReel(m_argument->eval(x)); }
+double CosinusHyperbolique::eval(double x) const { return coshReel(m_argument->eval(x)); }
+double TangenteHyperbolique::eval(double x) const { return tanhReel(m_argument->eval(x)); }
+
+ExprPtr ValeurAbsolue::calculerDerivee(CacheDerivees& cache) const {
+    return ast_sign(m_argument) * m_argument->derivee(cache);
+}
+// Constante par morceaux : dérivée nulle partout où elle existe
+ExprPtr Signe::calculerDerivee(CacheDerivees&) const { return nombre(Nombre(0)); }
+ExprPtr SinusHyperbolique::calculerDerivee(CacheDerivees& cache) const {
+    return ast_cosh(m_argument) * m_argument->derivee(cache);
+}
+ExprPtr CosinusHyperbolique::calculerDerivee(CacheDerivees& cache) const {
+    return ast_sinh(m_argument) * m_argument->derivee(cache);
+}
+ExprPtr TangenteHyperbolique::calculerDerivee(CacheDerivees& cache) const {
+    return (1.0 - ast_pow(clone(), 2.0)) * m_argument->derivee(cache); // 1 - tanh^2
+}
+
+ExprPtr ValeurAbsolue::calculerSimplification() const { return ast_abs(m_argument->simplifier()); }
+ExprPtr Signe::calculerSimplification() const { return ast_sign(m_argument->simplifier()); }
+ExprPtr SinusHyperbolique::calculerSimplification() const { return ast_sinh(m_argument->simplifier()); }
+ExprPtr CosinusHyperbolique::calculerSimplification() const { return ast_cosh(m_argument->simplifier()); }
+ExprPtr TangenteHyperbolique::calculerSimplification() const { return ast_tanh(m_argument->simplifier()); }
+
+// Primitives par substitution linéaire : int f(ax+b) dx = F(ax+b) / a
+ExprPtr ValeurAbsolue::primitive() const {
+    ExprPtr a;
+    // u abs(u) / 2
+    if (coefficientLineaire(m_argument, a)) return diviserPar(frac(1, 2) * m_argument * clone(), a);
+    return integraleNonEvaluee();
+}
+
+ExprPtr Signe::primitive() const {
+    ExprPtr a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_abs(m_argument), a);
+    return integraleNonEvaluee();
+}
+
+ExprPtr SinusHyperbolique::primitive() const {
+    ExprPtr a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_cosh(m_argument), a);
+    return integraleNonEvaluee();
+}
+
+ExprPtr CosinusHyperbolique::primitive() const {
+    ExprPtr a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_sinh(m_argument), a);
+    return integraleNonEvaluee();
+}
+
+ExprPtr TangenteHyperbolique::primitive() const {
+    ExprPtr a;
+    if (coefficientLineaire(m_argument, a)) return diviserPar(ast_ln(ast_cosh(m_argument)), a); // cosh > 0
+    return integraleNonEvaluee();
+}
+
+// ============================================================================
 // Noeuds non évalués
 // ============================================================================
 

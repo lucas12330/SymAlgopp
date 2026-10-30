@@ -69,6 +69,11 @@ enum class TypeNoeud : std::uint8_t {
     ArcSinus,
     ArcCosinus,
     ArcTangente,
+    ValeurAbsolue,
+    Signe,
+    SinusHyperbolique,
+    CosinusHyperbolique,
+    TangenteHyperbolique,
     // Noeuds non évalués
     IntegraleNonEvaluee,
     LimiteNonEvaluee,
@@ -565,7 +570,7 @@ private:
 class FonctionUnaire : public ASTNode {
 public:
     static constexpr bool correspond(TypeNoeud t) {
-        return t >= TypeNoeud::Sinus && t <= TypeNoeud::ArcTangente;
+        return t >= TypeNoeud::Sinus && t <= TypeNoeud::TangenteHyperbolique;
     }
 
     ExprPtr m_argument;
@@ -598,6 +603,11 @@ SYMALGO_FONCTION_UNAIRE(Logarithme)
 SYMALGO_FONCTION_UNAIRE(ArcSinus)
 SYMALGO_FONCTION_UNAIRE(ArcCosinus)
 SYMALGO_FONCTION_UNAIRE(ArcTangente)
+SYMALGO_FONCTION_UNAIRE(ValeurAbsolue)
+SYMALGO_FONCTION_UNAIRE(Signe)
+SYMALGO_FONCTION_UNAIRE(SinusHyperbolique)
+SYMALGO_FONCTION_UNAIRE(CosinusHyperbolique)
+SYMALGO_FONCTION_UNAIRE(TangenteHyperbolique)
 
 #undef SYMALGO_FONCTION_UNAIRE
 
@@ -740,6 +750,27 @@ ExprPtr ast_ln(const ExprPtr& arg);
 ExprPtr ast_asin(const ExprPtr& arg);
 ExprPtr ast_acos(const ExprPtr& arg);
 ExprPtr ast_atan(const ExprPtr& arg);
+
+/*
+ * Nom : ast_abs / ast_sign
+ * Description : Valeur absolue et signe (-1, 0 ou 1). Formes canoniques à la construction :
+ *               abs(-3) = 3, abs(-2u) = 2 abs(u), abs(abs(u)) = abs(u), abs(u^2) = u^2,
+ *               abs(exp(u)) = exp(u), abs(pi) = pi ; sign(-3) = -1, sign(-2u) = -sign(u),
+ *               sign(sign(u)) = sign(u), sign(exp(u)) = 1. La dérivée de abs(u) est
+ *               sign(u) u' (la dérivée de sign est nulle hors du saut).
+ */
+ExprPtr ast_abs(const ExprPtr& arg);
+ExprPtr ast_sign(const ExprPtr& arg);
+
+/*
+ * Nom : ast_sinh / ast_cosh / ast_tanh
+ * Description : Fonctions hyperboliques (sinh(0) = 0, cosh(0) = 1, tanh(0) = 0 ; parité :
+ *               sinh(-u) = -sinh(u), cosh(-u) = cosh(u), tanh(-u) = -tanh(u) ; argument
+ *               réel évalué). Jamais réécrites en exponentielles automatiquement.
+ */
+ExprPtr ast_sinh(const ExprPtr& arg);
+ExprPtr ast_cosh(const ExprPtr& arg);
+ExprPtr ast_tanh(const ExprPtr& arg);
 
 /*
  * Nom : appliquer

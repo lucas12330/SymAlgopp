@@ -156,6 +156,50 @@ bool serieTaylor(const ASTNode& e, double a, int n, Serie& w) {
                 w[k] = somme / (double(k) * u[0]);
             }
             return true;
+        case TypeNoeud::ValeurAbsolue:
+        case TypeNoeud::Signe: {
+            // Au voisinage de a, u garde son signe : abs(u) = sign(u0) u et sign(u) = sign(u0).
+            // Un zéro de l'argument est un point non régulier (abs non dérivable, sign discontinue)
+            if (std::abs(u[0]) < 1e-14) {
+                throw std::domain_error("DL : abs et sign ne sont pas developpables en un zero de leur argument");
+            }
+            if (e.type() == TypeNoeud::Signe) {
+                w[0] = signeReel(u[0]);
+            } else {
+                const double signe = signeReel(u[0]);
+                for (std::size_t k = 0; k < taille; ++k) w[k] = signe * u[k];
+            }
+            return true;
+        }
+        case TypeNoeud::SinusHyperbolique:
+        case TypeNoeud::CosinusHyperbolique:
+        case TypeNoeud::TangenteHyperbolique: {
+            // sh' = u' ch, ch' = u' sh ; th = sh / ch
+            Serie sh(taille, 0.0), ch(taille, 0.0);
+            sh[0] = std::sinh(u[0]);
+            ch[0] = std::cosh(u[0]);
+            for (std::size_t k = 1; k < taille; ++k) {
+                double ss = 0.0, sc = 0.0;
+                for (std::size_t j = 1; j <= k; ++j) {
+                    ss += double(j) * u[j] * ch[k - j];
+                    sc += double(j) * u[j] * sh[k - j];
+                }
+                sh[k] = ss / double(k);
+                ch[k] = sc / double(k);
+            }
+            if (e.type() == TypeNoeud::SinusHyperbolique) {
+                w = std::move(sh);
+            } else if (e.type() == TypeNoeud::CosinusHyperbolique) {
+                w = std::move(ch);
+            } else {
+                for (std::size_t k = 0; k < taille; ++k) { // cosh ne s'annule pas
+                    double somme = sh[k];
+                    for (std::size_t j = 1; j <= k; ++j) somme -= ch[j] * w[k - j];
+                    w[k] = somme / ch[0];
+                }
+            }
+            return true;
+        }
         default: break;
     }
     // sin et cos se calculent ensemble : s' = u' c, c' = -u' s
