@@ -216,6 +216,7 @@ public:
     Analyseur(double a, double b, bool ferme, bool bornesConnues)
         : m_a(a), m_b(b), m_ferme(ferme), m_bornesConnues(bornesConnues) {
         m_epsilon = 1e-10 * std::max({1.0, std::abs(a), std::abs(b)});
+        m_noeuds.reserve(16);
     }
 
     // Vrai si e est définie et continue (sur ]A, B[ ou [A, B] selon le mode). Un noeud
@@ -429,7 +430,7 @@ class Quadrature {
 public:
     Quadrature(const ProgrammeEvaluation& programme, Domaine domaine, double origine, const OptionsIntegration& options)
         : m_programme(programme), m_domaine(domaine), m_origine(origine), m_options(options) {
-        m_tas.reserve(static_cast<std::size_t>(std::max(options.subdivisionsMax, 1)) + LOT_MAX + 2);
+        m_tas.reserve(static_cast<std::size_t>(std::min(std::max(options.subdivisionsMax, 1), 64)) + LOT_MAX + 2);
     }
 
     // tolAbs : tolérance absolue de ce morceau
@@ -534,14 +535,14 @@ private:
             for (int k = 0; k < total; ++k) {
                 const double t = m_t[k];
                 if (m_domaine == Domaine::Reels) {
-                    const double u = 1.0 - t * t;
-                    m_x[k] = t / u;
-                    m_jac[k] = (1.0 + t * t) / (u * u);
+                    const double inv = 1.0 / (1.0 - t * t);
+                    m_x[k] = t * inv;
+                    m_jac[k] = (1.0 + t * t) * inv * inv;
                 } else {
-                    const double u = 1.0 - t;
-                    const double s = t / u;
+                    const double inv = 1.0 / (1.0 - t);
+                    const double s = t * inv;
                     m_x[k] = m_domaine == Domaine::DroiteInfinie ? m_origine + s : m_origine - s;
-                    m_jac[k] = 1.0 / (u * u);
+                    m_jac[k] = inv * inv;
                 }
             }
             x = m_x.data();
@@ -552,6 +553,8 @@ private:
         }
         for (int i = 0; i < n; ++i) kronrod(m_y.data() + NOEUDS * i, iv[i]);
     }
+
+    static double puissance3demi(double r) { return r * std::sqrt(r); }
 
     static void kronrod(const double* v, Intervalle& iv) {
         int fini = 0;
@@ -589,7 +592,7 @@ private:
         resabs *= ah;
         resasc *= ah;
         double erreur = std::abs((resk - resg) * h);
-        if (resasc != 0.0 && erreur != 0.0) erreur = resasc * std::min(1.0, std::pow(200.0 * erreur / resasc, 1.5));
+        if (resasc != 0.0 && erreur != 0.0) erreur = resasc * std::min(1.0, puissance3demi(200.0 * erreur / resasc));
         iv.plancher = 50.0 * EPSILON * resabs;
         iv.erreur = std::max(iv.plancher, erreur);
         iv.integrale = resk * h;
@@ -600,7 +603,7 @@ private:
     double m_origine;
     OptionsIntegration m_options;
     std::vector<Intervalle> m_tas; // tas-max sur l'erreur
-    std::array<double, NOEUDS * LOT_MAX> m_t{}, m_x{}, m_y{}, m_jac{};
+    std::array<double, NOEUDS * LOT_MAX> m_t, m_x, m_y, m_jac; // toujours écrits avant lecture
 };
 
 // Intégrale numérique sur [A, B] (A < B, infinis permis), coupée aux points donnés
