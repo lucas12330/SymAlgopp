@@ -209,19 +209,48 @@ double ASTNode::getValeurConstante() const {
 }
 
 ExprPtr ASTNode::derivee() const {
+    if (plusieursVariables()) {
+        throw std::invalid_argument("derivee() : l'expression '" + texte() +
+                                    "' a plusieurs variables, preciser laquelle (derivee partielle)");
+    }
     CacheDerivees cache;
     return derivee(cache);
 }
 
 ExprPtr ASTNode::derivee(CacheDerivees& cache) const {
+    // Un noeud qui ne dépend pas de la variable de dérivation a une dérivée nulle
+    if (cache.cible != 0 && m_variable != cache.cible && m_variable != PLUSIEURS_VARIABLES) return nombre(Nombre(0));
     // Un noeud référencé une seule fois ne peut être atteint qu'une fois : inutile de le
     // mémoriser (évite le coût de la table pour les expressions sans partage)
     if (nombreReferences() <= 1) return calculerDerivee(cache);
-    const auto it = cache.find(this);
-    if (it != cache.end()) return it->second;
+    const auto it = cache.memo.find(this);
+    if (it != cache.memo.end()) return it->second;
     ExprPtr d = calculerDerivee(cache);
-    cache.emplace(this, d);
+    cache.memo.emplace(this, d);
     return d;
+}
+
+ExprPtr ASTNode::derivee(const ExprPtr& variable) const {
+    const Variable* v = comme<Variable>(variable);
+    if (!v) throw std::invalid_argument("derivee(variable) : l'argument doit etre une variable");
+    CacheDerivees cache;
+    cache.cible = v->identifiantVariable();
+    return derivee(cache);
+}
+
+ExprPtr ASTNode::derivee(const std::string& variable) const { return derivee(var(variable)); }
+
+std::uint16_t ASTNode::identifiantDe(const std::string& nom) {
+    // Registre des noms de variables rencontrés (les identifiants ne sont jamais recyclés)
+    static std::unordered_map<std::string, std::uint16_t> identifiants;
+    const auto it = identifiants.find(nom);
+    if (it != identifiants.end()) return it->second;
+    if (identifiants.size() + 1 >= PLUSIEURS_VARIABLES) {
+        throw std::length_error("trop de variables distinctes (maximum " + std::to_string(PLUSIEURS_VARIABLES - 1) + ")");
+    }
+    const auto identifiant = static_cast<std::uint16_t>(identifiants.size() + 1);
+    identifiants.emplace(nom, identifiant);
+    return identifiant;
 }
 
 ExprPtr ASTNode::simplifier() const {
@@ -235,10 +264,14 @@ ExprPtr ASTNode::simplifier() const {
 
 ExprPtr ASTNode::integrer() const {
     if (!contientVariable()) return clone() * var("x");
+    if (plusieursVariables()) return integraleNonEvaluee();
     return primitive();
 }
 
-ExprPtr ASTNode::limite(double a) const { return calculerLimite(a); }
+ExprPtr ASTNode::limite(double a) const {
+    if (plusieursVariables()) return limiteNonEvaluee(a);
+    return calculerLimite(a);
+}
 
 ExprPtr ASTNode::integraleNonEvaluee() const { return fabriquer<IntegraleNonEvaluee>(clone()); }
 
@@ -351,50 +384,58 @@ long long exposantEntier(const ExprPtr& e) {
 } // namespace
 
 Constante::Constante(CleFabrique, Nombre valeur)
-    : ASTNode(TYPE, false), m_valeur(std::move(valeur)), m_approx(m_valeur.versDouble()) {}
+    : ASTNode(TYPE, AUCUNE_VARIABLE), m_valeur(std::move(valeur)), m_approx(m_valeur.versDouble()) {}
 
-Variable::Variable(CleFabrique, const std::string& nom) : ASTNode(TYPE, true), m_nom(nom) {}
+Variable::Variable(CleFabrique, const std::string& nom) : ASTNode(TYPE, identifiantDe(nom)), m_nom(nom) {}
 
-Parametre::Parametre(CleFabrique, const std::string& nom) : ASTNode(TYPE, false), m_nom(nom) {}
+Parametre::Parametre(CleFabrique, const std::string& nom) : ASTNode(TYPE, AUCUNE_VARIABLE), m_nom(nom) {}
 
-Pi::Pi(CleFabrique) : ASTNode(TYPE, false) {}
+Pi::Pi(CleFabrique) : ASTNode(TYPE, AUCUNE_VARIABLE) {}
 
 namespace {
 
-bool termesContiennentVariable(const std::vector<Terme>& termes) {
-    return std::any_of(termes.begin(), termes.end(), [](const Terme& t) { return t.expression->contientVariable(); });
+std::uint16_t variableDesTermes(const std::vector<Terme>& termes) {
+    std::uint16_t v = ASTNode::AUCUNE_VARIABLE;
+    for (const Terme& t : termes) {
+        v = ASTNode::fusionner(v, t.expression->identifiantVariable());
+    }
+    return v;
 }
 
-bool facteursContiennentVariable(const std::vector<Facteur>& facteurs) {
-    return std::any_of(facteurs.begin(), facteurs.end(), [](const Facteur& f) {
-        return f.base->contientVariable() || f.exposant->contientVariable();
-    });
+std::uint16_t variableDesFacteurs(const std::vector<Facteur>& facteurs) {
+    std::uint16_t v = ASTNode::AUCUNE_VARIABLE;
+    for (const Facteur& f : facteurs) {
+        v = ASTNode::fusionner(ASTNode::fusionner(v, f.base->identifiantVariable()),
+                                        f.exposant->identifiantVariable());
+    }
+    return v;
 }
 
 } // namespace
 
 Somme::Somme(CleFabrique, Nombre constante, std::vector<Terme> termes)
-    : ASTNode(TYPE, termesContiennentVariable(termes)), m_constante(std::move(constante)), m_termes(std::move(termes)) {}
+    : ASTNode(TYPE, variableDesTermes(termes)), m_constante(std::move(constante)), m_termes(std::move(termes)) {}
 
 Produit::Produit(CleFabrique, Nombre coefficient, std::vector<Facteur> facteurs)
-    : ASTNode(TYPE, facteursContiennentVariable(facteurs)),
+    : ASTNode(TYPE, variableDesFacteurs(facteurs)),
       m_coefficient(std::move(coefficient)),
       m_facteurs(std::move(facteurs)) {}
 
 Puissance::Puissance(CleFabrique, ExprPtr base, ExprPtr exposant)
-    : ASTNode(TYPE, base->contientVariable() || exposant->contientVariable()),
+    : ASTNode(TYPE, fusionner(base->identifiantVariable(), exposant->identifiantVariable())),
       m_base(std::move(base)),
       m_exposant(std::move(exposant)),
       m_exposantEntier(exposantEntier(m_exposant)) {}
 
 FonctionUnaire::FonctionUnaire(TypeNoeud type, ExprPtr arg)
-    : ASTNode(type, arg->contientVariable()), m_argument(std::move(arg)) {}
+    : ASTNode(type, arg->identifiantVariable()), m_argument(std::move(arg)) {}
 
 IntegraleNonEvaluee::IntegraleNonEvaluee(CleFabrique, ExprPtr integrande)
-    : ASTNode(TYPE, true), m_integrande(std::move(integrande)) {}
+    : ASTNode(TYPE, integrande->contientVariable() ? integrande->identifiantVariable() : identifiantDe("x")),
+      m_integrande(std::move(integrande)) {}
 
 LimiteNonEvaluee::LimiteNonEvaluee(CleFabrique, ExprPtr expression, double point)
-    : ASTNode(TYPE, false), m_expression(std::move(expression)), m_point(point) {}
+    : ASTNode(TYPE, AUCUNE_VARIABLE), m_expression(std::move(expression)), m_point(point) {}
 
 // ============================================================================
 // Construction canonique

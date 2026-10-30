@@ -205,6 +205,7 @@ Serie serieParDerivation(const ASTNode& e, double a, int n) {
 
 ExprPtr ASTNode::DL(double a, int ordre) const {
     if (ordre < 0) throw std::invalid_argument("DL : ordre negatif");
+    if (plusieursVariables()) throw std::domain_error("DL : l'expression a plusieurs variables");
     Serie c;
     if (!serieTaylor(*this, a, ordre, c)) c = serieParDerivation(*this, a, ordre);
 

@@ -18,7 +18,8 @@
  *   « 1/2x » vaut x/2. « -x^2 » vaut -(x^2) et « 2^-1 » vaut 1/2.
  * - Fonctions : sin, cos, tan, exp, ln (et log), sqrt, asin, acos, atan (et arcsin, arccos,
  *   arctan). Constantes : pi (et π), e (= exp(1)).
- * - L'identifiant choisi comme variable (« x » par défaut) devient la variable ; tout autre
+ * - L'identifiant choisi comme variable (« x » par défaut) devient la variable, de même que
+ *   ceux d'OptionsLecture::autresVariables (fonctions de plusieurs variables) ; tout autre
  *   identifiant devient un paramètre symbolique (« a*x + b »). Un paramètre collé à une
  *   parenthèse (« f(x) », « sinh(x) ») est refusé comme fonction inconnue ; « a (x + 1) »
  *   ou « a*(x + 1) » sont des produits.
@@ -33,6 +34,8 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ASTNode.hpp"
 
@@ -40,11 +43,18 @@ namespace symalgo {
 
 /*
  * Nom : OptionsLecture
- * Description : Réglages de la lecture : nom de la variable (les autres identifiants sont
- *               des paramètres).
+ * Description : Réglages de la lecture : nom de la variable et noms des variables
+ *               supplémentaires d'une fonction de plusieurs variables (les autres
+ *               identifiants sont des paramètres).
+ * Utilisation : lire("x^2*y + a", {"x", {"y"}});   // x et y variables, a paramètre
  */
 struct OptionsLecture {
+    OptionsLecture() = default;
+    OptionsLecture(std::string variable, std::vector<std::string> autresVariables = {})
+        : variable(std::move(variable)), autresVariables(std::move(autresVariables)) {}
+
     std::string variable = "x";
+    std::vector<std::string> autresVariables;
 };
 
 /*
