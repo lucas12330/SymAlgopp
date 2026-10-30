@@ -321,9 +321,9 @@ void ProgrammeEvaluation::executer(const Entree& entree, double* r) const {
             case Code::ArcTangente: d = std::atan(r[ins.a]); break;
             case Code::ValeurAbsolue: d = std::fabs(r[ins.a]); break;
             case Code::Signe: d = signeReel(r[ins.a]); break;
-            case Code::SinusHyperbolique: d = std::sinh(r[ins.a]); break;
-            case Code::CosinusHyperbolique: d = std::cosh(r[ins.a]); break;
-            case Code::TangenteHyperbolique: d = std::tanh(r[ins.a]); break;
+            case Code::SinusHyperbolique: d = sinhReel(r[ins.a]); break;
+            case Code::CosinusHyperbolique: d = coshReel(r[ins.a]); break;
+            case Code::TangenteHyperbolique: d = tanhReel(r[ins.a]); break;
         }
     }
 }
@@ -445,13 +445,13 @@ void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) c
                     for (std::size_t j = 0; j < m; ++j) d[j] = signeReel(a[j]);
                     break;
                 case Code::SinusHyperbolique:
-                    for (std::size_t j = 0; j < m; ++j) d[j] = std::sinh(a[j]);
+                    for (std::size_t j = 0; j < m; ++j) d[j] = sinhReel(a[j]);
                     break;
                 case Code::CosinusHyperbolique:
-                    for (std::size_t j = 0; j < m; ++j) d[j] = std::cosh(a[j]);
+                    for (std::size_t j = 0; j < m; ++j) d[j] = coshReel(a[j]);
                     break;
                 case Code::TangenteHyperbolique:
-                    for (std::size_t j = 0; j < m; ++j) d[j] = std::tanh(a[j]);
+                    for (std::size_t j = 0; j < m; ++j) d[j] = tanhReel(a[j]);
                     break;
             }
         }

@@ -420,4 +420,29 @@ static void BM_SymAlgo_EvalTableauAbsHyperboliques(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_EvalTableauAbsHyperboliques);
 
+// Coût par fonction de l'évaluation compilée par blocs (10 000 points sur [-5, 5]) :
+// référence exp, puis abs, sign, sinh, cosh, tanh.
+static void evalBloc(benchmark::State& state, const ExprPtr& e) {
+    const EquationClassique eq(e);
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = (i - POINTS_TRACE / 2) * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+static void BM_SymAlgo_EvalBloc_exp(benchmark::State& s) { evalBloc(s, ast_exp(var("x"))); }
+static void BM_SymAlgo_EvalBloc_abs(benchmark::State& s) { evalBloc(s, ast_abs(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sign(benchmark::State& s) { evalBloc(s, ast_sign(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sinh(benchmark::State& s) { evalBloc(s, ast_sinh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_cosh(benchmark::State& s) { evalBloc(s, ast_cosh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_tanh(benchmark::State& s) { evalBloc(s, ast_tanh(var("x"))); }
+BENCHMARK(BM_SymAlgo_EvalBloc_exp);
+BENCHMARK(BM_SymAlgo_EvalBloc_abs);
+BENCHMARK(BM_SymAlgo_EvalBloc_sign);
+BENCHMARK(BM_SymAlgo_EvalBloc_sinh);
+BENCHMARK(BM_SymAlgo_EvalBloc_cosh);
+BENCHMARK(BM_SymAlgo_EvalBloc_tanh);
+
 BENCHMARK_MAIN();

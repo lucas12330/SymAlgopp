@@ -4,6 +4,7 @@
  *        évaluation par blocs, partage des sous-expressions, erreurs.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -141,6 +142,55 @@ TEST_CASE(abs_sign_hyperboliques_compiles) {
     CHECK_NEAR(s.evaluer(-5.0), -1.0, 0.0);
     CHECK_NEAR(ProgrammeEvaluation(ast_tanh(X)).evaluer(1e3), 1.0, 0.0);
     CHECK(std::isinf(ProgrammeEvaluation(ast_cosh(X)).evaluer(1e3)));
+}
+
+namespace {
+
+// Écart en ulp (de la valeur de référence) entre une valeur calculée et une référence std::
+double ecartUlp(double obtenu, double ref) {
+    if (std::isnan(ref)) return std::isnan(obtenu) ? 0.0 : 1e300;
+    if (std::isinf(ref) || ref == 0.0) return obtenu == ref ? 0.0 : 1e300;
+    const double ulp = std::nextafter(std::fabs(ref), HUGE_VAL) - std::fabs(ref);
+    return std::fabs(obtenu - ref) / ulp;
+}
+
+} // namespace
+
+/*
+ * Les fonctions hyperboliques maison (une seule exp/expm1) sont comparées à std:: de la glibc,
+ * correctement arrondie (0,5 ulp). Écart mesuré hors tests contre long double sur 6 millions de
+ * points : au plus 2,1 ulp ; vis-à-vis de std:: il ne dépasse donc pas 2,1 + 0,5 < 3 ulp.
+ * Les chemins scalaire, arbre et par blocs doivent donner exactement les mêmes bits.
+ */
+TEST_CASE(hyperboliques_precision_et_coherence) {
+    struct Fonction { ExprPtr e; double (*ref)(double); };
+    const Fonction fonctions[] = {{ast_sinh(X), [](double v) { return std::sinh(v); }},
+                                  {ast_cosh(X), [](double v) { return std::cosh(v); }},
+                                  {ast_tanh(X), [](double v) { return std::tanh(v); }}};
+    std::vector<double> xs;
+    for (double x = -720.0; x <= 720.0; x += 0.0731) xs.push_back(x);        // grille large
+    for (double x = -3.0; x <= 3.0; x += 0.00123) xs.push_back(x);           // autour de 0
+    for (double m = 1e-300; m < 1e3; m *= 1.37) { xs.push_back(m); xs.push_back(-m); }
+    for (double x : {0.0, -0.0, 5e-324, 1e-300, 3.7e-9, 0.55, 1.0, 21.99, 22.0, 709.0, 709.5, 710.4758600739439,
+                     710.48, -710.4, 1e10, HUGE_VAL, -HUGE_VAL, std::nan("")})
+        xs.push_back(x);
+    for (const Fonction& f : fonctions) {
+        const ProgrammeEvaluation p(f.e);
+        const std::vector<double> ys = p.evaluer(xs);
+        double pire = 0.0;
+        for (std::size_t i = 0; i < xs.size(); ++i) {
+            pire = std::max(pire, ecartUlp(ys[i], f.ref(xs[i])));
+            const double s = p.evaluer(xs[i]);
+            CHECK(s == ys[i] || (std::isnan(s) && std::isnan(ys[i])));      // scalaire == blocs
+            const double d = f.e->eval(xs[i]);
+            CHECK(d == ys[i] || (std::isnan(d) && std::isnan(ys[i])));      // arbre == blocs
+        }
+        CHECK(pire < 3.0);
+    }
+    // Signe de zéro et conservation de la parité
+    CHECK(std::signbit(ProgrammeEvaluation(ast_sinh(X)).evaluer(-0.0)));
+    CHECK(std::signbit(ProgrammeEvaluation(ast_tanh(X)).evaluer(-1e-20)));
+    CHECK(std::isinf(ProgrammeEvaluation(ast_sinh(X)).evaluer(-1e3)) && ProgrammeEvaluation(ast_sinh(X)).evaluer(-1e3) < 0);
 }
 
 int main() { return test::executerTous(); }

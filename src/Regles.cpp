@@ -307,9 +307,9 @@ ExprPtr ArcTangente::primitive() const {
 
 double ValeurAbsolue::eval(double x) const { return std::fabs(m_argument->eval(x)); }
 double Signe::eval(double x) const { return signeReel(m_argument->eval(x)); }
-double SinusHyperbolique::eval(double x) const { return std::sinh(m_argument->eval(x)); }
-double CosinusHyperbolique::eval(double x) const { return std::cosh(m_argument->eval(x)); }
-double TangenteHyperbolique::eval(double x) const { return std::tanh(m_argument->eval(x)); }
+double SinusHyperbolique::eval(double x) const { return sinhReel(m_argument->eval(x)); }
+double CosinusHyperbolique::eval(double x) const { return coshReel(m_argument->eval(x)); }
+double TangenteHyperbolique::eval(double x) const { return tanhReel(m_argument->eval(x)); }
 
 ExprPtr ValeurAbsolue::calculerDerivee(CacheDerivees& cache) const {
     return ast_sign(m_argument) * m_argument->derivee(cache);
