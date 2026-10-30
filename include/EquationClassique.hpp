@@ -112,10 +112,14 @@ public:
 
     /*
      * Nom : simplifier
-     * Description : Méthode propre pour forcer la factorisation et simplification de l'arbre.
+     * Description : Remplace l'expression par sa forme simplifiée (voir ASTNode::simplifier
+     *               et OptionsSimplification : par défaut, les fractions rationnelles sont
+     *               réduites, (x^2 - 1)/(x - 1) devient x + 1).
      * Utilisation : eq.simplifier();
+     *               eq.simplifier(OptionsSimplification::aucune());  // expression inchangée
      */
     void simplifier();
+    void simplifier(const OptionsSimplification& options);
 
     /*
      * Nom : afficher

@@ -138,7 +138,7 @@ ExprPtr Produit::calculerSimplification() const {
     AccumulateurProduit p;
     p.multiplier(nombre(m_coefficient));
     for (const Facteur& f : m_facteurs) p.multiplier(ast_pow(f.base->simplifier(), f.exposant->simplifier()));
-    return p.construire();
+    return reduireQuotientRationnel(p.construire()); // (x^2 - 1)/(x - 1) = x + 1
 }
 
 ExprPtr Produit::primitive() const {

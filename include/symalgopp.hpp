@@ -14,6 +14,7 @@
 
 #include "Nombre.hpp"
 #include "ASTNode.hpp"
+#include "Simplification.hpp"
 #include "Lecture.hpp"
 #include "Journal.hpp"
 #include "Multivariable.hpp"
