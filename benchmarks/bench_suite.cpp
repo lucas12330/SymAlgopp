@@ -440,4 +440,49 @@ static void BM_SymAlgo_DeriveeQuotientSimplifiee(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_DeriveeQuotientSimplifiee);
 
+// Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
+// ============================================================================
+
+// integral de x^2 sur [0, 1] : valeur exacte par la primitive
+static void BM_SymAlgo_IntegraleDefinie_Exacte(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_pow(x, 2.0) + ast_sin(x);
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Exacte);
+
+// integral de 1/(1+x^2) sur [0, 1] : primitive inconnue, quadrature adaptative (tolérance 1e-10)
+static void BM_SymAlgo_IntegraleDefinie_Numerique(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = 1.0 / (x * x + 1.0);
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Numerique);
+
+// integral de exp(-x^2) sur R : changement de variable, bornes infinies
+static void BM_SymAlgo_IntegraleDefinie_Gauss(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_exp(-x * x);
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -INFINITY, INFINITY);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Gauss);
+
+static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    for (auto _ : state) {
+        GiNaC::ex r = GiNaC::integral(x, 0, 1, 1 / (1 + x * x)).evalf();
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_GiNaC_IntegraleDefinie_Numerique);
+
 BENCHMARK_MAIN();
