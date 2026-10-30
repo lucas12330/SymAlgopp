@@ -392,4 +392,32 @@ static void BM_SymAlgo_EqDiff_MatriceCompagnon(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_EqDiff_MatriceCompagnon)->DenseRange(1, 30, 2);
 
+// ============================================================================
+// Tâche fonctions-usuelles : abs, sign, sinh, cosh, tanh (SymAlgo++ seul)
+// ============================================================================
+
+// Construction canonique (hash-consing) de fonctions à parité/valeur absolue
+static void BM_SymAlgo_ConstructionAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    for (auto _ : state) {
+        ExprPtr e = ast_abs(cst(-3.0) * x) + ast_sinh(-x) * ast_cosh(-x) + ast_tanh(x) + ast_sign(cst(2.0) * x);
+        benchmark::DoNotOptimize(e);
+    }
+}
+BENCHMARK(BM_SymAlgo_ConstructionAbsHyperboliques);
+
+// Évaluation compilée par blocs sur 10 000 points
+static void BM_SymAlgo_EvalTableauAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const EquationClassique eq(ast_abs(x - 5.0) * ast_sign(x - 3.0) + ast_sinh(x / 5.0) * ast_tanh(x) + ast_cosh(x / 7.0));
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = i * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+BENCHMARK(BM_SymAlgo_EvalTableauAbsHyperboliques);
+
 BENCHMARK_MAIN();

@@ -186,7 +186,7 @@ TEST_CASE(erreurs) {
     CHECK_THROWS(lire("()"), ErreurLecture);
     CHECK_THROWS(lire("sin x"), ErreurLecture);
     CHECK_THROWS(lire("sin()"), ErreurLecture);
-    CHECK_THROWS(lire("sinh(x)"), ErreurLecture);
+    CHECK_THROWS(lire("foo(x)"), ErreurLecture);
     CHECK_THROWS(lire("f(x)"), ErreurLecture);
     CHECK_THROWS(lire("2 3"), ErreurLecture);
     CHECK_THROWS(lire("x = 2"), ErreurLecture);
@@ -211,7 +211,7 @@ TEST_CASE(erreurs) {
     CHECK_EQ(positionErreur("π + $"), 5u);        // π compte pour un caractère
     CHECK_EQ(positionErreur("(x + 1"), 7u);       // fin du texte
     CHECK_EQ(positionErreur("x + 1)"), 6u);
-    CHECK_EQ(positionErreur("2 + sinh(x)"), 5u);
+    CHECK_EQ(positionErreur("2 + foo(x)"), 5u);
     CHECK_EQ(positionErreur("x = 1 = 2"), 7u);
 
     // Le message montre le texte et un repère sous la position
@@ -222,6 +222,35 @@ TEST_CASE(erreurs) {
         CHECK_EQ(e.position(), 5u);
         CHECK_EQ(std::string(e.what()), std::string("lecture, position 5 : expression attendue\n  x + * 2\n      ^"));
     }
+}
+
+TEST_CASE(abs_sign_hyperboliques_lecture) {
+    CHECK(pareil("abs(x)", ast_abs(X)));
+    CHECK(pareil("abs(-3)", frac(3)));
+    CHECK(pareil("sign(x)", ast_sign(X)));
+    CHECK(pareil("sgn(x)", ast_sign(X)));
+    CHECK(pareil("sinh(x)", ast_sinh(X)));
+    CHECK(pareil("cosh(2x)", ast_cosh(2.0 * X)));
+    CHECK(pareil("tanh(x/2)", ast_tanh(X / 2.0)));
+    CHECK(pareil("sinh(-x)", -ast_sinh(X)));
+    CHECK(pareil("abs(-2x)", 2.0 * ast_abs(X)));
+    CHECK(pareil("sqrt(x)", ast_pow(X, frac(1, 2))));
+    CHECK(pareil("2 sinh(x) cosh(x)", 2.0 * ast_sinh(X) * ast_cosh(X)));
+    CHECK_THROWS(lire("abs()"), ErreurLecture);
+    CHECK_THROWS(lire("sinh x"), ErreurLecture);
+    // Aller-retour avec l'affichage
+    const ExprPtr k = param("k");
+    const std::vector<ExprPtr> expressions = {
+        ast_abs(X - 1.0),         ast_sign(X) * X,        ast_sinh(X) + 2.0 * ast_cosh(3.0 * X),
+        ast_tanh(ast_sin(X)),     ast_abs(ast_abs(X)),    ast_sinh(-X),
+        ast_cosh(-X),             ast_abs(-X),            ast_tanh(k * X) / ast_abs(X + 1.0),
+        ast_sign(ast_sinh(X)),    ast_pow(ast_cosh(X), -2.0),
+        ast_sinh(cst(2.0)),       ast_cosh(frac(1, 3)),   ast_abs(ast_pow(X, 3.0)),
+        ast_abs(cst(-2.0) * ast_sin(X)), ast_tanh(ast_tanh(X)),
+    };
+    for (const ExprPtr& e : expressions) CHECK(lire(e->texte()).get() == e.get());
+    CHECK_EQ(ast_abs(X - 1.0)->texte(), std::string("abs(x - 1)"));
+    CHECK_EQ(ast_tanh(2.0 * X)->texte(), std::string("tanh(2*x)"));
 }
 
 int main() { return test::executerTous(); }

@@ -114,4 +114,33 @@ TEST_CASE(equation_compilation_automatique) {
     for (int i = 0; i < 10; ++i) CHECK_THROWS(h.eval(1.0), std::logic_error);
 }
 
+TEST_CASE(abs_sign_hyperboliques_compiles) {
+    const std::vector<ExprPtr> expressions = {
+        ast_abs(X - 1.0),
+        ast_sign(X - 2.0) * X,
+        ast_sinh(X) + ast_cosh(X / 2.0),
+        ast_tanh(ast_sin(X)) * ast_abs(ast_cos(X)),
+        ast_sinh(X)->derivee() - ast_cosh(X) + ast_tanh(X)->derivee() * ast_abs(X),
+        ast_abs(ast_sign(X - 1.5) - X),
+    };
+    std::vector<double> xs;
+    for (int i = 0; i < 700; ++i) xs.push_back(-4.0 + i * 0.0123); // plus d'un bloc, passe par 0
+    xs.push_back(0.0);
+    xs.push_back(2.0);
+    for (const ExprPtr& e : expressions) {
+        const ProgrammeEvaluation p(e);
+        CHECK(p.estValide());
+        for (double x : {-3.2, -0.5, 0.0, 1.5, 2.0, 7.0}) verifierProche(p.evaluer(x), e->eval(x)); // scalaire
+        const std::vector<double> ys = p.evaluer(xs);                                              // par blocs
+        for (std::size_t i = 0; i < xs.size(); ++i) verifierProche(ys[i], e->eval(xs[i]));
+    }
+    // Signe à zéro et valeurs spéciales
+    const ProgrammeEvaluation s(ast_sign(X));
+    CHECK_NEAR(s.evaluer(0.0), 0.0, 0.0);
+    CHECK_NEAR(s.evaluer(-0.0), 0.0, 0.0);
+    CHECK_NEAR(s.evaluer(-5.0), -1.0, 0.0);
+    CHECK_NEAR(ProgrammeEvaluation(ast_tanh(X)).evaluer(1e3), 1.0, 0.0);
+    CHECK(std::isinf(ProgrammeEvaluation(ast_cosh(X)).evaluer(1e3)));
+}
+
 int main() { return test::executerTous(); }
