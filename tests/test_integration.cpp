@@ -277,3 +277,42 @@ TEST_CASE(coherence_exact_numerique) {
 }
 
 int main() { return test::executerTous(); }
+
+// Rejet rapide des singularités par le signe (sans solveur) : jamais à tort
+namespace {
+
+double simpson(double (*g)(double), double a, double b, int n = 2000) {
+    const double h = (b - a) / n;
+    double s = g(a) + g(b);
+    for (int i = 1; i < n; ++i) s += g(a + i * h) * (i % 2 ? 4.0 : 2.0);
+    return s * h / 3.0;
+}
+
+} // namespace
+
+TEST_CASE(rejets_rapides_de_signe) {
+    // Dénominateurs, logarithmes et racines de signe évident : valeur finie et juste
+    CHECK_NEAR(integrerDefinie(ast_pow(X * X + 1.0, frac(-1, 2)), 0.0, 1.0).valeur, std::asinh(1.0), 1e-10);
+    CHECK_NEAR(integrerDefinie(1.0 / (ast_exp(X) + X * X), 0.0, 2.0).valeur,
+               simpson([](double t) { return 1.0 / (std::exp(t) + t * t); }, 0.0, 2.0), 1e-9);
+    CHECK_NEAR(integrerDefinie(ast_ln(X * X + 1.0), -1.0, 2.0).valeur,
+               simpson([](double t) { return std::log(t * t + 1.0); }, -1.0, 2.0), 1e-9);
+    CHECK_NEAR(integrerDefinie(1.0 / (X * X * X * X + 3.0 * X * X + 2.0), -INF, INF).valeur, PI * (1.0 - 1.0 / std::sqrt(2.0)), 1e-8);
+
+    // Signe contraire : ln et racine d'une quantité toujours négative ne sont pas définis
+    for (const OptionsIntegration& o : {OptionsIntegration{}, numerique()}) {
+        CHECK(!integrerDefinie(ast_ln(-(X * X) - 1.0), 0.0, 1.0, o).estFinie());
+        CHECK(!integrerDefinie(ast_pow(-(X * X) - 1.0, frac(1, 2)), 0.0, 1.0, o).estFinie());
+    }
+    // Négatif strict au dénominateur : défini
+    CHECK_NEAR(integrerDefinie(1.0 / (-(X * X) - 1.0), 0.0, 1.0).valeur, -PI / 4.0, 1e-10);
+
+    // Signe seulement >= 0 (x^2, x^2 + x^4) : le zéro en 0 doit être détecté
+    CHECK(!integrerDefinie(1.0 / (X * X + X * X * X * X), -1.0, 1.0).estFinie());
+    CHECK(!integrerDefinie(1.0 / (X * X), -1.0, 1.0).estFinie());
+    CHECK_NEAR(integrerDefinie(ast_ln(X * X), -1.0, 1.0).valeur, -4.0, 1e-8);
+
+    // Signes mêlés : le solveur reste nécessaire (pôles en +-1)
+    CHECK(!integrerDefinie(1.0 / (X * X - 1.0), 0.0, 2.0).estFinie());
+    CHECK_NEAR(integrerDefinie(1.0 / (X * X - 1.0), 2.0, 3.0).valeur, 0.5 * std::log(1.5), 1e-10);
+}

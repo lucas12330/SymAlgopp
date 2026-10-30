@@ -32,9 +32,40 @@ constexpr double EPSILON = std::numeric_limits<double>::epsilon();
 // Parcours des sous-expressions (dupliqué de Solveur.cpp, où il est privé)
 // ============================================================================
 
+/*
+ * Nom : Visites
+ * Description : Ensemble de noeuds déjà vus. Les expressions rencontrées sont petites :
+ *               un tableau parcouru linéairement évite toute allocation, et l'on bascule
+ *               sur une table de hachage seulement au-delà de CAPACITE_PETIT noeuds.
+ */
+class Visites {
+public:
+    // Vrai si le noeud n'avait pas encore été vu
+    bool inserer(const ASTNode* n) {
+        if (m_grand) return m_table.insert(n).second;
+        for (int i = 0; i < m_taille; ++i) {
+            if (m_petit[i] == n) return false;
+        }
+        if (m_taille < CAPACITE_PETIT) {
+            m_petit[m_taille++] = n;
+            return true;
+        }
+        m_grand = true;
+        m_table.insert(m_petit, m_petit + m_taille);
+        return m_table.insert(n).second;
+    }
+
+private:
+    static constexpr int CAPACITE_PETIT = 24;
+    const ASTNode* m_petit[CAPACITE_PETIT];
+    int m_taille = 0;
+    bool m_grand = false;
+    std::unordered_set<const ASTNode*> m_table;
+};
+
 template <class Visiteur>
-void parcourir(const ExprPtr& e, Visiteur&& visiter, std::unordered_set<const ASTNode*>& vus) {
-    if (!vus.insert(e.get()).second) return;
+void parcourir(const ExprPtr& e, Visiteur&& visiter, Visites& vus) {
+    if (!vus.inserer(e.get())) return;
     visiter(e);
     switch (e->type()) {
         case TypeNoeud::Somme:
@@ -53,15 +84,6 @@ void parcourir(const ExprPtr& e, Visiteur&& visiter, std::unordered_set<const AS
         default:
             if (const FonctionUnaire* f = comme<FonctionUnaire>(e)) parcourir(f->m_argument, visiter, vus);
     }
-}
-
-bool contientNonEvalue(const ExprPtr& e) {
-    bool trouve = false;
-    std::unordered_set<const ASTNode*> vus;
-    parcourir(e, [&](const ExprPtr& n) {
-        if (n->type() == TypeNoeud::IntegraleNonEvaluee || n->type() == TypeNoeud::LimiteNonEvaluee) trouve = true;
-    }, vus);
-    return trouve;
 }
 
 // Valeur d'une expression sans variable ; faux si elle contient un paramètre ou un noeud non évalué
@@ -87,6 +109,93 @@ double evaluerSur(const ExprPtr& e, double x) {
 // Détection de singularités sur [A, B]
 // ============================================================================
 
+/*
+ * Nom : Signe
+ * Description : Signe démontré sans solveur. positif : valeur >= 0 (sinon <= 0) ;
+ *               strict : valeur non nulle. connu = faux : rien n'est démontré.
+ */
+struct Signe {
+    bool connu = false;
+    bool positif = true;
+    bool strict = false;
+};
+
+Signe signeDe(const ExprPtr& e);
+
+Signe signeNombre(const Nombre& c) {
+    const int s = c.signe();
+    return {true, s >= 0, s != 0};
+}
+
+Signe produitSignes(Signe x, Signe y) {
+    if (!x.connu || !y.connu) return {};
+    return {true, x.positif == y.positif, x.strict && y.strict};
+}
+
+// Signe de base ^ exposant, quand il se démontre sans résoudre d'équation
+Signe signePuissance(const ExprPtr& base, const ExprPtr& exposant) {
+    const Signe sb = signeDe(base);
+    double q;
+    if (!valeurConstante(exposant, q)) return sb.connu && sb.positif && sb.strict ? Signe{true, true, true} : Signe{};
+    if (q == 0.0) return {true, true, true};
+    const bool entier = q == std::floor(q) && std::abs(q) < 1e15;
+    const bool pair = entier && std::fmod(q, 2.0) == 0.0;
+    if (q < 0.0 && !(sb.connu && sb.strict)) return {}; // division par une quantité peut-être nulle
+    if (pair) return {true, true, sb.connu && sb.strict};
+    if (!sb.connu) return {};
+    if (entier) return sb;                       // impair : le signe de la base
+    if (!sb.positif) return {};                  // puissance non entière d'un négatif : non réel
+    return sb;
+}
+
+// Signe de e quand une règle simple le démontre pour tout x réel (somme et produit de
+// termes de signe connu, puissances paires, exponentielle) ; inconnu sinon
+Signe signeDe(const ExprPtr& e) {
+    if (!e->contientVariable()) {
+        double v;
+        if (!valeurConstante(e, v)) return {};
+        return {true, v >= 0.0, v != 0.0};
+    }
+    switch (e->type()) {
+        case TypeNoeud::Exponentielle:
+            return {true, true, true};
+        case TypeNoeud::Puissance: {
+            const Puissance& p = static_cast<const Puissance&>(*e);
+            return signePuissance(p.getBase(), p.getExposant());
+        }
+        case TypeNoeud::Produit: {
+            const Produit& p = static_cast<const Produit&>(*e);
+            Signe r = signeNombre(p.getCoefficient());
+            for (const Facteur& f : p.getFacteurs()) {
+                r = produitSignes(r, signePuissance(f.base, f.exposant));
+                if (!r.connu) return r;
+            }
+            return r;
+        }
+        case TypeNoeud::Somme: {
+            // Tous les termes de même signe (>= 0 ou <= 0) : la somme garde ce signe
+            const Somme& s = static_cast<const Somme&>(*e);
+            Signe r = signeNombre(s.getConstante());
+            bool vide = s.getConstante().signe() == 0; // aucun signe encore imposé
+            for (const Terme& t : s.getTermes()) {
+                const Signe st = produitSignes(signeNombre(t.coefficient), signeDe(t.expression));
+                if (!st.connu) return {};
+                if (vide) {
+                    r = st;
+                    vide = false;
+                } else {
+                    if (st.positif != r.positif) return {};
+                    r.strict = r.strict || st.strict;
+                }
+            }
+            if (vide) return {};
+            return r;
+        }
+        default:
+            return {};
+    }
+}
+
 enum class Condition { NonNul, Positif, NonNegatif };
 
 /*
@@ -109,14 +218,28 @@ public:
         m_epsilon = 1e-10 * std::max({1.0, std::abs(a), std::abs(b)});
     }
 
+    // Vrai si e est définie et continue (sur ]A, B[ ou [A, B] selon le mode). Un noeud
+    // non évalué (intégrale, limite) rend la vérification négative sans appeler le solveur.
     bool sur(const ExprPtr& e) {
         m_ok = true;
-        std::unordered_set<const ASTNode*> vus;
-        parcourir(e, [this](const ExprPtr& n) { examiner(n); }, vus);
+        m_variable = ExprPtr();
+        m_noeuds.clear();
+        bool nonEvalue = false;
+        Visites vus;
+        parcourir(e, [&](const ExprPtr& n) {
+            m_noeuds.push_back(n);
+            if (n->type() == TypeNoeud::IntegraleNonEvaluee || n->type() == TypeNoeud::LimiteNonEvaluee) nonEvalue = true;
+            if (!m_variable && n->type() == TypeNoeud::Variable) m_variable = n;
+        }, vus);
+        if (nonEvalue) return m_ok = false;
+        for (const ExprPtr& n : m_noeuds) examiner(n);
         return m_ok;
     }
 
     const std::vector<double>& coupures() const { return m_coupures; }
+
+    // Première variable rencontrée par le dernier appel de sur() (nulle s'il n'y en a pas)
+    const ExprPtr& variable() const { return m_variable; }
 
 private:
     struct Racines {
@@ -204,6 +327,14 @@ private:
             return condition == Condition::NonNul ? v != 0.0 : condition == Condition::Positif ? v > 0.0 : v >= 0.0;
         }
         if (u->plusieursVariables()) return false;
+
+        // Rejet rapide : signe démontré pour tout x (1 + x^2 > 0, exp(u) > 0...), sans solveur
+        const Signe sg = signeDe(u);
+        if (sg.connu) {
+            if (condition == Condition::NonNegatif ? sg.positif : (sg.strict && (condition == Condition::NonNul || sg.positif))) {
+                return true;
+            }
+        }
         const Racines& z = racines(u);
         if (!z.fiable) return false;
 
@@ -242,6 +373,8 @@ private:
     bool m_ok = true;
     std::unordered_map<const ASTNode*, Racines> m_memo;
     std::vector<double> m_coupures;
+    std::vector<ExprPtr> m_noeuds;
+    ExprPtr m_variable;
 };
 
 // ============================================================================
@@ -515,29 +648,33 @@ SortieQuadrature integrerNumerique(const ProgrammeEvaluation& programme, double 
 // Chemin exact
 // ============================================================================
 
-// F(b) - F(a) quand F et f sont certifiées sans singularité sur [a, b] ; nul sinon
+// F(b) - F(a) quand F et f sont certifiées sans singularité sur [a, b] ; nul sinon.
+// valeur reçoit son évaluation (NaN si inconnue : paramètre dans le résultat...).
 ExprPtr integraleExacte(const ExprPtr& f, const ExprPtr& a, const ExprPtr& b, double A, double B, bool bornesConnues,
-                        bool fOk) {
+                        bool fOk, double& valeur) {
     if (!fOk) return ExprPtr();
     const ExprPtr F = f->integrer();
-    if (contientNonEvalue(F)) return ExprPtr();
+    // L'analyseur rejette aussi les noeuds non évalués (primitive introuvable)
     Analyseur ferme(A, B, true, bornesConnues);
     if (!ferme.sur(F)) return ExprPtr();
 
     try {
-        const std::vector<ExprPtr> vars = variables(F);
-        if (vars.size() > 1) return ExprPtr();
-        ExprPtr resultat = vars.empty() ? cst(0.0) : (substituer(F, vars[0], b) - substituer(F, vars[0], a));
+        if (F->plusieursVariables()) return ExprPtr();
+        ExprPtr resultat = ferme.variable() ? (substituer(F, ferme.variable(), b) - substituer(F, ferme.variable(), a)) : cst(0.0);
         resultat = resultat->simplifier();
+        valeur = NON_NOMBRE;
         if (bornesConnues) {
             // Une valeur non finie (ln d'un nombre négatif...) invalide le résultat ; un
             // paramètre empêche seulement de l'évaluer
             double v = 0.0;
+            bool evalue = true;
             try {
                 v = resultat->eval(0.0);
             } catch (const std::logic_error&) {
+                evalue = false;
             }
             if (!std::isfinite(v)) return ExprPtr();
+            if (evalue) valeur = v;
         }
         return resultat;
     } catch (const std::exception&) {
@@ -587,10 +724,11 @@ ResultatIntegrale calculer(const ExprPtr& f, ExprPtr a, ExprPtr b, double A, dou
     const bool fOk = ouvert.sur(f);
 
     if (options.exacteSiPossible && a && b && (fini || !bornesConnues)) {
-        if (ExprPtr exacte = integraleExacte(f, a, b, A, B, fini, fOk)) {
+        double valeur = NON_NOMBRE;
+        if (ExprPtr exacte = integraleExacte(f, a, b, A, B, fini, fOk, valeur)) {
             r.exacte = exacte;
-            r.valeur = NON_NOMBRE;
-            if (!valeurConstante(exacte, r.valeur)) r.valeur = NON_NOMBRE;
+            r.valeur = valeur;
+            if (!fini && !valeurConstante(exacte, r.valeur)) r.valeur = NON_NOMBRE;
             r.erreurEstimee = 0.0;
             return inverse ? oppose(r) : r;
         }
