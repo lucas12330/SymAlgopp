@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -164,9 +165,11 @@ double ecartUlp(double obtenu, double ref) {
  */
 TEST_CASE(hyperboliques_precision_et_coherence) {
     struct Fonction { ExprPtr e; double (*ref)(double); };
-    const Fonction fonctions[] = {{ast_sinh(X), [](double v) { return std::sinh(v); }},
-                                  {ast_cosh(X), [](double v) { return std::cosh(v); }},
-                                  {ast_tanh(X), [](double v) { return std::tanh(v); }}};
+    // Référence en long double : std::sinh/cosh/tanh ne sont correctement arrondies que
+    // dans les glibc récentes (jusqu'à ~2 ulp d'erreur avant), leur erreur s'ajouterait à la nôtre
+    const Fonction fonctions[] = {{ast_sinh(X), [](double v) { return static_cast<double>(sinhl(v)); }},
+                                  {ast_cosh(X), [](double v) { return static_cast<double>(coshl(v)); }},
+                                  {ast_tanh(X), [](double v) { return static_cast<double>(tanhl(v)); }}};
     std::vector<double> xs;
     for (double x = -720.0; x <= 720.0; x += 0.0731) xs.push_back(x);        // grille large
     for (double x = -3.0; x <= 3.0; x += 0.00123) xs.push_back(x);           // autour de 0
@@ -185,6 +188,7 @@ TEST_CASE(hyperboliques_precision_et_coherence) {
             const double d = f.e->eval(xs[i]);
             CHECK(d == ys[i] || (std::isnan(d) && std::isnan(ys[i])));      // arbre == blocs
         }
+        if (!(pire < 3.0)) std::cerr << "    " << f.e->texte() << " : écart maximal " << pire << " ulp\n";
         CHECK(pire < 3.0);
     }
     // Signe de zéro et conservation de la parité
