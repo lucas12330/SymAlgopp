@@ -68,6 +68,16 @@ private:
 ExprPtr produitSansCoefficient(const Produit& p);
 
 /*
+ * Nom : reduireQuotientRationnel
+ * Description : Réduction rationnelle d'un produit (OptionsSimplification::rationnel) :
+ *               divise les facteurs polynomiaux du numérateur et du dénominateur par leurs
+ *               PGCD. Renvoie e lui-même, sans allocation, dans le cas courant (pas un
+ *               produit, pas de paire numérateur/dénominateur pouvant avoir un facteur
+ *               commun). Ne descend pas dans les sous-expressions (Simplification.cpp).
+ */
+ExprPtr reduireQuotientRationnel(const ExprPtr& e);
+
+/*
  * Nom : un
  * Description : La constante exacte 1 (partagée).
  */

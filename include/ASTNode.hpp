@@ -24,6 +24,7 @@
 
 #include "Nombre.hpp"
 #include "Ref.hpp"
+#include "Simplification.hpp"
 
 namespace symalgo {
 
@@ -205,10 +206,15 @@ public:
     /*
      * Nom : simplifier
      * Description : Simplification (la forme canonique est automatique ; simplifier()
-     *               reconstruit l'expression à partir de ses parties simplifiées et applique
-     *               les règles des fonctions). Le résultat est mémorisé dans le noeud.
+     *               reconstruit l'expression à partir de ses parties simplifiées, applique
+     *               les règles des fonctions et réduit les fractions rationnelles, voir
+     *               OptionsSimplification). Avec les options par défaut, le résultat est
+     *               mémorisé dans le noeud ; d'autres options ne touchent pas à ce mémo.
+     * Utilisation : lire("(x^2 - 1)/(x - 1)")->simplifier()                       // x + 1
+     *               e->simplifier(OptionsSimplification::aucune())                 // e
      */
     ExprPtr simplifier() const;
+    ExprPtr simplifier(const OptionsSimplification& options) const;
 
     /*
      * Nom : integrer

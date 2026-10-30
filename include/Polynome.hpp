@@ -82,6 +82,15 @@ public:
 
     Polynome derivee() const;
     Polynome unitaire() const; // coefficient dominant ramené à 1
+
+    /*
+     * Nom : partiePrimitive
+     * Description : Forme entière primitive : *this = contenu * primitive, la primitive ayant
+     *               des coefficients entiers premiers entre eux et un coefficient dominant
+     *               positif (polynôme exact non nul ; contenu = 0 pour le polynôme nul).
+     * Utilisation : Nombre c; Polynome q = p.partiePrimitive(c);  // 2x/3 + 4/3 : c = 2/3, q = x + 2
+     */
+    Polynome partiePrimitive(Nombre& contenu) const;
     static Polynome pgcd(Polynome a, Polynome b);
 
     /*

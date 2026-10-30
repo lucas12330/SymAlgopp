@@ -570,22 +570,21 @@ std::vector<RacineReelle> Polynome::racinesReelles() const {
 // Factorisation
 // ============================================================================
 
-namespace {
-
-// Forme entière primitive d'un polynôme : f = contenu * primitive
-Polynome partiePrimitive(const Polynome& f, Nombre& contenu) {
+Polynome Polynome::partiePrimitive(Nombre& contenu) const {
+    if (estNul()) {
+        contenu = Nombre(0);
+        return *this;
+    }
     Nombre ppcm(1), pgcdNum(0);
-    for (int i = 0; i <= f.degre(); ++i) {
-        const Nombre d = f.coefficient(i).denominateurNombre();
+    for (int i = 0; i <= degre(); ++i) {
+        const Nombre d = coefficient(i).denominateurNombre();
         ppcm = ppcm * d / Nombre::pgcd(ppcm, d);
     }
-    for (int i = 0; i <= f.degre(); ++i) pgcdNum = Nombre::pgcd(pgcdNum, (f.coefficient(i) * ppcm).numerateurNombre());
+    for (int i = 0; i <= degre(); ++i) pgcdNum = Nombre::pgcd(pgcdNum, (coefficient(i) * ppcm).numerateurNombre());
     contenu = pgcdNum / ppcm;
-    if (f.dominant().signe() < 0) contenu = -contenu; // coefficient dominant positif
-    return f * contenu.inverse();
+    if (dominant().signe() < 0) contenu = -contenu; // coefficient dominant positif
+    return *this * contenu.inverse();
 }
-
-} // namespace
 
 ExprPtr factoriser(const ExprPtr& e) {
     const ExprPtr d = developper(e);
@@ -612,7 +611,7 @@ ExprPtr factoriser(const ExprPtr& e) {
         }
         if (reste.degre() >= 1) {
             Nombre contenu;
-            const Polynome primitive = partiePrimitive(reste, contenu);
+            const Polynome primitive = reste.partiePrimitive(contenu);
             produit_.multiplier(ast_pow(primitive.versExpression(x), static_cast<double>(multiplicite)));
             produit_.multiplier(nombre(contenu.puissanceEntiere(multiplicite)));
         }
