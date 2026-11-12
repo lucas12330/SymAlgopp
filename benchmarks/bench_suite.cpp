@@ -544,4 +544,53 @@ static void BM_SymAlgo_IntegraleEchec(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_IntegraleEchec);
 
+// ============================================================================
+// Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
+// ============================================================================
+
+// integral de x^2 sur [0, 1] : valeur exacte par la primitive
+static void BM_SymAlgo_IntegraleDefinie_Exacte(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_pow(x, 2.0) + ast_sin(x);
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Exacte);
+
+// integral de 1/(1+x^2) sur [0, 1] : quadrature adaptative forcée (tolérance 1e-10), pour
+// comparer à GiNaC ; le chemin exact (atan) donne pi/4
+static void BM_SymAlgo_IntegraleDefinie_Numerique(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = 1.0 / (x * x + 1.0);
+    OptionsIntegration numerique;
+    numerique.exacteSiPossible = false;
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0, numerique);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Numerique);
+
+// integral de exp(-x^2) sur R : changement de variable, bornes infinies
+static void BM_SymAlgo_IntegraleDefinie_Gauss(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_exp(-x * x);
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -INFINITY, INFINITY);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Gauss);
+
+static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    for (auto _ : state) {
+        GiNaC::ex r = GiNaC::integral(x, 0, 1, 1 / (1 + x * x)).evalf();
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_GiNaC_IntegraleDefinie_Numerique);
+
 BENCHMARK_MAIN();

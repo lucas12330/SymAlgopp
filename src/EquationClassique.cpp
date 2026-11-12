@@ -149,6 +149,19 @@ EquationClassique EquationClassique::integrer() const {
 }
 
 /*
+ * Nom : integrer (intégrale définie)
+ * Description : Intégrale de l'expression sur [a, b] (voir integrerDefinie).
+ * Utilisation : ResultatIntegrale r = eq.integrer(0.0, 1.0);
+ */
+ResultatIntegrale EquationClassique::integrer(const ExprPtr& a, const ExprPtr& b, const OptionsIntegration& options) const {
+    return integrerDefinie(m_racine, a, b, options);
+}
+
+ResultatIntegrale EquationClassique::integrer(double a, double b, const OptionsIntegration& options) const {
+    return integrerDefinie(m_racine, a, b, options);
+}
+
+/*
  * Nom : limite
  * Description : Calcule la limite en x0 (LimiteNonEvaluee si elle n'est pas déterminée).
  * Utilisation : EquationClassique l = eq.limite(0.0);
