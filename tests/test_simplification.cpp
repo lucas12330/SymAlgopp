@@ -135,7 +135,7 @@ TEST_CASE(derivee_et_primitive_simplifiees) {
     CHECK_EQ(f->simplifier()->texte(), std::string("1/(x + 1)"));
     EquationClassique eq(f); // l'intégration d'un quotient demande sa forme réduite
     eq.simplifier();
-    CHECK_EQ(eq.integrer().getExpression()->texte(), std::string("ln(x + 1)"));
+    CHECK_EQ(eq.integrer().getExpression()->texte(), std::string("ln(abs(x + 1))")); // ln|x + 1|
 }
 
 int main() { return test::executerTous(); }

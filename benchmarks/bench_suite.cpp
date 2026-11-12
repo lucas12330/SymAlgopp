@@ -492,4 +492,56 @@ static void BM_SymAlgo_DeriveeQuotientSimplifiee(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_DeriveeQuotientSimplifiee);
 
+// ============================================================================
+// Intégration (primitives) : cas courants de la table, substitution, échec
+// ============================================================================
+
+namespace {
+
+void mesurerPrimitives(benchmark::State& state, const std::vector<ExprPtr>& fonctions) {
+    const long long debut = g_octetsAlloues;
+    for (auto _ : state) {
+        for (const ExprPtr& f : fonctions) {
+            ExprPtr F = f->integrer();
+            benchmark::DoNotOptimize(F);
+        }
+    }
+    rapporterAllocations(state, debut);
+}
+
+} // namespace
+
+// Table et linéarité (cas déjà couverts avant la substitution)
+static void BM_SymAlgo_IntegraleTable(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {3.0 * ast_pow(x, 4.0) - 2.0 * x + 7.0, ast_sin(2.0 * x + 1.0) + ast_exp(x / 3.0),
+                              ast_cos(x) * 4.0 + 1.0 / x, ast_pow(x + 1.0, frac(1, 2)), ast_ln(x)});
+}
+BENCHMARK(BM_SymAlgo_IntegraleTable);
+
+// Table étendue : atan, asin, 1/cos^2
+static void BM_SymAlgo_IntegraleTableEtendue(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {1.0 / (ast_pow(x, 2.0) + 1.0), 1.0 / (ast_pow(x, 2.0) + 4.0),
+                              ast_pow(1.0 - ast_pow(x, 2.0), frac(-1, 2)), ast_pow(ast_cos(x), -2.0)});
+}
+BENCHMARK(BM_SymAlgo_IntegraleTableEtendue);
+
+// Substitution « la dérivée divise »
+static void BM_SymAlgo_IntegraleSubstitution(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {2.0 * x / (ast_pow(x, 2.0) + 1.0), x * ast_cos(ast_pow(x, 2.0)),
+                              ast_cos(x) * ast_pow(ast_sin(x), 3.0), ast_ln(x) / x,
+                              ast_exp(x) / (1.0 + ast_exp(2.0 * x))});
+}
+BENCHMARK(BM_SymAlgo_IntegraleSubstitution);
+
+// Échecs (intégrales encore hors de portée) : coût des méthodes essayées en vain
+static void BM_SymAlgo_IntegraleEchec(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {x * ast_exp(x), 1.0 / (ast_pow(x, 2.0) - 1.0), ast_pow(ast_sin(x), 2.0),
+                              ast_exp(x) * ast_sin(x), ast_exp(ast_pow(x, 2.0))});
+}
+BENCHMARK(BM_SymAlgo_IntegraleEchec);
+
 BENCHMARK_MAIN();

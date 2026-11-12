@@ -470,7 +470,7 @@ TEST_CASE(integrale_non_evaluee) {
     CHECK_EQ(texte(G), std::string("sin(x) + integrale(sin(x^2))"));
     // Plus aucun 0 silencieux
     const ExprPtr i1 = ast_exp(ast_pow(X, 2.0))->integrer();
-    const ExprPtr i2 = (ast_ln(X) / X)->integrer();
+    const ExprPtr i2 = (X * ast_exp(X))->integrer(); // intégration par parties (à venir)
     CHECK(comme<IntegraleNonEvaluee>(i1) != nullptr);
     CHECK(comme<IntegraleNonEvaluee>(i2) != nullptr);
 }
