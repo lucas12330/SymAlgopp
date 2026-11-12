@@ -181,6 +181,59 @@ static void BM_GiNaC_EvalGrandeExpression(benchmark::State& state) {
 BENCHMARK(BM_GiNaC_EvalGrandeExpression)->Unit(benchmark::kMicrosecond);
 
 // ============================================================================
+// 2 bis. Fonctions abs, sign, sinh, cosh, tanh (SymAlgo++ seul)
+// ============================================================================
+
+// Construction canonique (hash-consing) de fonctions à parité/valeur absolue
+static void BM_SymAlgo_ConstructionAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    for (auto _ : state) {
+        ExprPtr e = ast_abs(cst(-3.0) * x) + ast_sinh(-x) * ast_cosh(-x) + ast_tanh(x) + ast_sign(cst(2.0) * x);
+        benchmark::DoNotOptimize(e);
+    }
+}
+BENCHMARK(BM_SymAlgo_ConstructionAbsHyperboliques);
+
+// Évaluation compilée par blocs sur 10 000 points
+static void BM_SymAlgo_EvalTableauAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const EquationClassique eq(ast_abs(x - 5.0) * ast_sign(x - 3.0) + ast_sinh(x / 5.0) * ast_tanh(x) + ast_cosh(x / 7.0));
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = i * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+BENCHMARK(BM_SymAlgo_EvalTableauAbsHyperboliques);
+
+// Coût par fonction de l'évaluation compilée par blocs (10 000 points sur [-5, 5]) :
+// référence exp, puis abs, sign, sinh, cosh, tanh.
+static void evalBloc(benchmark::State& state, const ExprPtr& e) {
+    const EquationClassique eq(e);
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = (i - POINTS_TRACE / 2) * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+static void BM_SymAlgo_EvalBloc_exp(benchmark::State& s) { evalBloc(s, ast_exp(var("x"))); }
+static void BM_SymAlgo_EvalBloc_abs(benchmark::State& s) { evalBloc(s, ast_abs(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sign(benchmark::State& s) { evalBloc(s, ast_sign(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sinh(benchmark::State& s) { evalBloc(s, ast_sinh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_cosh(benchmark::State& s) { evalBloc(s, ast_cosh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_tanh(benchmark::State& s) { evalBloc(s, ast_tanh(var("x"))); }
+BENCHMARK(BM_SymAlgo_EvalBloc_exp);
+BENCHMARK(BM_SymAlgo_EvalBloc_abs);
+BENCHMARK(BM_SymAlgo_EvalBloc_sign);
+BENCHMARK(BM_SymAlgo_EvalBloc_sinh);
+BENCHMARK(BM_SymAlgo_EvalBloc_cosh);
+BENCHMARK(BM_SymAlgo_EvalBloc_tanh);
+
+// ============================================================================
 // 3. Dérivation (première dérivée, puis dérivée 10e)
 // ============================================================================
 
@@ -393,56 +446,49 @@ static void BM_SymAlgo_EqDiff_MatriceCompagnon(benchmark::State& state) {
 BENCHMARK(BM_SymAlgo_EqDiff_MatriceCompagnon)->DenseRange(1, 30, 2);
 
 // ============================================================================
-// Tâche fonctions-usuelles : abs, sign, sinh, cosh, tanh (SymAlgo++ seul)
+// Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
 // ============================================================================
 
-// Construction canonique (hash-consing) de fonctions à parité/valeur absolue
-static void BM_SymAlgo_ConstructionAbsHyperboliques(benchmark::State& state) {
+// integral de x^2 sur [0, 1] : valeur exacte par la primitive
+static void BM_SymAlgo_IntegraleDefinie_Exacte(benchmark::State& state) {
     const ExprPtr x = var("x");
+    const ExprPtr f = ast_pow(x, 2.0) + ast_sin(x);
     for (auto _ : state) {
-        ExprPtr e = ast_abs(cst(-3.0) * x) + ast_sinh(-x) * ast_cosh(-x) + ast_tanh(x) + ast_sign(cst(2.0) * x);
-        benchmark::DoNotOptimize(e);
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0);
+        benchmark::DoNotOptimize(r);
     }
 }
-BENCHMARK(BM_SymAlgo_ConstructionAbsHyperboliques);
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Exacte);
 
-// Évaluation compilée par blocs sur 10 000 points
-static void BM_SymAlgo_EvalTableauAbsHyperboliques(benchmark::State& state) {
+// integral de 1/(1+x^2) sur [0, 1] : primitive inconnue, quadrature adaptative (tolérance 1e-10)
+static void BM_SymAlgo_IntegraleDefinie_Numerique(benchmark::State& state) {
     const ExprPtr x = var("x");
-    const EquationClassique eq(ast_abs(x - 5.0) * ast_sign(x - 3.0) + ast_sinh(x / 5.0) * ast_tanh(x) + ast_cosh(x / 7.0));
-    std::vector<double> xs(POINTS_TRACE);
-    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = i * 1e-3;
+    const ExprPtr f = 1.0 / (x * x + 1.0);
     for (auto _ : state) {
-        std::vector<double> y = eq.eval(xs);
-        benchmark::DoNotOptimize(y.data());
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 1.0);
+        benchmark::DoNotOptimize(r);
     }
-    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
 }
-BENCHMARK(BM_SymAlgo_EvalTableauAbsHyperboliques);
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Numerique);
 
-// Coût par fonction de l'évaluation compilée par blocs (10 000 points sur [-5, 5]) :
-// référence exp, puis abs, sign, sinh, cosh, tanh.
-static void evalBloc(benchmark::State& state, const ExprPtr& e) {
-    const EquationClassique eq(e);
-    std::vector<double> xs(POINTS_TRACE);
-    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = (i - POINTS_TRACE / 2) * 1e-3;
+// integral de exp(-x^2) sur R : changement de variable, bornes infinies
+static void BM_SymAlgo_IntegraleDefinie_Gauss(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = ast_exp(-x * x);
     for (auto _ : state) {
-        std::vector<double> y = eq.eval(xs);
-        benchmark::DoNotOptimize(y.data());
+        ResultatIntegrale r = integrerDefinie(f, -INFINITY, INFINITY);
+        benchmark::DoNotOptimize(r);
     }
-    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
 }
-static void BM_SymAlgo_EvalBloc_exp(benchmark::State& s) { evalBloc(s, ast_exp(var("x"))); }
-static void BM_SymAlgo_EvalBloc_abs(benchmark::State& s) { evalBloc(s, ast_abs(var("x"))); }
-static void BM_SymAlgo_EvalBloc_sign(benchmark::State& s) { evalBloc(s, ast_sign(var("x"))); }
-static void BM_SymAlgo_EvalBloc_sinh(benchmark::State& s) { evalBloc(s, ast_sinh(var("x"))); }
-static void BM_SymAlgo_EvalBloc_cosh(benchmark::State& s) { evalBloc(s, ast_cosh(var("x"))); }
-static void BM_SymAlgo_EvalBloc_tanh(benchmark::State& s) { evalBloc(s, ast_tanh(var("x"))); }
-BENCHMARK(BM_SymAlgo_EvalBloc_exp);
-BENCHMARK(BM_SymAlgo_EvalBloc_abs);
-BENCHMARK(BM_SymAlgo_EvalBloc_sign);
-BENCHMARK(BM_SymAlgo_EvalBloc_sinh);
-BENCHMARK(BM_SymAlgo_EvalBloc_cosh);
-BENCHMARK(BM_SymAlgo_EvalBloc_tanh);
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_Gauss);
+
+static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    for (auto _ : state) {
+        GiNaC::ex r = GiNaC::integral(x, 0, 1, 1 / (1 + x * x)).evalf();
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_GiNaC_IntegraleDefinie_Numerique);
 
 BENCHMARK_MAIN();
