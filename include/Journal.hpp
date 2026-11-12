@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -67,6 +68,15 @@ public:
     void effacer() noexcept {
         m_etapes.clear();
         m_niveau = 0;
+    }
+
+    /*
+     * Nom : tronquer
+     * Description : Ne garde que les taille premières étapes (abandon d'une tentative dont
+     *               les étapes ont déjà été notées, ex. un changement de variable qui échoue).
+     */
+    void tronquer(std::size_t taille) {
+        if (taille < m_etapes.size()) m_etapes.erase(m_etapes.begin() + static_cast<std::ptrdiff_t>(taille), m_etapes.end());
     }
 
     int niveau() const noexcept { return m_niveau; }

@@ -6,6 +6,8 @@
 
 #include "ASTNode.hpp"
 #include "Canonique.hpp"
+#include "Journal.hpp"
+#include "Primitives.hpp" // coefficientLineaire, variableDe, lnAbs
 
 #include <cmath>
 #include <stdexcept>
@@ -13,22 +15,6 @@
 namespace symalgo {
 
 namespace {
-
-/*
- * Nom : coefficientLineaire
- * Description : Si u est une fonction affine de x (u = a*x + b avec a non nul, a pouvant
- *               être symbolique comme pi ou C1), renvoie vrai et écrit a : la dérivée de u
- *               ne dépend alors pas de x. Sert à la règle d'intégration F(ax+b)/a.
- */
-bool coefficientLineaire(const ExprPtr& u, ExprPtr& a) {
-    if (!u->contientVariable()) return false;
-    const ExprPtr d = u->derivee();
-    if (d->contientVariable()) return false;
-    const Constante* c = comme<Constante>(d);
-    if (c && (c->getNombre().estZero() || !c->getNombre().estFini())) return false;
-    a = d;
-    return true;
-}
 
 // e / a
 ExprPtr diviserPar(const ExprPtr& e, const ExprPtr& a) { return e / a; }
@@ -102,8 +88,15 @@ ExprPtr Somme::calculerSimplification() const {
 
 ExprPtr Somme::primitive() const {
     // Linéarité ; une somme dont un terme n'est pas intégrable garde le reste calculé
+    journal::noter([&](Journal& j) {
+        AccumulateurSomme integrales;
+        if (!m_constante.estZero()) integrales.ajouter(fabriquer<IntegraleNonEvaluee>(nombre(m_constante)), Nombre(1));
+        for (const Terme& t : m_termes) integrales.ajouter(fabriquer<IntegraleNonEvaluee>(t.expression), t.coefficient);
+        j.ajouter("integration.linearite", "Linéarité : on intègre terme à terme", clone(), integrales.construire());
+    });
+    const journal::SousNiveau sous;
     AccumulateurSomme s;
-    if (!m_constante.estZero()) s.ajouter(var("x"), m_constante);
+    if (!m_constante.estZero()) s.ajouter(variableDe(*this), m_constante);
     for (const Terme& t : m_termes) s.ajouter(t.expression->integrer(), t.coefficient);
     return s.construire();
 }
@@ -155,8 +148,15 @@ ExprPtr Produit::primitive() const {
             constant.multiplier(facteur);
         }
     }
-    if (nombreVariables != 1) return integraleNonEvaluee(); // intégration par parties non gérée
-    return constant.construire() * variable.construire()->integrer();
+    if (nombreVariables != 1) return integraleNonEvaluee(); // autres méthodes : Primitives.cpp
+    const ExprPtr c = constant.construire();
+    const ExprPtr v = variable.construire();
+    journal::noter([&](Journal& j) {
+        j.ajouter("integration.linearite", "Linéarité : le facteur constant sort de l'intégrale", clone(),
+                  c * fabriquer<IntegraleNonEvaluee>(v));
+    });
+    const journal::SousNiveau sous;
+    return c * v->integrer();
 }
 
 // ============================================================================
@@ -183,7 +183,7 @@ ExprPtr Puissance::primitive() const {
     if (!m_exposant->contientVariable() && coefficientLineaire(m_base, a)) {
         if (const Constante* n = comme<Constante>(m_exposant)) {
             const Nombre& nv = n->getNombre();
-            if (nv.estMoinsUn()) return diviserPar(ast_ln(m_base), a);
+            if (nv.estMoinsUn()) return diviserPar(lnAbs(m_base), a); // ln|ax + b|
             const Nombre suivant = nv + Nombre(1);
             return diviserPar(ast_pow(m_base, nombre(suivant)), a * nombre(suivant));
         }
@@ -214,7 +214,12 @@ ExprPtr Tangente::calculerDerivee(CacheDerivees& cache) const {
     return (1.0 + ast_pow(clone(), 2.0)) * m_argument->derivee(cache); // 1 + tan^2
 }
 ExprPtr Exponentielle::calculerDerivee(CacheDerivees& cache) const { return clone() * m_argument->derivee(cache); }
-ExprPtr Logarithme::calculerDerivee(CacheDerivees& cache) const { return m_argument->derivee(cache) / m_argument; }
+ExprPtr Logarithme::calculerDerivee(CacheDerivees& cache) const {
+    // ln|u|' = u'/u directement (sans passer par sign(u) u' / abs(u))
+    const ValeurAbsolue* v = comme<ValeurAbsolue>(m_argument);
+    const ExprPtr& u = v ? v->m_argument : m_argument;
+    return u->derivee(cache) / u;
+}
 
 ExprPtr Sinus::calculerSimplification() const { return ast_sin(m_argument->simplifier()); }
 ExprPtr Cosinus::calculerSimplification() const { return ast_cos(m_argument->simplifier()); }
@@ -237,8 +242,8 @@ ExprPtr Cosinus::primitive() const {
 
 ExprPtr Tangente::primitive() const {
     ExprPtr a;
-    // -ln(cos(u)), valable là où cos(u) > 0
-    if (coefficientLineaire(m_argument, a)) return diviserPar(-ast_ln(ast_cos(m_argument)), a);
+    // -ln|cos(u)|
+    if (coefficientLineaire(m_argument, a)) return diviserPar(-lnAbs(ast_cos(m_argument)), a);
     return integraleNonEvaluee();
 }
 

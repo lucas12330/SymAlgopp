@@ -29,6 +29,7 @@
 namespace symalgo {
 
 class ASTNode;
+class Journal;
 class TableNoeuds;
 
 /*
@@ -223,9 +224,18 @@ public:
 
     /*
      * Nom : integrer
-     * Description : Primitive symbolique, ou IntegraleNonEvaluee si aucune règle ne s'applique.
+     * Description : Primitive symbolique, ou IntegraleNonEvaluee si aucune méthode ne
+     *               s'applique (jamais de résultat faux). Méthodes essayées dans l'ordre, de
+     *               la moins chère à la plus chère : linéarité et primitive usuelle du noeud
+     *               (argument affine), table étendue (atan, asin, 1/cos^2...), changement de
+     *               variable u = g(x) quand g'(x) divise l'intégrande. 1/u s'intègre en
+     *               ln|u|, écrit ln(u) quand u est manifestement positif.
+     *               Avec un Journal, les étapes y sont notées (identifiants « integration.* »).
+     * Utilisation : lire("2*x/(x^2 + 1)")->integrer()          // ln(x^2 + 1)
+     *               Journal j; lire("x*cos(x^2)")->integrer(j);  // sin(x^2)/2, étapes dans j
      */
     ExprPtr integrer() const;
+    ExprPtr integrer(Journal& journal) const;
 
     /*
      * Nom : limite

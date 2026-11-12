@@ -152,11 +152,13 @@ if(SYMALGOPP_INSTALL)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
     # Les en-têtes vont dans <prefix>/include/symalgopp/ : #include <symalgopp> fonctionne
-    # (le dossier est dans le chemin d'inclusion de la cible). Canonique.hpp est interne.
+    # (le dossier est dans le chemin d'inclusion de la cible). Canonique.hpp et Primitives.hpp
+    # sont internes.
     install(DIRECTORY include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/symalgopp
         FILES_MATCHING PATTERN "*.hpp" PATTERN "symalgopp"
-        PATTERN "Canonique.hpp" EXCLUDE)
+        PATTERN "Canonique.hpp" EXCLUDE
+        PATTERN "Primitives.hpp" EXCLUDE)
 
     install(EXPORT symalgoppTargets
         NAMESPACE symalgopp::

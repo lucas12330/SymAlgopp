@@ -262,12 +262,6 @@ ExprPtr ASTNode::simplifier() const {
     return resultat;
 }
 
-ExprPtr ASTNode::integrer() const {
-    if (!contientVariable()) return clone() * var("x");
-    if (plusieursVariables()) return integraleNonEvaluee();
-    return primitive();
-}
-
 ExprPtr ASTNode::limite(double a) const {
     if (plusieursVariables()) return limiteNonEvaluee(a);
     return calculerLimite(a);
