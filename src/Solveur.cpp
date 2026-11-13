@@ -315,6 +315,53 @@ private:
         m_entiers.pop_back();
     }
 
+    /*
+     * Nom : isolerAbsoluOuHyperbolique
+     * Description : Inverse abs, sign, sinh, cosh et tanh : abs(u) = R => u = +-R (R >= 0),
+     *               sinh(u) = R => u = ln(R + (R^2+1)^(1/2)), cosh(u) = R => u = +-ln(R +
+     *               (R^2-1)^(1/2)) (R >= 1), tanh(u) = R => u = ln((1+R)/(1-R))/2 (|R| < 1).
+     *               sign(u) = 0 donne u = 0 ; sign(u) = +-1 est une inéquation (u > 0 ou
+     *               u < 0), non représentable : le résultat est alors incomplet.
+     */
+    void isolerAbsoluOuHyperbolique(TypeNoeud type, const ExprPtr& u, const ExprPtr& R, int profondeur) {
+        double v;
+        if (!valeurNumerique(R, v)) {
+            if (type != TypeNoeud::SinusHyperbolique) {
+                incomplet();
+                return;
+            }
+            v = 0.0; // sinh est bijective : aucune condition sur R
+        }
+        const ExprPtr deux = cst(2.0);
+        switch (type) {
+            case TypeNoeud::ValeurAbsolue:
+                if (v < 0.0) return;
+                isoler(u, R, profondeur + 1);
+                if (v > 0.0) isoler(u, -R, profondeur + 1);
+                return;
+            case TypeNoeud::Signe:
+                if (v == 0.0) {
+                    isoler(u, nombre(Nombre(0)), profondeur + 1);
+                } else if (std::abs(v) == 1.0) {
+                    incomplet();
+                }
+                return;
+            case TypeNoeud::SinusHyperbolique:
+                isoler(u, ast_ln(R + ast_pow(ast_pow(R, deux) + 1.0, frac(1, 2))), profondeur + 1);
+                return;
+            case TypeNoeud::CosinusHyperbolique: {
+                if (v < 1.0) return;
+                const ExprPtr A = ast_ln(R + ast_pow(ast_pow(R, deux) - 1.0, frac(1, 2)));
+                isoler(u, A, profondeur + 1);
+                if (v > 1.0) isoler(u, -A, profondeur + 1);
+                return;
+            }
+            default: // TangenteHyperbolique
+                if (std::abs(v) < 1.0) isoler(u, frac(1, 2) * ast_ln((1.0 + R) / (1.0 - R)), profondeur + 1);
+                return;
+        }
+    }
+
     void isoler(ExprPtr L, ExprPtr R, int profondeur) {
         if (profondeur > PROFONDEUR_MAX) {
             incomplet();
@@ -401,6 +448,13 @@ private:
             }
             case TypeNoeud::Logarithme:
                 isoler(static_cast<const FonctionUnaire&>(*L).m_argument, ast_exp(R), profondeur + 1);
+                return;
+            case TypeNoeud::ValeurAbsolue:
+            case TypeNoeud::Signe:
+            case TypeNoeud::SinusHyperbolique:
+            case TypeNoeud::CosinusHyperbolique:
+            case TypeNoeud::TangenteHyperbolique:
+                isolerAbsoluOuHyperbolique(L->type(), static_cast<const FonctionUnaire&>(*L).m_argument, R, profondeur);
                 return;
             case TypeNoeud::Sinus:
             case TypeNoeud::Cosinus:

@@ -173,6 +173,11 @@ private:
             case TypeNoeud::ArcSinus: v = unaire(Code::ArcSinus, n); break;
             case TypeNoeud::ArcCosinus: v = unaire(Code::ArcCosinus, n); break;
             case TypeNoeud::ArcTangente: v = unaire(Code::ArcTangente, n); break;
+            case TypeNoeud::ValeurAbsolue: v = unaire(Code::ValeurAbsolue, n); break;
+            case TypeNoeud::Signe: v = unaire(Code::Signe, n); break;
+            case TypeNoeud::SinusHyperbolique: v = unaire(Code::SinusHyperbolique, n); break;
+            case TypeNoeud::CosinusHyperbolique: v = unaire(Code::CosinusHyperbolique, n); break;
+            case TypeNoeud::TangenteHyperbolique: v = unaire(Code::TangenteHyperbolique, n); break;
             case TypeNoeud::Pi: v = constante(n.eval(0.0)); break;
             default:
                 // Paramètre ou noeud non évalué : même erreur que l'évaluation directe
@@ -314,6 +319,11 @@ void ProgrammeEvaluation::executer(const Entree& entree, double* r) const {
             case Code::ArcSinus: d = std::asin(r[ins.a]); break;
             case Code::ArcCosinus: d = std::acos(r[ins.a]); break;
             case Code::ArcTangente: d = std::atan(r[ins.a]); break;
+            case Code::ValeurAbsolue: d = std::fabs(r[ins.a]); break;
+            case Code::Signe: d = signeReel(r[ins.a]); break;
+            case Code::SinusHyperbolique: d = sinhReel(r[ins.a]); break;
+            case Code::CosinusHyperbolique: d = coshReel(r[ins.a]); break;
+            case Code::TangenteHyperbolique: d = tanhReel(r[ins.a]); break;
         }
     }
 }
@@ -427,6 +437,21 @@ void ProgrammeEvaluation::evaluer(const double* xs, double* ys, std::size_t n) c
                     break;
                 case Code::ArcTangente:
                     for (std::size_t j = 0; j < m; ++j) d[j] = std::atan(a[j]);
+                    break;
+                case Code::ValeurAbsolue:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = std::fabs(a[j]);
+                    break;
+                case Code::Signe:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = signeReel(a[j]);
+                    break;
+                case Code::SinusHyperbolique:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = sinhReel(a[j]);
+                    break;
+                case Code::CosinusHyperbolique:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = coshReel(a[j]);
+                    break;
+                case Code::TangenteHyperbolique:
+                    for (std::size_t j = 0; j < m; ++j) d[j] = tanhReel(a[j]);
                     break;
             }
         }

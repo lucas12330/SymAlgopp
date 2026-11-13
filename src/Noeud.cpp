@@ -976,6 +976,119 @@ ExprPtr ast_ln(const ExprPtr& arg) {
     return fabriquer<Logarithme>(arg);
 }
 
+// ----------------------------------------------------------------------------
+// Valeur absolue, signe et fonctions hyperboliques
+// ----------------------------------------------------------------------------
+
+namespace {
+
+/*
+ * Nom : estOppose
+ * Description : Reconnaît la forme « -u » d'un argument (constante exacte négative ou
+ *               produit de coefficient négatif) et écrit u. Sert à la parité de sinh,
+ *               cosh et tanh ; un seul noeud supplémentaire est construit, et seulement
+ *               dans le cas négatif.
+ */
+bool estOppose(const ExprPtr& arg, ExprPtr& positif) {
+    if (const Constante* c = comme<Constante>(arg)) {
+        if (!c->getNombre().estExact() || c->getNombre().signe() >= 0) return false;
+        positif = nombre(-c->getNombre());
+        return true;
+    }
+    if (const Produit* p = comme<Produit>(arg); p && p->getCoefficient().signe() < 0) {
+        positif = -arg;
+        return true;
+    }
+    return false;
+}
+
+// Exposant entier pair (positif ou négatif) : u^(2k) est positif ou nul
+bool exposantEntierPair(const ExprPtr& exposant) {
+    long long k;
+    const Constante* c = comme<Constante>(exposant);
+    return c && c->getNombre().versEntier(k) && k % 2 == 0;
+}
+
+} // namespace
+
+ExprPtr ast_abs(const ExprPtr& arg) {
+    switch (arg->type()) {
+        case TypeNoeud::Constante: {
+            const Nombre& n = static_cast<const Constante&>(*arg).getNombre();
+            return n.signe() < 0 ? nombre(-n) : arg;
+        }
+        case TypeNoeud::Pi:
+        case TypeNoeud::ValeurAbsolue:
+        case TypeNoeud::Exponentielle:
+            return arg; // déjà positif ou nul
+        case TypeNoeud::Puissance:
+            if (exposantEntierPair(static_cast<const Puissance&>(*arg).getExposant())) return arg; // u^(2k) >= 0
+            break;
+        case TypeNoeud::Produit: {
+            // abs(c*u) = |c| abs(u)
+            const Produit& p = static_cast<const Produit&>(*arg);
+            const Nombre& c = p.getCoefficient();
+            if (c.estUn()) break;
+            const ExprPtr reste = ast_abs(produitSansCoefficient(p));
+            return c.signe() < 0 ? nombre(-c) * reste : nombre(c) * reste;
+        }
+        default: break;
+    }
+    return fabriquer<ValeurAbsolue>(arg);
+}
+
+ExprPtr ast_sign(const ExprPtr& arg) {
+    switch (arg->type()) {
+        case TypeNoeud::Constante: {
+            const Nombre& n = static_cast<const Constante&>(*arg).getNombre();
+            if (n.estExact() || !std::isnan(n.versDouble())) return nombre(Nombre(n.signe()));
+            break;
+        }
+        case TypeNoeud::Pi:
+        case TypeNoeud::Exponentielle:
+            return un(); // strictement positif
+        case TypeNoeud::Signe:
+            return arg;
+        case TypeNoeud::Produit: {
+            // sign(c*u) = sign(c) sign(u)
+            const Produit& p = static_cast<const Produit&>(*arg);
+            const Nombre& c = p.getCoefficient();
+            if (c.estUn()) break;
+            const ExprPtr reste = ast_sign(produitSansCoefficient(p));
+            return c.signe() < 0 ? -reste : reste;
+        }
+        default: break;
+    }
+    return fabriquer<Signe>(arg);
+}
+
+ExprPtr ast_sinh(const ExprPtr& arg) {
+    double v;
+    ExprPtr positif;
+    if (argumentExactNul(arg)) return nombre(Nombre(0));
+    if (argumentReel(arg, v)) return nombre(Nombre::reel(std::sinh(v)));
+    if (estOppose(arg, positif)) return -fabriquer<SinusHyperbolique>(positif); // impaire
+    return fabriquer<SinusHyperbolique>(arg);
+}
+
+ExprPtr ast_cosh(const ExprPtr& arg) {
+    double v;
+    ExprPtr positif;
+    if (argumentExactNul(arg)) return un();
+    if (argumentReel(arg, v)) return nombre(Nombre::reel(std::cosh(v)));
+    if (estOppose(arg, positif)) return fabriquer<CosinusHyperbolique>(positif); // paire
+    return fabriquer<CosinusHyperbolique>(arg);
+}
+
+ExprPtr ast_tanh(const ExprPtr& arg) {
+    double v;
+    ExprPtr positif;
+    if (argumentExactNul(arg)) return nombre(Nombre(0));
+    if (argumentReel(arg, v)) return nombre(Nombre::reel(std::tanh(v)));
+    if (estOppose(arg, positif)) return -fabriquer<TangenteHyperbolique>(positif); // impaire
+    return fabriquer<TangenteHyperbolique>(arg);
+}
+
 // ============================================================================
 // Substitution
 // ============================================================================
@@ -990,6 +1103,11 @@ ExprPtr appliquer(TypeNoeud fonction, const ExprPtr& arg) {
         case TypeNoeud::ArcSinus: return ast_asin(arg);
         case TypeNoeud::ArcCosinus: return ast_acos(arg);
         case TypeNoeud::ArcTangente: return ast_atan(arg);
+        case TypeNoeud::ValeurAbsolue: return ast_abs(arg);
+        case TypeNoeud::Signe: return ast_sign(arg);
+        case TypeNoeud::SinusHyperbolique: return ast_sinh(arg);
+        case TypeNoeud::CosinusHyperbolique: return ast_cosh(arg);
+        case TypeNoeud::TangenteHyperbolique: return ast_tanh(arg);
         default: throw std::invalid_argument("appliquer : type de fonction inconnu");
     }
 }

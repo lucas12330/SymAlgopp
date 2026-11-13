@@ -741,4 +741,166 @@ TEST_CASE(reciproques_derivees_primitives_series) {
     CHECK_NEAR(ast_atan(X)->limite(1.0)->eval(0.0), 3.14159265358979323846 / 4.0, 1e-15);
 }
 
+// ---------------------------------------------------------------------------
+// abs, sign, sinh, cosh, tanh
+// ---------------------------------------------------------------------------
+
+TEST_CASE(abs_sign_formes_canoniques) {
+    CHECK_EQ(ast_abs(cst(-3.0))->texte(), std::string("3"));
+    CHECK_EQ(ast_abs(frac(-1, 2))->texte(), std::string("1/2"));
+    CHECK_EQ(ast_abs(cst(0.0))->texte(), std::string("0"));
+    CHECK(ast_abs(pi()).get() == pi().get());
+    CHECK(ast_abs(-X).get() == ast_abs(X).get());                        // abs(-u) = abs(u)
+    CHECK(ast_abs(cst(-3.0) * X).get() == (cst(3.0) * ast_abs(X)).get()); // abs(c u) = |c| abs(u)
+    CHECK(ast_abs(ast_abs(X)).get() == ast_abs(X).get());
+    CHECK(ast_abs(ast_pow(X, 2.0)).get() == ast_pow(X, 2.0).get());     // exposant pair
+    CHECK(ast_abs(ast_pow(X, -4.0)).get() == ast_pow(X, -4.0).get());
+    CHECK(ast_abs(ast_pow(X, 3.0)).get() != ast_pow(X, 3.0).get());     // exposant impair : inchangé
+    CHECK(ast_abs(cst(-2.0) * ast_pow(X, 2.0)).get() == (cst(2.0) * ast_pow(X, 2.0)).get());
+    CHECK(ast_abs(ast_exp(X)).get() == ast_exp(X).get());
+    CHECK_EQ(ast_abs(X)->texte(), std::string("abs(x)"));
+
+    CHECK_EQ(ast_sign(cst(-3.0))->texte(), std::string("-1"));
+    CHECK_EQ(ast_sign(cst(0.0))->texte(), std::string("0"));
+    CHECK_EQ(ast_sign(frac(5, 7))->texte(), std::string("1"));
+    CHECK_EQ(ast_sign(cst(-0.25))->texte(), std::string("-1"));
+    CHECK_EQ(ast_sign(pi())->texte(), std::string("1"));
+    CHECK(ast_sign(cst(-2.0) * X).get() == (-ast_sign(X)).get());       // sign(c u) = sign(c) sign(u)
+    CHECK(ast_sign(cst(5.0) * X).get() == ast_sign(X).get());
+    CHECK(ast_sign(ast_sign(X)).get() == ast_sign(X).get());
+    CHECK(ast_sign(ast_exp(X)).get() == cst(1.0).get());
+    CHECK_EQ(ast_sign(X)->texte(), std::string("sign(x)"));
+}
+
+TEST_CASE(hyperboliques_formes_canoniques) {
+    CHECK_EQ(ast_sinh(cst(0.0))->texte(), std::string("0"));
+    CHECK_EQ(ast_cosh(cst(0.0))->texte(), std::string("1"));
+    CHECK_EQ(ast_tanh(cst(0.0))->texte(), std::string("0"));
+    CHECK(ast_sinh(-X).get() == (-ast_sinh(X)).get());                  // impaire
+    CHECK(ast_cosh(-X).get() == ast_cosh(X).get());                     // paire
+    CHECK(ast_tanh(cst(-2.0) * X).get() == (-ast_tanh(cst(2.0) * X)).get());
+    CHECK(ast_sinh(cst(-1.0)).get() == (-ast_sinh(cst(1.0))).get());
+    CHECK(ast_cosh(-pi()).get() == ast_cosh(pi()).get());
+    CHECK_NEAR(ast_sinh(cst(0.5))->eval(0.0), std::sinh(0.5), 1e-15);   // argument réel évalué
+    CHECK_NEAR(ast_cosh(cst(0.5))->eval(0.0), std::cosh(0.5), 1e-15);
+    CHECK_NEAR(ast_tanh(cst(0.5))->eval(0.0), std::tanh(0.5), 1e-15);
+    CHECK(ast_sinh(cst(2.0))->type() == TypeNoeud::SinusHyperbolique);       // exact : non évalué
+    // Pas de réécriture en exponentielles
+    CHECK_EQ(ast_sinh(X)->texte(), std::string("sinh(x)"));
+    CHECK(appliquer(TypeNoeud::TangenteHyperbolique, X).get() == ast_tanh(X).get());
+    CHECK(appliquer(TypeNoeud::ValeurAbsolue, X).get() == ast_abs(X).get());
+}
+
+TEST_CASE(abs_sign_hyperboliques_taille_des_noeuds) {
+    // Les nouveaux noeuds ne grossissent pas : même taille que les autres fonctions unaires
+    static_assert(sizeof(ValeurAbsolue) == sizeof(Tangente), "taille inchangee");
+    static_assert(sizeof(Signe) == sizeof(Tangente), "taille inchangee");
+    static_assert(sizeof(SinusHyperbolique) == sizeof(Sinus), "taille inchangee");
+    static_assert(sizeof(CosinusHyperbolique) == sizeof(Sinus), "taille inchangee");
+    static_assert(sizeof(TangenteHyperbolique) == sizeof(Sinus), "taille inchangee");
+    CHECK_EQ(sizeof(TangenteHyperbolique), sizeof(ArcTangente));
+}
+
+TEST_CASE(abs_sign_hyperboliques_valeurs_et_derivees) {
+    const std::vector<ExprPtr> fonctions = {ast_abs(X - 1.0),         ast_abs(cst(2.0) * X + 1.0), ast_sinh(X),
+                                            ast_cosh(cst(3.0) * X),   ast_tanh(X / 2.0),           ast_sinh(ast_pow(X, 2.0)),
+                                            ast_tanh(ast_sin(X)),     ast_abs(ast_cos(X)),         ast_cosh(X) * ast_sinh(X)};
+    for (const ExprPtr& f : fonctions) {
+        const ExprPtr d = f->derivee();
+        for (double x : {-1.3, 0.37, 0.8, 2.1}) CHECK_NEAR(d->eval(x), deriveeNumerique(f, x), 1e-6);
+    }
+    CHECK_NEAR(ast_abs(X)->eval(-2.5), 2.5, 0.0);
+    CHECK_NEAR(ast_sign(X)->eval(-2.5), -1.0, 0.0);
+    CHECK_NEAR(ast_sign(X)->eval(0.0), 0.0, 0.0);
+    CHECK_NEAR(ast_sign(X)->eval(3.0), 1.0, 0.0);
+    CHECK_NEAR(ast_sinh(X)->eval(1.2), std::sinh(1.2), 1e-15);
+    CHECK_NEAR(ast_cosh(X)->eval(1.2), std::cosh(1.2), 1e-15);
+    CHECK_NEAR(ast_tanh(X)->eval(1.2), std::tanh(1.2), 1e-15);
+    // Formes exactes de quelques dérivées
+    CHECK(ast_abs(X)->derivee().get() == ast_sign(X).get());
+    CHECK(ast_sinh(X)->derivee().get() == ast_cosh(X).get());
+    CHECK(ast_cosh(X)->derivee().get() == ast_sinh(X).get());
+    CHECK_EQ(ast_sign(X)->derivee()->texte(), std::string("0"));
+    CHECK(ast_tanh(X)->derivee().get() == (1.0 - ast_pow(ast_tanh(X), 2.0)).get());
+}
+
+TEST_CASE(abs_sign_hyperboliques_primitives) {
+    const std::vector<double> points = {-1.7, -0.4, 0.9, 2.3};
+    verifierPrimitive(ast_abs(X), points);
+    verifierPrimitive(ast_abs(cst(2.0) * X - 1.0), {-1.7, -0.4, 0.9, 2.3});
+    verifierPrimitive(ast_sign(X), points);
+    verifierPrimitive(ast_sign(X - 1.0), {-1.7, -0.4, 1.9, 2.3});
+    verifierPrimitive(ast_sinh(X), points);
+    verifierPrimitive(ast_cosh(X), points);
+    verifierPrimitive(ast_tanh(X), points);
+    verifierPrimitive(ast_sinh(cst(3.0) * X + 1.0), points);
+    verifierPrimitive(ast_tanh(X / 2.0), points);
+    CHECK_EQ(ast_sinh(X)->integrer()->texte(), std::string("cosh(x)"));
+    CHECK_EQ(ast_cosh(X)->integrer()->texte(), std::string("sinh(x)"));
+    CHECK_EQ(ast_sign(X)->integrer()->texte(), std::string("abs(x)"));
+    CHECK_EQ(ast_tanh(X)->integrer()->texte(), std::string("ln(cosh(x))"));
+    CHECK_EQ(ast_abs(X)->integrer()->texte(), std::string("x*abs(x)/2"));
+    // Argument non affine : intégrale non évaluée
+    CHECK(ast_sinh(ast_pow(X, 2.0))->integrer()->type() == TypeNoeud::IntegraleNonEvaluee);
+}
+
+TEST_CASE(abs_sign_hyperboliques_limites) {
+    CHECK_EQ(valeurLimite(ast_sinh(X), INF), INF);
+    CHECK_EQ(valeurLimite(ast_sinh(X), -INF), -INF);
+    CHECK_EQ(valeurLimite(ast_cosh(X), INF), INF);
+    CHECK_EQ(valeurLimite(ast_cosh(X), -INF), INF);
+    CHECK_NEAR(valeurLimite(ast_tanh(X), INF), 1.0, 0.0);
+    CHECK_NEAR(valeurLimite(ast_tanh(X), -INF), -1.0, 0.0);
+    CHECK_EQ(valeurLimite(ast_abs(X), -INF), INF);
+    CHECK_NEAR(valeurLimite(ast_abs(X - 1.0), 1.0), 0.0, 1e-15);
+    CHECK_NEAR(valeurLimite(ast_abs(X), -3.0), 3.0, 1e-15);
+    CHECK_NEAR(valeurLimite(ast_sinh(X) / X, 0.0), 1.0, 1e-12);              // L'Hopital
+    CHECK_NEAR(valeurLimite((ast_cosh(X) - 1.0) / ast_pow(X, 2.0), 0.0), 0.5, 1e-12);
+    CHECK_NEAR(valeurLimite(ast_tanh(X) / X, 0.0), 1.0, 1e-12);
+    CHECK_NEAR(valeurLimite(ast_sign(X), 2.0), 1.0, 0.0);
+    CHECK_NEAR(valeurLimite(ast_sign(X), -2.0), -1.0, 0.0);
+    CHECK_EQ(valeurLimite(ast_sign(X), INF), 1.0);
+    // sign est discontinue en 0 : limite non déterminée (pas de limites unilatérales)
+    CHECK(limiteNonDeterminee(ast_sign(X), 0.0));
+    CHECK(limiteNonDeterminee(ast_abs(X) / X, 0.0));
+}
+
+TEST_CASE(abs_sign_hyperboliques_series) {
+    // sinh(x) = x + x^3/6 + x^5/120, cosh(x) = 1 + x^2/2 + x^4/24, tanh(x) = x - x^3/3 + 2x^5/15
+    const ExprPtr s = ast_sinh(X)->DL(0.0, 5);
+    CHECK_NEAR(s->eval(0.1), 0.1 + 0.001 / 6.0 + 1e-5 / 120.0, 1e-15);
+    CHECK_NEAR(s->derivee()->derivee()->derivee()->eval(0.0), 1.0, 1e-12);       // coefficient de x^3 : 1/6
+    const ExprPtr c = ast_cosh(X)->DL(0.0, 4);
+    CHECK_NEAR(c->eval(0.0), 1.0, 1e-15);
+    CHECK_NEAR(c->derivee()->derivee()->eval(0.0), 1.0, 1e-12);                   // 2 * (1/2)
+    CHECK_NEAR(c->eval(0.1), 1.0 + 0.01 / 2.0 + 1e-4 / 24.0, 1e-15);
+    const ExprPtr t = ast_tanh(X)->DL(0.0, 5);
+    CHECK_NEAR(t->eval(0.1), 0.1 - 0.001 / 3.0 + 2.0 * 1e-5 / 15.0, 1e-15);
+    // DL comparé à la fonction en un autre point, argument composé
+    for (const ExprPtr& f : {ast_sinh(X * X), ast_cosh(ast_sin(X)), ast_tanh(cst(2.0) * X + 0.5)}) {
+        CHECK_NEAR(f->DL(0.3, 6)->eval(0.31), f->eval(0.31), 1e-12);
+    }
+    // abs et sign : exacts là où l'argument ne s'annule pas
+    CHECK_NEAR(ast_abs(X)->DL(2.0, 3)->eval(2.4), 2.4, 1e-13);
+    CHECK_NEAR(ast_abs(X)->DL(-2.0, 3)->eval(-2.4), 2.4, 1e-13);
+    CHECK_NEAR(ast_abs(X * X - 5.0)->DL(1.0, 4)->eval(1.1), 3.79, 1e-12);
+    CHECK_NEAR(ast_sign(X - 5.0)->DL(1.0, 3)->eval(1.2), -1.0, 0.0);
+    // Zéro de l'argument : point non régulier
+    CHECK_THROWS(ast_abs(X)->DL(0.0, 2), std::domain_error);
+    CHECK_THROWS(ast_sign(X)->DL(0.0, 2), std::domain_error);
+}
+
+TEST_CASE(abs_sign_hyperboliques_identites) {
+    // Identités numériques : cosh^2 - sinh^2 = 1, tanh = sinh/cosh, derivée de |x| = sign
+    const ExprPtr id = ast_pow(ast_cosh(X), 2.0) - ast_pow(ast_sinh(X), 2.0);
+    for (double x : {-2.0, 0.3, 1.5}) {
+        CHECK_NEAR(id->eval(x), 1.0, 1e-12);
+        CHECK_NEAR(ast_tanh(X)->eval(x), ast_sinh(X)->eval(x) / ast_cosh(X)->eval(x), 1e-14);
+        CHECK_NEAR((ast_abs(X) * ast_sign(X))->eval(x), x, 0.0);
+    }
+    // simplifier conserve la fonction
+    const ExprPtr f = ast_sinh(ast_pow(X + 1.0, 2.0)) + ast_abs(X + 0.0);
+    CHECK_NEAR(f->simplifier()->eval(0.7), f->eval(0.7), 1e-12);
+}
+
 int main() { return test::executerTous(); }
