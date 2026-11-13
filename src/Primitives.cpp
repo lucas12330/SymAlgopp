@@ -1,21 +1,30 @@
 /**
  * @file Primitives.cpp
  * @brief Intégration symbolique : point d'entrée ASTNode::integrer et suite de méthodes
- *        essayées dans l'ordre, de la moins chère à la plus chère.
+ *        essayées dans l'ordre, de la moins chère à la plus chère (tableau METHODES).
  *
- *   1. règle du noeud (Regles.cpp, méthode protégée primitive()) : linéarité, primitives
- *      usuelles d'un argument affine F(ax+b)/a ;
- *   2. table étendue : 1/(a u^2 + b u + c) -> atan, 1/sqrt(...) -> asin ou ln, 1/cos^2 -> tan,
- *      tan^2, c^u pour une constante symbolique positive... ;
- *   3. changement de variable « la dérivée divise » : u = g(x) pris parmi les sous-expressions
- *      de f ; si f/g' ne s'écrit qu'en fonction de u, on intègre en u puis on revient à x.
+ *    1. règle du noeud (Regles.cpp, méthode protégée primitive()) : linéarité, facteur
+ *       constant, primitives usuelles d'un argument affine F(ax+b)/a ;
+ *    2. table étendue : 1/(a u^2 + b u + c) -> atan, 1/sqrt(...) -> asin ou ln, 1/cos^2 -> tan... ;
+ *    3. polynômes en sin u et cos u impairs en l'un des deux (PrimitivesTrigonometriques.cpp) ;
+ *    4. classe exponentielle-polynôme (PrimitivesExponentielles.cpp) ;
+ *    5. fractions rationnelles : Hermite, éléments simples (PrimitivesRationnelles.cpp) ;
+ *    6. fractions rationnelles de sin et cos : règles de Bioche, tan(u/2) ;
+ *    7. fractions rationnelles d'exponentielles : t = exp(u) ;
+ *    8. changement de variable « la dérivée divise » : u = g(x) pris parmi les
+ *       sous-expressions de f ; si f/g' ne s'écrit qu'en fonction de u, on intègre en u ;
+ *    9. intégration par parties : ln(v)^n, atan, asin, acos fois un cofacteur intégrable ;
+ *   10. radicaux : (a x + b)^(p/q), sqrt(a x^2 + b x + c) (PrimitivesAlgebriques.cpp) ;
+ *   11. équation de Risch S' + W' S = R pour R(x) exp(W(x)) ;
+ *   12. développement d'un produit en somme.
  *
- * Les méthodes suivantes (intégration par parties, fractions rationnelles, linéarisation
- * trigonométrique) s'ajouteront au tableau METHODES. Chaque méthode renvoie un pointeur
- * nul si elle ne s'applique pas : elle doit rejeter vite (type du noeud, puis forme).
+ * Chaque méthode renvoie un pointeur nul si elle ne s'applique pas : elle rejette vite, sur
+ * le type du noeud puis sur la forme. Une méthode qui en appelle d'autres (substitution,
+ * parties) n'accepte qu'un résultat complet, sans intégrale non évaluée, et sa profondeur
+ * d'imbrication est bornée.
  *
- * Coût : la règle du noeud est essayée d'abord, seule, comme avant ; les autres méthodes ne
- * servent qu'aux intégrales qu'elle ne sait pas faire. Rien n'est ajouté à la construction
+ * Coût : la règle du noeud est essayée d'abord, seule ; les autres méthodes ne servent
+ * qu'aux intégrales qu'elle ne sait pas faire. Rien n'est ajouté à la construction
  * canonique, à la dérivée ni à l'évaluation.
  */
 

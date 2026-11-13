@@ -226,12 +226,22 @@ public:
      * Nom : integrer
      * Description : Primitive symbolique, ou IntegraleNonEvaluee si aucune méthode ne
      *               s'applique (jamais de résultat faux). Méthodes essayées dans l'ordre, de
-     *               la moins chère à la plus chère : linéarité et primitive usuelle du noeud
-     *               (argument affine), table étendue (atan, asin, 1/cos^2...), changement de
-     *               variable u = g(x) quand g'(x) divise l'intégrande. 1/u s'intègre en
-     *               ln|u|, écrit ln(u) quand u est manifestement positif.
+     *               la moins chère à la plus chère (src/Primitives*.cpp) : linéarité et
+     *               primitive usuelle du noeud (argument affine), table étendue, polynômes
+     *               trigonométriques impairs, classe exponentielle-polynôme (x exp(x),
+     *               exp(x) sin(x), sin(x)^2), fractions rationnelles (Hermite, éléments
+     *               simples), fractions rationnelles de sin et cos (règles de Bioche,
+     *               tan(u/2)) ou d'exponentielles (t = exp(u)), changement de variable
+     *               u = g(x) quand g'(x) divise l'intégrande, intégration par parties (ln,
+     *               atan, asin, acos), radicaux ((a x + b)^(p/q), sqrt(a x^2 + b x + c)),
+     *               équation de Risch pour R(x) exp(W(x)), développement.
+     *               1/u s'intègre en ln|u|, écrit ln(u) quand u est manifestement positif.
+     *               Une primitive en tan(u/2) n'est continue que sur les intervalles où
+     *               tan(u/2) l'est.
      *               Avec un Journal, les étapes y sont notées (identifiants « integration.* »).
      * Utilisation : lire("2*x/(x^2 + 1)")->integrer()          // ln(x^2 + 1)
+     *               lire("x*exp(x)*sin(x)")->integrer()        // (x*(sin(x) - cos(x))/2 + cos(x)/2)*exp(x)
+     *               lire("1/(2 + cos(x))")->integrer()         // 2*3^(1/2)*atan(3^(1/2)*tan(x/2)/3)/3
      *               Journal j; lire("x*cos(x^2)")->integrer(j);  // sin(x^2)/2, étapes dans j
      */
     ExprPtr integrer() const;
