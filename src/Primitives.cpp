@@ -13,7 +13,8 @@
  *    7. fractions rationnelles d'exponentielles : t = exp(u) ;
  *    8. changement de variable « la dérivée divise » : u = g(x) pris parmi les
  *       sous-expressions de f ; si f/g' ne s'écrit qu'en fonction de u, on intègre en u ;
- *    9. intégration par parties : ln(v)^n, atan, asin, acos fois un cofacteur intégrable ;
+ *    9. intégration par parties : ln(v)^n, atan, asin, acos fois un cofacteur intégrable,
+ *       puis u = ln(x) avec x = exp(u) (sin(ln(x))) ;
  *   10. radicaux : (a x + b)^(p/q), sqrt(a x^2 + b x + c) (PrimitivesAlgebriques.cpp) ;
  *   11. équation de Risch S' + W' S = R pour R(x) exp(W(x)) ;
  *   12. développement d'un produit en somme.
@@ -151,6 +152,10 @@ bool estPositifOuNul(const ExprPtr& u) {
 
 ExprPtr lnAbs(const ExprPtr& u) { return ast_ln(estPositifOuNul(u) ? u : ast_abs(u)); }
 
+bool estBaseExponentielle(const ExprPtr& c) {
+    return !c->contientVariable() && (c->type() == TypeNoeud::Parametre || estPositifOuNul(c));
+}
+
 bool contientNonEvaluee(const ASTNode& e) {
     if (!e.contientVariable()) return false;
     switch (e.type()) {
@@ -193,14 +198,29 @@ bool echecDe(const ExprPtr& r, const ASTNode& f) {
  * Description : Substitution cible -> remplacement (comme substituer()), qui reconnaît en
  *               plus les puissances de la cible écrites autrement :
  *                 cible exp(v) : exp(r v) = cible^r (r rationnel) — exp(2x) = exp(x)^2 ;
+ *                 cible exp(v) : exp(r v + w) = cible^r exp(w) — exp(x + exp(x)) ;
  *                 cible x^n    : x^(k n) = cible^k (k entier) — x^4 = (x^2)^2 ;
+ *                 cible ln(x)  : x = exp(cible) — sin(ln(x)) dx = sin(u) exp(u) du ;
  *               et réécrit abs(w) en w quand w est manifestement positif (retour à x :
  *               ln(abs(u)) avec u = x^2 + 1 devient ln(x^2 + 1)).
  */
 class Remplacement {
 public:
-    Remplacement(const ExprPtr& cible, const ExprPtr& remplacement) : m_cible(cible), m_remplacement(remplacement) {
-        if (const Exponentielle* e = comme<Exponentielle>(cible)) m_argumentExp = e->m_argument;
+    Remplacement(const ExprPtr& cible, const ExprPtr& remplacement, bool inverserLn = false)
+        : m_cible(cible), m_remplacement(remplacement) {
+        if (const Exponentielle* e = comme<Exponentielle>(cible)) {
+            m_argumentExp = e->m_argument;
+            // v = k * terme : exp(k r terme + w) = cible^r exp(w)
+            m_termeExp = m_argumentExp;
+            m_coefficientExp = Nombre(1);
+            if (const Produit* p = comme<Produit>(m_argumentExp)) {
+                m_termeExp = produitSansCoefficient(*p);
+                m_coefficientExp = p->getCoefficient();
+            }
+        }
+        if (const Logarithme* l = comme<Logarithme>(cible); inverserLn && l && l->m_argument->type() == TypeNoeud::Variable) {
+            m_variableLn = l->m_argument;
+        }
         if (const Puissance* p = comme<Puissance>(cible); p && p->getBase()->type() == TypeNoeud::Variable) {
             if (const Constante* n = comme<Constante>(p->getExposant())) {
                 m_variable = p->getBase();
@@ -238,6 +258,10 @@ public:
                 break;
             }
             case TypeNoeud::Variable: {
+                if (e.get() == m_variableLn.get()) { // cible ln(x) : x = exp(cible)
+                    r = ast_exp(m_remplacement);
+                    break;
+                }
                 // x = cible^(1/n) si 1/n est entier (cible x^(1/2) : x = cible^2)
                 const Nombre k = m_variable ? m_exposant.inverse() : Nombre(0);
                 r = e.get() == m_variable.get() && k.estEntier() ? ast_pow(m_remplacement, nombre(k)) : e;
@@ -283,12 +307,31 @@ private:
             const ExprPtr rapport = w / m_argumentExp;
             const Constante* c = comme<Constante>(rapport);
             if (c && c->getNombre().estExact()) return ast_pow(m_remplacement, rapport);
+            // exp(x + exp(x)) = cible * exp(exp(x)) : le terme proportionnel à v sort de la somme
+            if (const Somme* s = comme<Somme>(w); s && m_termeExp->type() != TypeNoeud::Somme) {
+                for (const Terme& t : s->getTermes()) {
+                    if (t.expression.get() != m_termeExp.get() || !t.coefficient.estExact()) continue;
+                    const ExprPtr reste = w - t.expression * nombre(t.coefficient);
+                    return ast_pow(m_remplacement, nombre(t.coefficient / m_coefficientExp)) * ast_exp(appliquerA(reste));
+                }
+            }
         }
-        return ast_exp(appliquerA(w));
+        const ExprPtr argument = appliquerA(w);
+        // exp(r ln(z)) = z^r (retour à x après u = ln(x))
+        if (const Produit* p = comme<Produit>(argument); p && p->getFacteurs().size() == 1) {
+            const Facteur& f = p->getFacteurs()[0];
+            if (f.exposant.get() == un().get() && f.base->type() == TypeNoeud::Logarithme) {
+                return ast_pow(static_cast<const Logarithme&>(*f.base).m_argument, nombre(p->getCoefficient()));
+            }
+        }
+        return ast_exp(argument);
     }
 
     ExprPtr m_cible, m_remplacement;
     ExprPtr m_argumentExp; // v si la cible est exp(v)
+    ExprPtr m_termeExp;    // v sans son coefficient numérique
+    Nombre m_coefficientExp;
+    ExprPtr m_variableLn;  // x si la cible est ln(x)
     ExprPtr m_variable;    // x si la cible est x^n
     Nombre m_exposant;     // n
     std::unordered_map<const ASTNode*, ExprPtr> m_memo;
@@ -352,7 +395,7 @@ ExprPtr tableEtendue(const ExprPtr& f) {
     ExprPtr a;
     // c^(ax + b), c constante symbolique positive (pi, 2^(1/2)...) : c^u / (a ln c)
     if (!base->contientVariable()) {
-        if (estPositifOuNul(base) && coefficientLineaire(exposant, a)) return f / (a * ast_ln(base));
+        if (estBaseExponentielle(base) && coefficientLineaire(exposant, a)) return f / (a * ast_ln(base));
         return nullptr;
     }
     const Constante* c = comme<Constante>(exposant);
@@ -485,18 +528,17 @@ private:
     std::vector<const ASTNode*> m_vus;
 };
 
-} // namespace
-
 /*
- * Nom : parSubstitution
+ * Nom : substitution
  * Description : int f(x) dx = int g(u) du avec u = h(x) quand f = g(h(x)) h'(x) : pour chaque
  *               candidat u, q = f/u' (forme canonique, puis réduite par simplifier() si
  *               besoin) doit s'écrire sans x une fois u remplacé par une nouvelle variable.
  *               G = int g est calculée par integrer() (substitutions imbriquées bornées), puis
  *               u est remis à la place de la variable. Échec si G n'est que partiellement
- *               calculée.
+ *               calculée. Avec inverserLn, seul u = ln(x) est essayé, et x est remplacé par
+ *               exp(u) : sin(ln(x)) dx = sin(u) exp(u) du.
  */
-ExprPtr parSubstitution(const ExprPtr& f) {
+ExprPtr substitution(const ExprPtr& f, bool inverserLn) {
     if (profondeurSubstitution() >= PROFONDEUR_SUBSTITUTION_MAX) return nullptr;
     const ExprPtr x = variableDe(*f);
     if (!x) return nullptr;
@@ -507,17 +549,19 @@ ExprPtr parSubstitution(const ExprPtr& f) {
 
     const Candidats candidats(f, x);
     for (const ASTNode* c : candidats.liste()) {
+        // Seconde passe : seulement u = ln(x), avec x = exp(u)
+        if (inverserLn && !(c->type() == TypeNoeud::Logarithme && static_cast<const Logarithme&>(*c).m_argument.get() == x.get())) continue;
         const ExprPtr u = c->clone();
         const ExprPtr du = u->derivee();
         const Constante* duConstante = comme<Constante>(du);
         if (duConstante && duConstante->getNombre().estZero()) continue; // sin^2 + cos^2...
         const ExprPtr q = f / du;
-        ExprPtr g = Remplacement(u, t).appliquerA(q);
+        ExprPtr g = Remplacement(u, t, inverserLn).appliquerA(q);
         if (!sansX(g)) {
             // (x + 1)/(2x + 2) : seule la réduction rationnelle fait disparaître x
             const ExprPtr qs = q->simplifier();
             if (qs.get() == q.get()) continue;
-            g = Remplacement(u, t).appliquerA(qs);
+            g = Remplacement(u, t, inverserLn).appliquerA(qs);
             if (!sansX(g)) continue;
         }
 
@@ -548,6 +592,12 @@ ExprPtr parSubstitution(const ExprPtr& f) {
     }
     return nullptr;
 }
+
+} // namespace
+
+ExprPtr parSubstitution(const ExprPtr& f) { return substitution(f, false); }
+
+ExprPtr parSubstitutionLogarithme(const ExprPtr& f) { return substitution(f, true); }
 
 // ============================================================================
 // Intégration par parties
@@ -657,6 +707,7 @@ const Methode METHODES[] = {
     {parExponentielleRationnelle, "integration.rationnelle", "Fraction rationnelle de la nouvelle variable"},
     {parSubstitution, nullptr, nullptr},
     {parParties, nullptr, nullptr},
+    {parSubstitutionLogarithme, nullptr, nullptr},
     {parRadicaux, "integration.radicaux", "Fraction rationnelle de x et d'un radical"},
     {parEquationDeRisch, "integration.risch", "Primitive de la forme S(x) exp(W(x)) : S' + W' S = R"},
     {parDeveloppement, nullptr, nullptr},

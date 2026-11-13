@@ -208,7 +208,7 @@ bool lireFacteur(const ExprPtr& base, const ExprPtr& exposant, Lecture& l) {
     if (!base->contientVariable()) {
         if (!exposant->contientVariable()) return multiplierPar(l.produit, {ast_pow(base, exposant), 0, {}, {}});
         // c^(a x + b), c > 0 : exp((a x + b) ln c)
-        if (!estPositifOuNul(base) || !coefficientLineaire(exposant, a)) return false;
+        if (!estBaseExponentielle(base) || !coefficientLineaire(exposant, a)) return false;
         const ExprPtr lnc = ast_ln(base);
         const Fonction e{Genre::Exp, exposant * lnc, a * lnc};
         l.puissances.emplace_back(ast_exp(e.argument), ast_pow(base, exposant));

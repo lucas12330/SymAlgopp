@@ -98,7 +98,13 @@ ExprPtr Somme::primitive() const {
     AccumulateurSomme s;
     if (!m_constante.estZero()) s.ajouter(variableDe(*this), m_constante);
     std::vector<std::pair<const Terme*, ExprPtr>> echecs; // termes sans primitive complète
+    ExprPtr variable; // celle de la somme, pour ses termes constants (pi, un paramètre...)
     for (const Terme& t : m_termes) {
+        if (!t.expression->contientVariable()) {
+            if (!variable) variable = variableDe(*this);
+            s.ajouter(t.expression * variable, t.coefficient);
+            continue;
+        }
         const ExprPtr primitive = t.expression->integrer();
         if (contientNonEvaluee(*primitive)) echecs.emplace_back(&t, primitive);
         s.ajouter(primitive, t.coefficient);
@@ -211,7 +217,7 @@ ExprPtr Puissance::primitive() const {
     // c^(a*x + b), c constante positive différente de 1 : c^u / (a ln c)
     if (!m_base->contientVariable() && coefficientLineaire(m_exposant, a)) {
         const Constante* c = comme<Constante>(m_base);
-        if (c && c->getNombre().signe() > 0 && !c->getNombre().estUn()) {
+        if (c ? c->getNombre().signe() > 0 && !c->getNombre().estUn() : estBaseExponentielle(m_base)) {
             return clone() / (a * ast_ln(m_base));
         }
     }

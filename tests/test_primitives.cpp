@@ -176,6 +176,34 @@ TEST_CASE(substitution_autres_cas) {
     verifier({"3*x^2 + 4*x*cos(x^2) + 5", "x^3 + 5*x + 2*sin(x^2)", true, POINTS});
 }
 
+TEST_CASE(substitution_constantes_symboliques) {
+    // Après u = g(x), un terme constant (pi, racine, paramètre) s'intègre en c u, pas en c x
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    verifier({"cos(x)*(sin(x)^2 + pi)", "sin(x)^3/3 + pi*sin(x)", false, points});
+    verifier({"(ln(x)^2 + pi)/x", "ln(x)^3/3 + pi*ln(x)", false, points});
+    verifier({"x*((x^2 + 1)^(1/2) + pi)", "", false, points});
+    verifier({"sin(x)*(cos(x)^2 + 3^(1/2))", "", false, points});
+    verifier({"x*sin(x^2)*(cos(x^2) + pi)", "", false, points});
+    verifier({"exp(x)*sin(exp(x))*(cos(exp(x)) + pi)", "", false, points});
+    CHECK_EQ(lire("cos(x)*(sin(x)^3 + a)")->integrer()->texte(), std::string("sin(x)^4/4 + a*sin(x)"));
+    // Une somme en une autre variable que x
+    CHECK_EQ(lire("u^2 + pi", OptionsLecture{"u"})->integrer()->texte(), std::string("u^3/3 + pi*u"));
+    CHECK_EQ(lire("y + 1", OptionsLecture{"y"})->integrer()->texte(), std::string("y^2/2 + y"));
+}
+
+TEST_CASE(substitution_logarithme_et_exponentielle) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    // u = ln(x) : x = exp(u), puis retour exp(r ln(x)) = x^r
+    verifier({"sin(ln(x))", "x*(sin(ln(x))/2 - cos(ln(x))/2)", false, points});
+    verifier({"x*cos(ln(x))", "x^2*(sin(ln(x))/5 + 2*cos(ln(x))/5)", false, points});
+    // u = exp(x) : exp(x + exp(x)) = u exp(u)
+    verifier({"exp(x + exp(x))", "exp(exp(x))", false, {-1.3, 0.31, 0.77}});
+    verifier({"exp(2*x + exp(x))", "(exp(x) - 1)*exp(exp(x))", false, {-1.3, 0.31, 0.77}});
+    // Base symbolique : a^x = exp(x ln(a))
+    CHECK_EQ(lire("a^x")->integrer()->texte(), std::string("a^x/ln(a)"));
+    CHECK_EQ(lire("x*a^x")->integrer()->texte(), std::string("a^x*(-1/ln(a)^2 + x/ln(a))"));
+}
+
 TEST_CASE(substitution_autre_variable) {
     // Variable nommée y, puis u (le nom de la variable interne du changement de variable)
     verifier({"2*y/(y^2 + 1)", "ln(y^2 + 1)", true, POINTS}, OptionsLecture{"y"});
@@ -495,6 +523,19 @@ TEST_CASE(radicaux_d_un_trinome) {
     verifier({"1/(x*(1 - x^2)^(1/2))", "", false, {0.2, 0.5, 0.8}});
     verifier({"1/(x*(4 - x^2)^(1/2))", "", false, {0.2, 0.5, 0.8, 1.5}});
     verifier({"1/((x - 1)*(x^2 - 3*x + 2)^(1/2))", "2*(x^2 - 3*x + 2)^(1/2)/(x - 1)", false, {2.3, 2.6, 3.5}});
+    // Trinôme carré parfait : y = sqrt(a) |x + h|, primitive écrite avec sign(x + h)
+    const std::vector<double> deuxCotes = {-2.4, -0.45, 0.31, 0.77, 1.9, 3.7};
+    verifier({"(x^2)^(1/2)", "x^2*sign(x)/2", false, deuxCotes});
+    verifier({"1/(x*(x^2 - 2*x + 1)^(1/2))", "ln(abs((x - 1)/x))*sign(x - 1)", false, deuxCotes});
+    verifier({"(x^2 - 2*x + 1)^(1/2)/x", "(x - ln(abs(x)))*sign(x - 1)", false, deuxCotes});
+    verifier({"1/((x^2 - 2*x + 1)^(1/2) + x)", "", false, deuxCotes});
+    verifier({"1/((x^2 + 1)*(x^2 - 2*x + 1)^(1/2))", "", false, deuxCotes});
+    verifier({"x/((x + 3)*(4*x^2 + 4*x + 1)^(1/2))", "", false, deuxCotes});
+    verifier({"1/(x^2*(x^2)^(1/2))", "-sign(x)/(2*x^2)", false, deuxCotes});
+    verifier({"1/(x*(x^2 - 2*x + 1)^(3/2))", "", false, deuxCotes});
+    verifier({"1/(x^2 + 2*x + 1)^(1/2)", "ln(abs(x + 1))*sign(x + 1)", false, deuxCotes});
+    // Jamais réel : laissé non évalué
+    CHECK(contientIntegrale(lire("(-x^2 - 1)^(1/2)")->integrer()));
     // Hors de portée : racine d'un polynôme de degré 3 (intégrale elliptique)
     CHECK(contientIntegrale(lire("(x^3 + 1)^(1/2)")->integrer()));
     CHECK(contientIntegrale(lire("1/(x^4 + 1)^(1/2)")->integrer()));

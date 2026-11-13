@@ -275,6 +275,19 @@ ExprPtr radicalQuadratique(const ExprPtr& f, const ExprPtr& x, const Radicaux& r
         if (j) j->tronquer(etapes);
         return ExprPtr();
     };
+    const Nombre& a = Q.coefficient(2);
+    const Nombre delta = Q.coefficient(1) * Q.coefficient(1) - Nombre(4) * a * Q.coefficient(0);
+    if (a.signe() < 0 && delta.signe() <= 0) return nullptr; // jamais de racine réelle
+    if (delta.estZero()) {
+        // Q = a (x + h)^2 : y = sqrt(a) |x + h|, et sur chaque demi-droite
+        // int A + B y = int A + sqrt(a) sign(x + h) int B (x + h)
+        const Fraction centre = Fraction::variable() + Fraction(Q.coefficient(1) / (Nombre(2) * a));
+        bool completeA, completeB;
+        const ExprPtr FA = primitiveFraction(e.a, x, &completeA);
+        const ExprPtr FB = primitiveFraction(e.b * centre, x, &completeB);
+        if (!completeA || !completeB) return echec();
+        return FA + ast_pow(nombre(a), frac(1, 2)) * ast_sign(centre.versExpression(x)) * FB;
+    }
     AccumulateurSomme resultat;
     if (!e.a.estNulle()) {
         bool complete;
@@ -313,8 +326,11 @@ ExprPtr parRadicaux(const ExprPtr& f) {
     Polynome base;
     ExprPtr v;
     if (!x || !Polynome::depuisExpression(radicaux.base->clone(), base, &v) || !base.estExact() || v.get() != x.get()) return nullptr;
-    if (base.degre() == 1) return radicalAffine(f, x, radicaux, base);
-    if (base.degre() == 2 && radicaux.ordre == 2) return radicalQuadratique(f, x, radicaux, base);
+    try {
+        if (base.degre() == 1) return radicalAffine(f, x, radicaux, base);
+        if (base.degre() == 2 && radicaux.ordre == 2) return radicalQuadratique(f, x, radicaux, base);
+    } catch (const std::domain_error&) { // intégrande nulle part définie : 1/(y - sqrt(a) (x + h)) pour Q carré
+    }
     return nullptr;
 }
 

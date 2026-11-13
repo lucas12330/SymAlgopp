@@ -49,6 +49,13 @@ bool estPositifOuNul(const ExprPtr& u);
 ExprPtr lnAbs(const ExprPtr& u);
 
 /*
+ * Nom : estBaseExponentielle
+ * Description : Vrai si c^u peut s'écrire exp(u ln c) : c sans variable et manifestement
+ *               positif, ou paramètre (supposé positif, comme l'exige c^x pour x réel).
+ */
+bool estBaseExponentielle(const ExprPtr& c);
+
+/*
  * Nom : contientNonEvaluee
  * Description : Vrai si e contient une intégrale non évaluée (primitive seulement partielle).
  */
@@ -365,6 +372,13 @@ ExprPtr tableEtendue(const ExprPtr& f);
  *               en u puis on revient à x.
  */
 ExprPtr parSubstitution(const ExprPtr& f);
+
+/*
+ * Nom : parSubstitutionLogarithme
+ * Description : u = ln(x) avec x = exp(u), pour les fonctions de x et ln(x) que
+ *               l'intégration par parties ne traite pas : sin(ln(x)), x cos(ln(x)).
+ */
+ExprPtr parSubstitutionLogarithme(const ExprPtr& f);
 
 /*
  * Nom : parExponentiellePolynome
