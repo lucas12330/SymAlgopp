@@ -240,6 +240,12 @@ TEST_CASE(factorisation_complete_sur_q) {
     facteurs = p.facteursIrreductibles(contenu, &complet);
     CHECK(complet);
     CHECK_EQ(facteurs.size(), std::size_t(1));
+    // Hors du domaine de Zassenhaus (coefficients trop grands), un reste de degré 2 ou 3 sans
+    // racine rationnelle est tout de même certifié irréductible
+    CHECK(Polynome::depuisExpression(lire("x^3 + x^2 + 1000000000000000003"), p));
+    facteurs = p.facteursIrreductibles(contenu, &complet);
+    CHECK(complet);
+    CHECK_EQ(facteurs.size(), std::size_t(1));
     // Coefficient réel : factorisation non certifiée, signalée
     CHECK(Polynome::depuisExpression(X * X * cst(0.5) - cst(0.5), p));
     p.facteursIrreductibles(contenu, &complet);

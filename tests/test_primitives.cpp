@@ -231,12 +231,36 @@ TEST_CASE(rationnelle_hermite) {
     verifier({"1/(x^2*(x^2 + 2)^2)", "", false, points});
 }
 
+TEST_CASE(rationnelle_grandes_multiplicites) {
+    // Vérification exacte : F' - f est la fraction nulle. La réduction d'Hermite accumule sa
+    // partie rationnelle sur un dénominateur commun (une seule réduction, à la fin).
+    for (const char* texte : {"1/(x^2 + 1)^6", "1/(x^2 + 1)^32", "1/((x - 1)^9*(x + 2)^7*(x^2 + x + 1)^3)", "x^3/(2*x^2 - 3)^12"}) {
+        const ExprPtr f = lire(texte);
+        const ExprPtr F = f->integrer();
+        CHECK(!contientIntegrale(F));
+        Fraction ecart;
+        const bool rationnelle = versFraction(F->derivee() - f, X, ecart);
+        CHECK(rationnelle);
+        CHECK(rationnelle && ecart.estNulle());
+    }
+    verifier({"1/(x^2 + 1)^6", "(315*x^9 + 1470*x^7 + 2688*x^5 + 2370*x^3 + 965*x)/(1280*(x^2 + 1)^5) + 63*atan(x)/256", false, {}});
+    verifier({"(x^2 + 2*x - 1)/(x^3 - x)", "ln(abs((x^2 - x)/(x + 1)))", false, {-3.7, -0.45, 0.31, 4.3}});
+}
+
 TEST_CASE(rationnelle_substitution_monomiale) {
     // u = x^k quand x f(x) est une fraction en x^k
     const std::vector<double> points = {-1.7, -0.45, 0.31, 2.3};
     verifier({"x/(x^4 + 1)", "atan(x^2)/2", true, points});
     verifier({"x^2/(x^6 + 1)", "atan(x^3)/3", true, points});
     verifier({"x^3/(x^8 + 1)", "atan(x^4)/4", true, points});
+    verifier({"x/((x^4 + 1)*(x^2 + 1))", "ln(x^2 + 1)/4 - ln(x^4 + 1)/8 + atan(x^2)/4", false, points});
+    // Au journal : la tentative en x, abandonnée, laisse la place au changement de variable
+    Journal j;
+    lire("x/((x^4 + 1)*(x^2 + 1))")->integrer(j);
+    std::vector<std::string> regles;
+    for (const Etape& e : j.etapes()) regles.push_back(e.regle);
+    CHECK(regles == std::vector<std::string>({"integration.substitution", "integration.elements_simples", "integration.rationnelle"}));
+    if (!j.vide()) CHECK_EQ(j.etapes()[0].description, std::string("Changement de variable u = x^2"));
 }
 
 TEST_CASE(rationnelle_outils) {

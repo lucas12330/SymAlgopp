@@ -502,7 +502,8 @@ bool factoriserSansCarre(const Polynome& g, std::vector<Polynome>& facteurs) {
         facteurs.push_back(lineaire);
     }
     if (reste.degre() < 1) return true;
-    const bool certifie = reste.degre() == 1;
+    // Sans racine rationnelle, un polynôme exact de degré 2 ou 3 est irréductible sur Q
+    const bool certifie = reste.degre() == 1 || (reste.degre() <= 3 && g.estExact());
     facteurs.push_back(std::move(reste));
     return certifie;
 }

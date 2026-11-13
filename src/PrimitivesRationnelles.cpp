@@ -356,9 +356,12 @@ namespace {
  *               et la partie b/dMoins passe dans g.
  */
 void hermite(Polynome a, const Polynome& d, Fraction& g, Polynome& a2, Polynome& dEtoile) {
-    g = Fraction();
     Polynome dMoins = Polynome::pgcd(d, d.derivee());
     dEtoile = quotient(d, dMoins);
+    // g est accumulée sur le dénominateur commun pgcd(d, d') : chaque dMoins divise le
+    // précédent, et cofacteur = denominateur / dMoins. Une seule réduction, à la fin.
+    const Polynome denominateur = dMoins;
+    Polynome numerateur, cofacteur = polynomeUn();
     while (dMoins.degre() > 0) {
         const Polynome dMoinsDerivee = dMoins.derivee();
         const Polynome dMoins2 = Polynome::pgcd(dMoins, dMoinsDerivee);
@@ -369,9 +372,11 @@ void hermite(Polynome a, const Polynome& d, Fraction& g, Polynome& a2, Polynome&
         const Polynome b = reste(u * a, dMoinsEtoile);
         const Polynome c = quotient(a - b * p, dMoinsEtoile);
         a = c - b.derivee() * quotient(dEtoile, dMoinsEtoile);
-        g = g + Fraction(b, dMoins);
+        numerateur = numerateur + b * cofacteur;
+        cofacteur = cofacteur * dMoinsEtoile;
         dMoins = dMoins2;
     }
+    g = numerateur.estNul() ? Fraction() : Fraction(std::move(numerateur), denominateur);
     a2 = std::move(a);
 }
 
@@ -582,6 +587,7 @@ void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle
 ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
     AccumulateurSomme somme;
     Fraction rationnelle, nonIntegre;
+    const std::size_t etapes = journal::actif() ? journal::actif()->etapes().size() : 0;
     integrerFraction(f, x, rationnelle, somme, nonIntegre);
     if (complete) *complete = nonIntegre.estNulle();
     if (!nonIntegre.estNulle()) {
@@ -589,11 +595,31 @@ ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
         Fraction h;
         int k;
         if (substitutionMonomiale(f, h, k)) {
+            // Au journal, la tentative en x laisse la place au changement de variable
+            Journal* const j = journal::actif();
+            std::vector<Etape> tentative;
+            if (j) {
+                tentative.assign(j->etapes().begin() + static_cast<std::ptrdiff_t>(etapes), j->etapes().end());
+                j->tronquer(etapes);
+            }
+            const ExprPtr u = ast_pow(x, nombre(Nombre(k)));
+            journal::noter([&](Journal& jr) {
+                jr.ajouter("integration.substitution", "Changement de variable u = " + u->texte(), f.versExpression(x),
+                           h.versExpression(var("u")));
+            });
             bool reussie;
-            const ExprPtr resultat = primitiveFraction(h, ast_pow(x, nombre(Nombre(k))), &reussie);
+            ExprPtr resultat;
+            {
+                const journal::SousNiveau sous;
+                resultat = primitiveFraction(h, u, &reussie);
+            }
             if (reussie) {
                 if (complete) *complete = true;
                 return resultat;
+            }
+            if (j) {
+                j->tronquer(etapes);
+                for (Etape& e : tentative) j->ajouter(std::move(e.regle), std::move(e.description), std::move(e.avant), std::move(e.apres));
             }
         }
         somme.ajouter(fabriquer<IntegraleNonEvaluee>(nonIntegre.versExpression(x)), Nombre(1));
