@@ -14,13 +14,16 @@
 #include <atomic>
 #include <cstdlib>
 #include <new>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "ASTNode.hpp"
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
+#include "Latex.hpp"
 #include "Lecture.hpp"
+#include "Solveur.hpp"
 
 using namespace symalgo;
 
@@ -444,5 +447,74 @@ BENCHMARK(BM_SymAlgo_EvalBloc_sign);
 BENCHMARK(BM_SymAlgo_EvalBloc_sinh);
 BENCHMARK(BM_SymAlgo_EvalBloc_cosh);
 BENCHMARK(BM_SymAlgo_EvalBloc_tanh);
+
+// Résolution d'équations (sans journal) : garde-fou du coût des points d'instrumentation du
+// journal des étapes, qui ne doivent rien coûter tant qu'aucun journal n'est actif.
+static void BM_SymAlgo_Resoudre(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr polynome = ast_pow(x, 2.0) - 5.0 * x + 6.0;
+    const ExprPtr exponentielle = ast_exp(2.0 * x) - 3.0 * ast_exp(x) + 2.0;
+    const ExprPtr sinus = ast_sin(x) - frac(1, 2);
+    const ExprPtr logarithme = x * ast_ln(x);
+    const ExprPtr degre5 = ast_pow(x, 5.0) - 3.0 * ast_pow(x, 3.0) + x - 1.0;
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(resoudre(polynome));
+        benchmark::DoNotOptimize(resoudre(exponentielle));
+        benchmark::DoNotOptimize(resoudre(sinus));
+        benchmark::DoNotOptimize(resoudre(logarithme));
+        benchmark::DoNotOptimize(resoudre(degre5));
+    }
+}
+BENCHMARK(BM_SymAlgo_Resoudre)->Unit(benchmark::kMicrosecond);
+
+// Rendu LaTeX (expression courante, puis dérivée 6e de exp(sin(x)) x^2) : SymAlgo++ latex()
+// contre GiNaC (os << GiNaC::latex << e) sur la même expression.
+static void BM_SymAlgo_Latex(benchmark::State& state) {
+    const ExprPtr e = lire(TEXTE_COURANT);
+    for (auto _ : state) {
+        std::string t = latex(e);
+        benchmark::DoNotOptimize(t);
+    }
+    state.counters["caracteres"] = static_cast<double>(latex(e).size());
+}
+BENCHMARK(BM_SymAlgo_Latex);
+
+static void BM_SymAlgo_LatexGrande(benchmark::State& state) {
+    ExprPtr d = ast_exp(ast_sin(var("x"))) * ast_pow(var("x"), 2.0);
+    for (int k = 0; k < 8; ++k) d = d->derivee();
+    for (auto _ : state) {
+        std::string t = latex(d);
+        benchmark::DoNotOptimize(t);
+    }
+    state.counters["caracteres"] = static_cast<double>(latex(d).size());
+}
+BENCHMARK(BM_SymAlgo_LatexGrande)->Unit(benchmark::kMicrosecond);
+
+static void latexGinac(benchmark::State& state, const GiNaC::ex& e) {
+    for (auto _ : state) {
+        std::ostringstream os;
+        os << GiNaC::latex << e;
+        std::string t = os.str();
+        benchmark::DoNotOptimize(t);
+    }
+    std::ostringstream os;
+    os << GiNaC::latex << e;
+    state.counters["caracteres"] = static_cast<double>(os.str().size());
+}
+
+static void BM_GiNaC_Latex(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    GiNaC::symtab table;
+    table["x"] = x;
+    GiNaC::parser lecteur(table);
+    latexGinac(state, lecteur(TEXTE_COURANT));
+}
+BENCHMARK(BM_GiNaC_Latex);
+
+static void BM_GiNaC_LatexGrande(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    latexGinac(state, (GiNaC::exp(GiNaC::sin(x)) * GiNaC::pow(x, 2)).diff(x, 8));
+}
+BENCHMARK(BM_GiNaC_LatexGrande)->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_MAIN();
