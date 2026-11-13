@@ -316,3 +316,95 @@ TEST_CASE(rejets_rapides_de_signe) {
     CHECK(!integrerDefinie(1.0 / (X * X - 1.0), 0.0, 2.0).estFinie());
     CHECK_NEAR(integrerDefinie(1.0 / (X * X - 1.0), 2.0, 3.0).valeur, 0.5 * std::log(1.5), 1e-10);
 }
+
+// ============================================================================
+// abs et sign : primitives continues (chemin exact juste), ruptures coupées en numérique
+// ============================================================================
+
+TEST_CASE(abs_sign_chemin_exact) {
+    // Les primitives de sign(u) (|u|/a) et abs(u) (u|u|/(2a)) sont continues : le chemin exact
+    // reste valable même quand u s'annule dans [a, b]
+    const ResultatIntegrale s = integrerDefinie(ast_sign(X), -1.0, 2.0);
+    CHECK(s.estExacte());
+    CHECK_EQ(s.exacte->texte(), "1");
+    CHECK_EQ(s.erreurEstimee, 0.0);
+    // u ne s'annule pas sur [1, 2] : exact aussi
+    const ResultatIntegrale p = integrerDefinie(ast_sign(X), 1.0, 2.0);
+    CHECK(p.estExacte());
+    CHECK_EQ(p.exacte->texte(), "1");
+    CHECK_EQ(integrerDefinie(ast_sign(X), -3.0, -1.0).valeur, -2.0);
+    accord(ast_abs(X), cst(-1.0), cst(1.0), "1");
+    accord(ast_abs(X - 1.0), cst(-2.0), cst(3.0), "13/2"); // 9/2 + 2
+    accord(ast_abs(cst(2.0) * X - 1.0), cst(0.0), cst(1.0), "1/2");
+    accord(ast_sign(cst(1.0) - X), cst(-1.0), cst(2.0), "1");
+    // Bornes paramétrées : F(b) - F(a) reste vrai pour tout p
+    const ResultatIntegrale q = integrerDefinie(ast_sign(X), cst(0.0), param("p"));
+    CHECK(q.estExacte());
+    CHECK_EQ(q.exacte->texte(), "abs(p)");
+    // Primitive absente (produit de deux facteurs en x) : numérique, avec un point anguleux ou un saut en 0
+    const ResultatIntegrale xs = integrerDefinie(X * ast_sign(X), -1.0, 2.0);
+    CHECK(!xs.estExacte());
+    CHECK_NEAR(xs.valeur, 2.5, 1e-9);
+    CHECK_NEAR(integrerDefinie(X * ast_abs(X), -1.0, 2.0).valeur, 7.0 / 3.0, 1e-9);
+    CHECK_NEAR(integrerDefinie(ast_abs(X) * ast_sin(X), -PI, PI).valeur, 0.0, 1e-9);
+    CHECK_NEAR(integrerDefinie(ast_sign(X) * ast_exp(X), -1.0, 1.0).valeur, std::exp(1.0) + std::exp(-1.0) - 2.0, 1e-9);
+    CHECK_NEAR(integrerDefinie(ast_sign(ast_cos(X)), 0.0, PI).valeur, 0.0, 1e-9);
+}
+
+TEST_CASE(abs_sign_singularites) {
+    // 1/x, 1/|x|, sign(x)/x = 1/|x| : divergentes sur [-1, 1], jamais de valeur finie ni exacte
+    for (const ExprPtr& f : {1.0 / X, ast_pow(ast_abs(X), -1.0), ast_sign(X) / X, 1.0 / (ast_abs(X) - frac(1, 2)),
+                             ast_sign(X) / (X * X - 1.0), ast_sign(X) + 1.0 / X}) {
+        const ResultatIntegrale r = integrerDefinie(f, -2.0, 2.0);
+        CHECK(!r.estExacte());
+        CHECK(!r.estFinie());
+    }
+    // Loin de la singularité : finie et juste
+    CHECK_NEAR(integrerDefinie(ast_pow(ast_abs(X), -1.0), 1.0, 2.0).valeur, std::log(2.0), 1e-10);
+    CHECK_NEAR(integrerDefinie(ast_pow(ast_abs(X), -1.0), -2.0, -1.0).valeur, std::log(2.0), 1e-10);
+    const ResultatIntegrale a = integrerDefinie(ast_sign(X) + 1.0 / X, 1.0, 2.0);
+    CHECK(a.estExacte());
+    CHECK_NEAR(a.valeur, 1.0 + std::log(2.0), 1e-12);
+    // Singularités intégrables d'une valeur absolue : coupure au zéro de l'argument
+    CHECK_NEAR(integrerDefinie(ast_pow(ast_abs(X), frac(-1, 2)), -1.0, 1.0).valeur, 4.0, 1e-6);
+    CHECK_NEAR(integrerDefinie(ast_ln(ast_abs(X)), -1.0, 1.0).valeur, -2.0, 1e-8);
+    // ln|x^2 - 1/4| sur [0, 1] : deux pôles logarithmiques (en 1/2 dans l'intervalle)
+    CHECK_NEAR(integrerDefinie(ast_ln(ast_abs(X * X - frac(1, 4))), 0.0, 1.0).valeur,
+               0.5 * std::log(0.5) + 1.5 * std::log(1.5) - 2.0, 1e-8);
+    // abs(u) >= 0 et sign(u) du signe de u : 1/(1 + |x|) et 1/(2 + |x^3 - x|) sont définies partout
+    CHECK_NEAR(integrerDefinie(1.0 / (1.0 + ast_abs(X)), -1.0, 1.0).valeur, 2.0 * std::log(2.0), 1e-10);
+    CHECK(integrerDefinie(1.0 / (2.0 + ast_abs(X * X * X - X)), -2.0, 2.0).estFinie());
+    CHECK_NEAR(integrerDefinie(1.0 / (ast_cosh(X)), -1.0, 1.0).valeur, 2.0 * std::atan(std::sinh(1.0)), 1e-10);
+}
+
+TEST_CASE(abs_sign_ruptures_coupees) {
+    // Sauts de sign(u) aux zéros de u : sans coupure, chaque saut coûte une trentaine de bissections
+    // et le budget (200) ne suffit plus. Tolérance 1e-10 attendue, erreur estimée comprise.
+    struct Cas {
+        ExprPtr f;
+        double a, b, attendu;
+    };
+    const std::vector<Cas> cas = {
+        {ast_sign(ast_sin(X)), 0.0, 20.0, 20.0 - 6.0 * PI},
+        {ast_sign(ast_sin(cst(5.0) * X)), 0.0, 10.0, 16.0 * PI / 5.0 - 10.0},
+        {ast_sign(ast_sin(X)), 0.0, 10.0, 4.0 * PI - 10.0},
+        {X * ast_sign(ast_sin(X)), 0.0, 7.0, 24.5 - 3.0 * PI * PI},
+        {ast_sign(X * X - frac(1, 2)) * X * X, 0.0, 2.0, (8.0 - 2.0 * std::pow(0.5, 1.5)) / 3.0},
+        {ast_abs(X * X - frac(1, 3)), 0.0, 2.0, 2.0 + 4.0 / (9.0 * std::sqrt(3.0))},
+        {ast_abs(ast_sin(cst(5.0) * X)), 0.0, 10.0, 6.0 + (1.0 + std::cos(50.0)) / 5.0},
+    };
+    for (const Cas& c : cas) {
+        const ResultatIntegrale r = integrerDefinie(c.f, c.a, c.b);
+        CHECK(r.estFinie());
+        CHECK_NEAR(r.valeur, c.attendu, 1e-9);
+        CHECK(r.erreurEstimee <= 1e-9);
+        // Le chemin numérique forcé donne la même chose
+        const ResultatIntegrale n = integrerDefinie(c.f, c.a, c.b, numerique());
+        CHECK_NEAR(n.valeur, c.attendu, 1e-9);
+        CHECK(n.erreurEstimee <= 1e-9);
+    }
+    // Deux arguments différents dans une somme : sin (0, pi, 2pi, 3pi) et cos (pi/2, 3pi/2, 5pi/2) ; (4 pi - 10) + (3 pi - 10)
+    const ResultatIntegrale somme = integrerDefinie(ast_sign(ast_sin(X)) + ast_sign(ast_cos(X)), 0.0, 10.0);
+    CHECK_NEAR(somme.valeur, 7.0 * PI - 20.0, 1e-9);
+    CHECK(somme.erreurEstimee <= 1e-9);
+}

@@ -482,6 +482,37 @@ static void BM_SymAlgo_IntegraleDefinie_Gauss(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_IntegraleDefinie_Gauss);
 
+// integrale de sign(x) sur [-1, 2] : primitive |x| continue, chemin exact malgre le zero de x
+static void BM_SymAlgo_IntegraleDefinie_SignExacte(benchmark::State& state) {
+    const ExprPtr f = ast_sign(var("x"));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -1.0, 2.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_SignExacte);
+
+// integrale de sign(sin(5x)) sur [0, 10] : 16 sauts, coupes aux zeros de sin(5x)
+static void BM_SymAlgo_IntegraleDefinie_SautsSign(benchmark::State& state) {
+    const ExprPtr f = ast_sign(ast_sin(cst(5.0) * var("x")));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 10.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_SautsSign);
+
+// integrale de 1/(1 + |x|) sur [-1, 1] : denominateur de signe demontre sans solveur
+static void BM_SymAlgo_IntegraleDefinie_InverseAbs(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = 1.0 / (1.0 + ast_abs(x));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -1.0, 1.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_InverseAbs);
+
 static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
     GiNaC::symbol x("x");
     for (auto _ : state) {
