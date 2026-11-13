@@ -1,8 +1,9 @@
 /**
  * @file test_primitives.cpp
  * @brief Tests de l'intégration symbolique : table étendue, ln|u|, fractions rationnelles,
- *        changement de variable « la dérivée divise », intégrales hors de portée et journal
- *        des étapes.
+ *        changement de variable « la dérivée divise », classe exponentielle-polynôme,
+ *        règles de Bioche, équation de Risch, intégration par parties, radicaux,
+ *        intégrales hors de portée et journal des étapes.
  *
  * Chaque primitive F de f est vérifiée par dérivation : F' - f est nul exactement quand la
  * forme canonique le permet, sinon F' et f sont comparés en plusieurs points (écart relatif
@@ -270,12 +271,248 @@ TEST_CASE(rationnelle_outils) {
 }
 
 // ============================================================================
+// Classe exponentielle-polynôme : polynômes, exp, sin, cos, sinh, cosh d'arguments affines
+// ============================================================================
+
+TEST_CASE(exponentielle_polynome) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"x*exp(x)", "(x - 1)*exp(x)", false, points});
+    verifier({"x^2*exp(x)", "(x^2 - 2*x + 2)*exp(x)", false, points});
+    verifier({"(x + 1)^2*exp(3*x)", "(x^2/3 + 4*x/9 + 5/27)*exp(3*x)", false, points});
+    verifier({"x/exp(x)^2", "(-x/2 - 1/4)*exp(-2*x)", false, points});
+    verifier({"x*sin(x)", "-x*cos(x) + sin(x)", false, points});
+    verifier({"x^2*sin(2*x)", "x*sin(2*x)/2 - x^2*cos(2*x)/2 + cos(2*x)/4", false, points});
+    verifier({"exp(x)*sin(x)", "(sin(x)/2 - cos(x)/2)*exp(x)", false, points});
+    verifier({"exp(2*x)*sin(3*x)", "(2*sin(3*x)/13 - 3*cos(3*x)/13)*exp(2*x)", false, points});
+    verifier({"exp(-x)*cos(2*x + 1)", "", false, points});
+    verifier({"x*exp(x)*sin(x)", "", false, points});
+    verifier({"x^2*exp(x)*cos(x)", "", false, points});
+    // Pentes symboliques et bases constantes
+    verifier({"x*sin(pi*x)", "sin(pi*x)/pi^2 - x*cos(pi*x)/pi", false, points});
+    verifier({"x*2^x", "2^x*(-1/ln(2)^2 + x/ln(2))", false, points});
+    verifier({"2^x*sin(x)", "", false, points});
+    // Un facteur constant symbolique sort de l'intégrale
+    CHECK_EQ(lire("a*x*exp(x)")->integrer()->texte(), std::string("a*(x - 1)*exp(x)"));
+}
+
+TEST_CASE(linearisation_trigonometrique) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"sin(x)^2", "x/2 - sin(2*x)/4", false, points});
+    verifier({"cos(x)^2", "x/2 + sin(2*x)/4", false, points});
+    verifier({"sin(x)^4", "3*x/8 - sin(2*x)/4 + sin(4*x)/32", false, points});
+    verifier({"sin(x)^2*cos(x)^2", "x/8 - sin(4*x)/32", false, points});
+    verifier({"sin(2*x)*cos(3*x)", "cos(x)/2 - cos(5*x)/10", false, points});
+    verifier({"cos(3*x)*cos(5*x)", "sin(2*x)/4 + sin(8*x)/16", false, points});
+    verifier({"sin(x)*sin(2*x)*sin(3*x)", "", false, points});
+    verifier({"x*sin(x)^2", "", false, points});
+    // Phases : un argument constant passe dans le coefficient
+    verifier({"sin(x + 1)*cos(x - 1)", "x*sin(2)/2 - cos(2*x)/4", false, points});
+}
+
+TEST_CASE(hyperboliques_produits) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"sinh(x)^2", "-x/2 + sinh(2*x)/4", false, points});
+    verifier({"x*cosh(x)", "x*sinh(x) - cosh(x)", false, points});
+    verifier({"x^2*cosh(x)", "-2*x*cosh(x) + x^2*sinh(x) + 2*sinh(x)", false, points});
+    verifier({"sinh(2*x)*cosh(3*x)", "-cosh(x)/2 + cosh(5*x)/10", false, points});
+    verifier({"cos(x)*cosh(x)", "sin(x)*cosh(x)/2 + cos(x)*sinh(x)/2", false, points});
+    verifier({"x*cos(x)*cosh(x)", "", false, points});
+    verifier({"exp(x)*cosh(x)", "x/2 + exp(2*x)/4", false, points});
+    verifier({"x*exp(x)*cosh(2*x)", "", false, points});
+}
+
+// ============================================================================
+// Fractions rationnelles de sinus et cosinus : règles de Bioche, tan(u/2)
+// ============================================================================
+
+TEST_CASE(trigonometrie_puissances_impaires) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"sin(x)^3", "cos(x)^3/3 - cos(x)", false, points});
+    verifier({"cos(x)^3", "-sin(x)^3/3 + sin(x)", false, points});
+    verifier({"sin(x)^3*cos(x)^2", "-cos(x)^3/3 + cos(x)^5/5", false, points});
+    verifier({"sin(x)^2*cos(x)^3", "sin(x)^3/3 - sin(x)^5/5", false, points});
+    // Les deux règles s'appliquent : la plus courte
+    verifier({"sin(x)^3*cos(x)", "sin(x)^4/4", false, points});
+    verifier({"sin(2*x)^3", "cos(2*x)^3/6 - cos(2*x)/2", false, points});
+}
+
+TEST_CASE(trigonometrie_bioche) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    verifier({"1/sin(x)", "ln(abs((cos(x) - 1)/(cos(x) + 1)))/2", false, points});
+    verifier({"1/cos(x)", "ln(abs((sin(x) + 1)/(sin(x) - 1)))/2", false, points});
+    verifier({"sin(x)/cos(x)^2", "1/cos(x)", false, points});
+    verifier({"sin(x)/(1 + cos(x)^2)", "-atan(cos(x))", false, points});
+    verifier({"cos(x)/(1 + sin(x)^2)", "atan(sin(x))", false, points});
+    verifier({"1/cos(x)^3", "", false, points});
+    verifier({"cos(2*x)/cos(x)", "", false, points});
+    // t = tan(u) ; atan(tan(u)) est récrit u
+    verifier({"tan(x)^4", "x + tan(x)^3/3 - tan(x)", false, points});
+    verifier({"1/cos(x)^4", "tan(x)^3/3 + tan(x)", false, points});
+    verifier({"1/(1 + sin(x)^2)", "2^(1/2)*atan(2^(1/2)*tan(x))/2", false, points});
+    verifier({"1/(4*sin(x)^2 + 9*cos(x)^2)", "atan(2*tan(x)/3)/6", false, points});
+    verifier({"sin(x)/(sin(x) + cos(x))", "", false, points});
+    verifier({"tan(3*x)^2", "-x + tan(3*x)/3", false, {0.1, 0.3, 0.7}});
+}
+
+TEST_CASE(trigonometrie_tangente_de_l_angle_moitie) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    verifier({"1/(1 + cos(x))", "tan(x/2)", false, points});
+    verifier({"1/(1 + sin(x))", "-2/(tan(x/2) + 1)", false, points});
+    verifier({"1/(2 + cos(x))", "2*3^(1/2)*atan(3^(1/2)*tan(x/2)/3)/3", false, points});
+    verifier({"1/(3 + 5*cos(x))", "ln(abs((tan(x/2) + 2)/(tan(x/2) - 2)))/4", false, points});
+    verifier({"1/(5 + 4*sin(x))", "2*atan(5*tan(x/2)/3 + 4/3)/3", false, points});
+    verifier({"1/(1 + sin(x) + cos(x))", "ln(abs(tan(x/2) + 1))", false, points});
+    verifier({"(1 - cos(x))/(1 + cos(x))", "-x + 2*tan(x/2)", false, points});
+    verifier({"1/(sin(x) + cos(x))", "", false, points});
+}
+
+// ============================================================================
+// Fractions rationnelles d'exponentielles et de fonctions hyperboliques : t = exp(u)
+// ============================================================================
+
+TEST_CASE(exponentielle_rationnelle) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"1/(exp(x) + 1)", "x - ln(exp(x) + 1)", false, points});
+    verifier({"1/(1 + exp(2*x))", "x - ln(exp(2*x) + 1)/2", false, points});
+    verifier({"(exp(x) - 1)/(exp(x) + 1)", "-x + 2*ln(exp(x) + 1)", false, points});
+    verifier({"1/cosh(x)", "2*atan(exp(x))", false, points});
+    verifier({"1/sinh(x)", "ln(abs((exp(x) - 1)/(exp(x) + 1)))", false, points});
+    verifier({"1/(sinh(x) + 2*cosh(x))", "2*3^(1/2)*atan(3^(1/2)*exp(x))/3", false, points});
+    verifier({"1/(exp(x/2) + exp(x))", "", false, points});
+    verifier({"exp(3*x)/(exp(x) + 2)", "", false, points});
+    verifier({"1/(exp(x) - 1)^2", "", false, points});
+}
+
+// ============================================================================
+// Équation de Risch : R(x) exp(W(x))
+// ============================================================================
+
+TEST_CASE(equation_de_risch) {
+    const std::vector<double> points = {-1.3, 0.31, 0.77, 1.9};
+    verifier({"exp(x)*(x - 1)/x^2", "exp(x)/x", false, points});
+    verifier({"x*exp(x)/(x + 1)^2", "exp(x)/(x + 1)", false, points});
+    verifier({"(x^2 - 2*x + 2)*exp(x)/x^3", "(x - 1)*exp(x)/x^2", false, points});
+    verifier({"(2*x^2 + 1)*exp(x^2)", "x*exp(x^2)", false, points});
+    verifier({"(1 + 2*x)*exp(x + x^2)", "exp(x^2 + x)", true, points});
+    verifier({"x^3*exp(x^2)", "(x^2/2 - 1/2)*exp(x^2)", false, points});
+    // Somme dont aucun terme ne s'intègre seul
+    verifier({"exp(x)/x - exp(x)/x^2", "exp(x)/x", false, points});
+    verifier({"exp(x)/x - exp(x)/x^2 + cos(x)", "exp(x)/x + sin(x)", false, points});
+    // Pas de solution rationnelle : primitive non élémentaire, laissée non évaluée
+    for (const char* texte : {"exp(x^2)", "x^2*exp(x^2)", "exp(x)/x", "exp(x^2)*(2*x^3 + 3*x^2 - x + 1)", "exp(x)/x + exp(x)/x^2"}) {
+        CHECK(contientIntegrale(lire(texte)->integrer()));
+    }
+}
+
+// ============================================================================
+// Intégration par parties
+// ============================================================================
+
+TEST_CASE(integration_par_parties) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    verifier({"x*ln(x)", "-x^2/4 + x^2*ln(x)/2", false, points});
+    verifier({"x^2*ln(x)", "-x^3/9 + x^3*ln(x)/3", false, points});
+    verifier({"ln(x)^2", "2*x - 2*x*ln(x) + x*ln(x)^2", false, points});
+    verifier({"ln(x)^3", "-6*x + 6*x*ln(x) - 3*x*ln(x)^2 + x*ln(x)^3", false, points});
+    verifier({"ln(x)/x^2", "-1/x - ln(x)/x", false, points});
+    verifier({"ln(x^2 + 1)", "-2*x + x*ln(x^2 + 1) + 2*atan(x)", false, points});
+    verifier({"x*atan(x)", "-x/2 + x^2*atan(x)/2 + atan(x)/2", false, points});
+    verifier({"atan(x)/x^2", "-atan(x)/x - ln(x^2 + 1)/2 + ln(abs(x))", false, points});
+    verifier({"x*ln(x)^2", "", false, points});
+    verifier({"x*ln(x^2 + x + 1)", "", false, points});
+    verifier({"ln(x + (x^2 + 1)^(1/2))", "-(x^2 + 1)^(1/2) + x*ln(x + (x^2 + 1)^(1/2))", false, points});
+    verifier({"atan(x^(1/2))", "", false, points});
+    // Arcs : le reste est une intégrale à radical
+    const std::vector<double> arcs = {-0.6, 0.2, 0.5, 0.8};
+    verifier({"x*asin(x)", "x*(-x^2 + 1)^(1/2)/4 + x^2*asin(x)/2 - asin(x)/4", false, arcs});
+    verifier({"x*acos(x)", "", false, arcs});
+    verifier({"asin(x)^2", "-2*x + x*asin(x)^2 + 2*(-x^2 + 1)^(1/2)*asin(x)", false, arcs});
+    verifier({"asin(x)/x^2", "", false, arcs});
+}
+
+// ============================================================================
+// Radicaux : (a x + b)^(p/q) et sqrt(a x^2 + b x + c)
+// ============================================================================
+
+TEST_CASE(radicaux_d_une_fonction_affine) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    verifier({"x*(x + 1)^(1/2)", "-2*(x + 1)^(3/2)/3 + 2*(x + 1)^(5/2)/5", false, points});
+    verifier({"x^2*(2*x + 1)^(1/2)", "", false, points});
+    verifier({"1/(1 + x^(1/2))", "2*x^(1/2) - 2*ln(x^(1/2) + 1)", false, points});
+    verifier({"x^(1/2)/(1 + x)", "2*x^(1/2) - 2*atan(x^(1/2))", false, points});
+    verifier({"1/(x^(1/2) + x^(1/3))", "2*x^(1/2) - 3*x^(1/3) + 6*x^(1/6) - 6*ln(x^(1/6) + 1)", false, points});
+    verifier({"1/(x*(x + 1)^(1/2))", "ln(abs(((x + 1)^(1/2) - 1)/((x + 1)^(1/2) + 1)))", false, points});
+    verifier({"(x + 1)^(1/3)*x", "-3*(x + 1)^(4/3)/4 + 3*(x + 1)^(7/3)/7", false, points});
+    verifier({"x^(1/2)/(x - 1)", "", false, {0.31, 0.77, 1.3, 2.6}});
+}
+
+TEST_CASE(radicaux_d_un_trinome) {
+    const std::vector<double> points = {0.31, 0.77, 1.3, 2.6};
+    const std::vector<double> dansLeDisque = {-0.6, 0.2, 0.5, 0.8};
+    // Coefficients indéterminés : S(x) y + lambda int dx/y
+    verifier({"(x^2 + 1)^(1/2)", "x*(x^2 + 1)^(1/2)/2 + ln(x + (x^2 + 1)^(1/2))/2", false, points});
+    verifier({"(1 - x^2)^(1/2)", "x*(-x^2 + 1)^(1/2)/2 + asin(x)/2", false, dansLeDisque});
+    verifier({"(x^2 - 1)^(1/2)", "x*(x^2 - 1)^(1/2)/2 - ln(abs(x + (x^2 - 1)^(1/2)))/2", false, {1.3, 1.9, 2.6}});
+    verifier({"x^2/(1 - x^2)^(1/2)", "-x*(-x^2 + 1)^(1/2)/2 + asin(x)/2", false, dansLeDisque});
+    verifier({"x^2*(x^2 + 1)^(1/2)", "(x^3/4 + x/8)*(x^2 + 1)^(1/2) - ln(x + (x^2 + 1)^(1/2))/8", false, points});
+    verifier({"x^3/(x^2 + 1)^(1/2)", "(x^2/3 - 2/3)*(x^2 + 1)^(1/2)", false, points});
+    verifier({"(x^2 + 2*x + 5)^(1/2)", "", false, points});
+    verifier({"(3 - 2*x - x^2)^(1/2)", "(-x^2 - 2*x + 3)^(1/2)*(x/2 + 1/2) + 2*asin(x/2 + 1/2)", false, dansLeDisque});
+    verifier({"(x^2 + 1)^(3/2)", "", false, points});
+    verifier({"(2*x^2 + 3)^(1/2)", "", false, points});
+    // Substitutions d'Euler ; la partie rationnelle revient sous la forme A(x) + B(x) y
+    verifier({"1/(x*(x^2 + 1)^(1/2))", "ln(abs((x + (x^2 + 1)^(1/2) - 1)/(x + (x^2 + 1)^(1/2) + 1)))", false, points});
+    verifier({"1/(x^2*(x^2 + 1)^(1/2))", "-(x^2 + 1)^(1/2)/x", false, points});
+    verifier({"1/(x^2 + 1)^(3/2)", "x/(x^2 + 1)^(1/2)", false, points});
+    verifier({"1/(x + (x^2 + 1)^(1/2))", "-x^2/2 + x*(x^2 + 1)^(1/2)/2 + ln(x + (x^2 + 1)^(1/2))/2", false, points});
+    verifier({"1/((x + 1)*(x^2 + 1)^(1/2))", "", false, points});
+    verifier({"1/(x*(2*x^2 + 3)^(1/2))", "", false, points});
+    // Racines rationnelles, coefficient dominant négatif : t = y/(x - alpha)
+    verifier({"1/(x*(1 - x^2)^(1/2))", "", false, {0.2, 0.5, 0.8}});
+    verifier({"1/(x*(4 - x^2)^(1/2))", "", false, {0.2, 0.5, 0.8, 1.5}});
+    verifier({"1/((x - 1)*(x^2 - 3*x + 2)^(1/2))", "2*(x^2 - 3*x + 2)^(1/2)/(x - 1)", false, {2.3, 2.6, 3.5}});
+    // Hors de portée : racine d'un polynôme de degré 3 (intégrale elliptique)
+    CHECK(contientIntegrale(lire("(x^3 + 1)^(1/2)")->integrer()));
+    CHECK(contientIntegrale(lire("1/(x^4 + 1)^(1/2)")->integrer()));
+}
+
+TEST_CASE(outils_des_changements_de_variable) {
+    const Fraction x = Fraction::variable(), un(Nombre(1));
+    // Parité et fraction en x^k
+    CHECK_EQ((x * x / (x * x + un)).parite(), 1);
+    CHECK_EQ((x / (x * x + un)).parite(), -1);
+    CHECK_EQ((x / (x + un)).parite(), 0);
+    CHECK_EQ(Fraction().parite(), 1);
+    CHECK((x * x / (x * x * x * x + un)).enPuissance(2) == x / (x * x + un));
+    // Extension quadratique y^2 = x^2 + 1 : (x + y)(y - x) = 1, 1/(x + y) = y - x
+    const Fraction carre = x * x + un;
+    const ElementQuadratique t{x, un, &carre};
+    const ElementQuadratique inverse = t.puissance(-1);
+    CHECK(inverse.a == -x);
+    CHECK(inverse.b == un);
+    const ElementQuadratique produit = t * inverse;
+    CHECK(produit.a == un);
+    CHECK(produit.b.estNulle());
+    // Évaluation d'une fraction : (t^2 - 1)/(2 t) = x pour t = x + y
+    const ElementQuadratique valeur = t.evaluer((x * x - un) / (x * Nombre(2)));
+    CHECK(valeur.a == x);
+    CHECK(valeur.b.estNulle());
+    CHECK_THROWS((ElementQuadratique{Fraction(), Fraction(), &carre}).puissance(-1), std::domain_error);
+    // Racine d'ordre pair : positive là où elle est définie
+    CHECK(estPositifOuNul(lire("x^(1/2) + 1")));
+    CHECK(!estPositifOuNul(lire("x^(1/3) + 1")));
+}
+
+// ============================================================================
 // Hors de portée : intégrale non évaluée, jamais de résultat faux
 // ============================================================================
 
 TEST_CASE(integrales_hors_de_portee) {
-    for (const char* texte : {"x*exp(x)", "1/(x^3 + x + 1)", "sin(x)^2", "exp(x)*sin(x)", "exp(x^2)", "sin(x^2)",
-                              "x*sin(x)", "x^3*exp(x^2)", "1/(x^4 + 1)", "sin(sin(x))", "ln(ln(x))"}) {
+    // Primitives non élémentaires (exp(x^2), sin(x)/x, 1/ln(x), x^x...) ou demandant des
+    // nombres algébriques de degré > 2
+    for (const char* texte : {"exp(x^2)", "sin(x^2)", "exp(x)/x", "sin(x)/x", "1/ln(x)", "x^x", "sin(sin(x))", "ln(ln(x))",
+                              "x^2*exp(x^2)", "exp(x)*ln(x)", "1/(x^3 + x + 1)", "1/(x^4 + 1)", "(x^3 + 1)^(1/2)",
+                              "exp(x^2)/x", "tan(x)/x"}) {
         const ExprPtr f = lire(texte);
         const ExprPtr F = f->integrer();
         CHECK(comme<IntegraleNonEvaluee>(F) != nullptr);
@@ -353,22 +590,46 @@ TEST_CASE(journal_linearite_et_echec) {
         regles.push_back(e.regle);
         niveaux.push_back(e.niveau);
     }
-    // Somme terme à terme ; x^2 (le 3 est le coefficient du terme) ; u = exp(x) ; pi sort de
-    // l'intégrale de pi/(u^2 + 1) ; 1/(u^2 + 1) ; retour à x
-    const std::vector<std::string> attendues = {"integration.linearite",    "integration.table",
-                                                "integration.substitution", "integration.linearite",
-                                                "integration.table",        "integration.retour"};
+    // Somme terme à terme ; x^2 (le 3 est le coefficient du terme) ; pi sort de l'intégrale ;
+    // t = exp(x) ; fraction rationnelle 1/(t^2 + 1)
+    const std::vector<std::string> attendues = {"integration.linearite", "integration.table", "integration.linearite",
+                                                "integration.substitution", "integration.rationnelle"};
+    const std::vector<int> niveauxAttendus = {0, 1, 1, 2, 2};
     CHECK(regles == attendues);
-    CHECK(niveaux == std::vector<int>({0, 1, 1, 2, 3, 1}));
-    if (regles != attendues || niveaux != std::vector<int>({0, 1, 1, 2, 3, 1})) {
+    CHECK(niveaux == niveauxAttendus);
+    if (regles != attendues || niveaux != niveauxAttendus) {
         for (const Etape& e : j.etapes()) std::cerr << "      " << e.niveau << " " << e.regle << " : " << e.description << "\n";
     }
-    // Un changement de variable abandonné (u = x^2 : u exp(u) / 2 n'est pas intégrable ici)
+    // Un changement de variable abandonné (u = x^2 : exp(u)/(2u) n'a pas de primitive élémentaire)
     // ne laisse pas d'étape
     Journal k;
-    lire("x^3*exp(x^2)")->integrer(k);
+    lire("exp(x^2)/x")->integrer(k);
     CHECK_EQ(k.etapes().size(), std::size_t(1));
     if (!k.vide()) CHECK_EQ(k.etapes()[0].regle, std::string("integration.non_evaluee"));
+}
+
+TEST_CASE(journal_nouvelles_methodes) {
+    auto regles = [](const char* texte) {
+        Journal j;
+        lire(texte)->integrer(j);
+        std::string r;
+        for (const Etape& e : j.etapes()) r += (r.empty() ? "" : " ") + e.regle.substr(std::string("integration.").size());
+        return r;
+    };
+    CHECK_EQ(regles("x*exp(x)*sin(x)"), std::string("exponentielle_polynome"));
+    CHECK_EQ(regles("sin(x)^2"), std::string("linearisation exponentielle_polynome"));
+    CHECK_EQ(regles("sin(x)^3*cos(x)^2"), std::string("bioche rationnelle"));
+    CHECK_EQ(regles("1/(2 + cos(x))"), std::string("bioche rationnelle"));
+    CHECK_EQ(regles("1/cosh(x)"), std::string("substitution rationnelle"));
+    // Par parties : la primitive du cofacteur ne laisse pas d'étape
+    CHECK_EQ(regles("x^2*ln(x)"), std::string("parties linearite table"));
+    CHECK_EQ(regles("x^2/(1 - x^2)^(1/2)"), std::string("radicaux"));
+    CHECK_EQ(regles("x*(x + 1)^(1/2)"), std::string("substitution radicaux"));
+    CHECK_EQ(regles("1/(x*(x^2 + 1)^(1/2))"), std::string("euler elements_simples radicaux"));
+    CHECK_EQ(regles("exp(x)/x - exp(x)/x^2"), std::string("linearite non_evaluee non_evaluee somme"));
+    CHECK_EQ(regles("exp(x)*(x - 1)/x^2"), std::string("risch"));
+    // Une tentative abandonnée ne laisse rien : par parties (exp(x)/x n'a pas de primitive élémentaire)
+    CHECK_EQ(regles("exp(x)*ln(x)"), std::string("non_evaluee"));
 }
 
 int main() { return test::executerTous(); }

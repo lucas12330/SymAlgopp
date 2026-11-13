@@ -536,13 +536,45 @@ static void BM_SymAlgo_IntegraleSubstitution(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_IntegraleSubstitution);
 
-// Échecs (intégrales encore hors de portée) : coût des méthodes essayées en vain
+// Échecs (primitives non élémentaires) : coût de toutes les méthodes essayées en vain
 static void BM_SymAlgo_IntegraleEchec(benchmark::State& state) {
     const ExprPtr x = var("x");
-    mesurerPrimitives(state, {x * ast_exp(x), 1.0 / (ast_pow(x, 3.0) + x + 1.0), ast_pow(ast_sin(x), 2.0),
-                              ast_exp(x) * ast_sin(x), ast_exp(ast_pow(x, 2.0))});
+    mesurerPrimitives(state, {ast_exp(ast_pow(x, 2.0)), ast_sin(x) / x, 1.0 / (ast_pow(x, 3.0) + x + 1.0),
+                              ast_exp(x) * ast_ln(x), ast_sin(ast_sin(x))});
 }
 BENCHMARK(BM_SymAlgo_IntegraleEchec);
+
+// Classe exponentielle-polynôme : x exp(x), exp(x) sin(x), sin^2, x^2 cos(3x), sin(2x) cos(5x)
+static void BM_SymAlgo_IntegraleExponentiellePolynome(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {x * ast_exp(x), ast_exp(x) * ast_sin(x), ast_pow(ast_sin(x), 2.0),
+                              ast_pow(x, 2.0) * ast_cos(3.0 * x), ast_sin(2.0 * x) * ast_cos(5.0 * x)});
+}
+BENCHMARK(BM_SymAlgo_IntegraleExponentiellePolynome);
+
+// Règles de Bioche et tan(u/2)
+static void BM_SymAlgo_IntegraleTrigonometrique(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {ast_pow(ast_sin(x), 3.0) * ast_pow(ast_cos(x), 2.0), 1.0 / ast_sin(x), 1.0 / (2.0 + ast_cos(x)),
+                              ast_pow(ast_tan(x), 4.0), 1.0 / (1.0 + ast_sin(x) + ast_cos(x))});
+}
+BENCHMARK(BM_SymAlgo_IntegraleTrigonometrique);
+
+// Intégration par parties
+static void BM_SymAlgo_IntegraleParParties(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {x * ast_ln(x), ast_pow(ast_ln(x), 2.0), x * ast_atan(x), ast_ln(ast_pow(x, 2.0) + 1.0)});
+}
+BENCHMARK(BM_SymAlgo_IntegraleParParties);
+
+// Radicaux : t = (a x + b)^(1/q), coefficients indéterminés, substitution d'Euler
+static void BM_SymAlgo_IntegraleRadicaux(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr y = ast_pow(ast_pow(x, 2.0) + 1.0, frac(1, 2));
+    mesurerPrimitives(state, {x * ast_pow(x + 1.0, frac(1, 2)), 1.0 / (1.0 + ast_pow(x, frac(1, 2))), y, 1.0 / (x * y),
+                              ast_pow(x, 2.0) * ast_pow(1.0 - ast_pow(x, 2.0), frac(-1, 2))});
+}
+BENCHMARK(BM_SymAlgo_IntegraleRadicaux);
 
 // Fractions rationnelles : Hermite, factorisation sur Q, éléments simples
 static void BM_SymAlgo_IntegraleRationnelle(benchmark::State& state) {

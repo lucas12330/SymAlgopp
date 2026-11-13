@@ -95,7 +95,7 @@ TEST_CASE(expressions_non_evaluables) {
     CHECK(!p.estValide());
     CHECK_THROWS(p.evaluer(1.0), std::logic_error);
     CHECK_THROWS(p.evaluer(std::vector<double>{1.0, 2.0}), std::logic_error);
-    const ProgrammeEvaluation q((X * ast_sin(X))->integrer());
+    const ProgrammeEvaluation q((ast_sin(X) / X)->integrer()); // primitive non élémentaire
     CHECK_THROWS(q.evaluer(1.0), std::logic_error);
 }
 

@@ -457,11 +457,11 @@ TEST_CASE(integrale_avec_parametre) {
 }
 
 TEST_CASE(integrale_non_evaluee) {
-    // x * sin(x) demanderait une intégration par parties : pas de résultat faux
-    const ExprPtr f = X * ast_sin(X);
+    // sin(x)/x n'a pas de primitive élémentaire : pas de résultat faux
+    const ExprPtr f = ast_sin(X) / X;
     const ExprPtr F = f->integrer();
     CHECK(comme<IntegraleNonEvaluee>(F) != nullptr);
-    CHECK_EQ(texte(F), std::string("integrale(x*sin(x))"));
+    CHECK_EQ(texte(F), std::string("integrale(sin(x)/x)"));
     CHECK_THROWS(F->eval(1.0), std::logic_error);
     // (∫f)' = f
     CHECK(F->derivee()->estEgal(*f));
@@ -470,7 +470,7 @@ TEST_CASE(integrale_non_evaluee) {
     CHECK_EQ(texte(G), std::string("sin(x) + integrale(sin(x^2))"));
     // Plus aucun 0 silencieux
     const ExprPtr i1 = ast_exp(ast_pow(X, 2.0))->integrer();
-    const ExprPtr i2 = (X * ast_exp(X))->integrer(); // intégration par parties (à venir)
+    const ExprPtr i2 = (ast_exp(X) / X)->integrer();
     CHECK(comme<IntegraleNonEvaluee>(i1) != nullptr);
     CHECK(comme<IntegraleNonEvaluee>(i2) != nullptr);
 }
