@@ -140,19 +140,6 @@ bool estPositifOuNul(const ExprPtr& u) {
 
 ExprPtr lnAbs(const ExprPtr& u) { return ast_ln(estPositifOuNul(u) ? u : ast_abs(u)); }
 
-namespace {
-
-// ============================================================================
-// Outils des méthodes
-// ============================================================================
-
-// f est-il l'intégrale non évaluée de lui-même (échec de la règle du noeud) ?
-bool echecDe(const ExprPtr& r, const ASTNode& f) {
-    const IntegraleNonEvaluee* i = comme<IntegraleNonEvaluee>(r);
-    return i && i->getIntegrande().get() == &f;
-}
-
-// Le résultat contient-il une intégrale non évaluée (calcul partiel) ?
 bool contientNonEvaluee(const ASTNode& e) {
     if (!e.contientVariable()) return false;
     switch (e.type()) {
@@ -176,6 +163,18 @@ bool contientNonEvaluee(const ASTNode& e) {
             return f && contientNonEvaluee(*f->m_argument);
         }
     }
+}
+
+namespace {
+
+// ============================================================================
+// Outils des méthodes
+// ============================================================================
+
+// f est-il l'intégrale non évaluée de lui-même (échec de la règle du noeud) ?
+bool echecDe(const ExprPtr& r, const ASTNode& f) {
+    const IntegraleNonEvaluee* i = comme<IntegraleNonEvaluee>(r);
+    return i && i->getIntegrande().get() == &f;
 }
 
 /*
@@ -543,11 +542,13 @@ struct Methode {
     const char* description;
 };
 
-// Du moins cher au plus cher. À venir : intégration par parties, fractions rationnelles,
-// linéarisation trigonométrique.
+// Du moins cher au plus cher : chaque méthode rejette d'abord sur le type du noeud.
 const Methode METHODES[] = {
     {tableEtendue, "integration.table", "Primitive usuelle"},
+    {parFractionRationnelle, "integration.rationnelle",
+     "Fraction rationnelle : division, réduction d'Hermite et éléments simples"},
     {parSubstitution, nullptr, nullptr}, // note ses propres étapes
+    {parDeveloppement, nullptr, nullptr},
 };
 
 } // namespace
