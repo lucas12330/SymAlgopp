@@ -94,6 +94,27 @@ public:
     static Polynome pgcd(Polynome a, Polynome b);
 
     /*
+     * Nom : pgcdEtendu
+     * Description : PGCD unitaire g de a et b et coefficients de Bézout : u*a + v*b = g
+     *               (g nul si a et b sont nuls).
+     * Utilisation : Polynome u, v; Polynome g = Polynome::pgcdEtendu(a, b, u, v);
+     */
+    static Polynome pgcdEtendu(const Polynome& a, const Polynome& b, Polynome& u, Polynome& v);
+
+    /*
+     * Nom : facteursIrreductibles
+     * Description : Factorisation complète sur Q (décomposition sans carré, puis
+     *               Berlekamp-Zassenhaus) : *this = contenu * prod f_i^m_i, chaque f_i à
+     *               coefficients entiers premiers entre eux, de coefficient dominant positif
+     *               et irréductible sur Q. Les (f_i, m_i) sont triés par degré croissant.
+     *               complet reçoit faux si un facteur n'a pas pu être certifié irréductible
+     *               (coefficients réels, degré > 62 ou coefficients trop grands) : seuls ses
+     *               facteurs linéaires rationnels sont alors extraits.
+     * Utilisation : Nombre c; auto f = p.facteursIrreductibles(c);  // x^4 - 1 : (x - 1), (x + 1), (x^2 + 1)
+     */
+    std::vector<std::pair<Polynome, int>> facteursIrreductibles(Nombre& contenu, bool* complet = nullptr) const;
+
+    /*
      * Nom : sansCarre
      * Description : Décomposition sans facteur carré (algorithme de Yun) : le polynôme unitaire
      *               est le produit des f_i^i, f_i sans racine multiple. Renvoie les (f_i, i).
@@ -130,12 +151,14 @@ private:
 
 /*
  * Nom : factoriser
- * Description : Factorise un polynôme sur les rationnels : facteurs linéaires issus des
- *               racines rationnelles (avec multiplicités) et facteurs restants sans carré,
- *               à coefficients entiers. Une expression non polynomiale est renvoyée
- *               inchangée. Limite de la forme canonique : un coefficient numérique devant
- *               un seul facteur somme est redistribué (2*(x - 1) s'écrit 2*x - 2).
- * Utilisation : factoriser(ast_pow(x, 3.0) - x)  // x*(x - 1)*(x + 1)
+ * Description : Factorise un polynôme sur les rationnels en facteurs irréductibles à
+ *               coefficients entiers, avec leurs multiplicités (voir
+ *               Polynome::facteursIrreductibles). Une expression non polynomiale ou à
+ *               coefficients réels est renvoyée inchangée. Limite de la forme canonique : un
+ *               coefficient numérique devant un seul facteur somme est redistribué
+ *               (2*(x - 1) s'écrit 2*x - 2).
+ * Utilisation : factoriser(ast_pow(x, 3.0) - x)            // x*(x - 1)*(x + 1)
+ *               factoriser(lire("x^4 + x^2 + 1"))          // (x^2 - x + 1)*(x^2 + x + 1)
  */
 ExprPtr factoriser(const ExprPtr& e);
 

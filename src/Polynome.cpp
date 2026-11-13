@@ -591,37 +591,6 @@ Polynome Polynome::partiePrimitive(Nombre& contenu) const {
     return *this * contenu.inverse();
 }
 
-ExprPtr factoriser(const ExprPtr& e) {
-    const ExprPtr d = developper(e);
-    Polynome p;
-    ExprPtr x;
-    if (!Polynome::depuisExpression(d, p, &x) || !x || p.degre() < 2 || !p.estExact()) return e;
-
-    AccumulateurProduit produit_;
-    produit_.multiplier(nombre(p.dominant())); // les facteurs de sansCarre sont unitaires
-    for (const auto& [facteur, multiplicite] : p.sansCarre()) {
-        std::vector<RacineIsolee> racines = isolerRacines(facteur);
-        Polynome reste = facteur;
-        for (const RacineIsolee& r : racines) {
-            if (!r.rationnelle) continue;
-            Polynome q, rr;
-            reste.diviser(Polynome({-r.valeurExacte, Nombre(1)}), q, rr);
-            reste = q;
-            // x - p/q = (q x - p) / q
-            const Nombre den = r.valeurExacte.denominateurNombre();
-            const Nombre num = r.valeurExacte.numerateurNombre();
-            const ExprPtr lineaire = nombre(den) * x - nombre(num);
-            produit_.multiplier(ast_pow(lineaire, static_cast<double>(multiplicite)));
-            produit_.multiplier(nombre(den.puissanceEntiere(-multiplicite)));
-        }
-        if (reste.degre() >= 1) {
-            Nombre contenu;
-            const Polynome primitive = reste.partiePrimitive(contenu);
-            produit_.multiplier(ast_pow(primitive.versExpression(x), static_cast<double>(multiplicite)));
-            produit_.multiplier(nombre(contenu.puissanceEntiere(multiplicite)));
-        }
-    }
-    return produit_.construire();
-}
+// factoriser() : voir Factorisation.cpp
 
 } // namespace symalgo
