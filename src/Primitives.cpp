@@ -88,11 +88,13 @@ ExprPtr variableDe(const ASTNode& e) {
 
 namespace {
 
-// Exposant entier pair (u^(2k) >= 0)
+// Exposant entier pair (u^(2k) >= 0) ou racine d'ordre pair (u^(p/2k) >= 0 là où elle existe)
 bool exposantPair(const ExprPtr& exposant) {
-    long long k;
+    long long k, den;
     const Constante* c = comme<Constante>(exposant);
-    return c && c->getNombre().versEntier(k) && k % 2 == 0;
+    if (!c) return false;
+    if (c->getNombre().versEntier(k)) return k % 2 == 0;
+    return c->getNombre().versFraction(k, den) && den % 2 == 0;
 }
 
 // Trinôme a x^2 + b x + c (a > 0) sans racine réelle simple : positif ou nul
@@ -331,6 +333,8 @@ ExprPtr trinome(const ExprPtr& base, bool racineCarree) {
     return nullptr;
 }
 
+} // namespace
+
 ExprPtr tableEtendue(const ExprPtr& f) {
     const Puissance* p = comme<Puissance>(f);
     if (!p) return nullptr;
@@ -372,8 +376,10 @@ ExprPtr tableEtendue(const ExprPtr& f) {
     }
 }
 
+namespace {
+
 // ============================================================================
-// Méthode 3 : changement de variable « la dérivée divise »
+// Changement de variable « la dérivée divise »
 // ============================================================================
 
 constexpr std::size_t CANDIDATS_MAX = 8;   // changements de variable essayés par intégrale
@@ -470,6 +476,8 @@ private:
     std::vector<const ASTNode*> m_vus;
 };
 
+} // namespace
+
 /*
  * Nom : parSubstitution
  * Description : int f(x) dx = int g(u) du avec u = h(x) quand f = g(h(x)) h'(x) : pour chaque
@@ -533,8 +541,93 @@ ExprPtr parSubstitution(const ExprPtr& f) {
 }
 
 // ============================================================================
+// Intégration par parties
+// ============================================================================
+
+namespace {
+
+constexpr int PROFONDEUR_PARTIES_MAX = 6; // ln(x)^5 demande cinq intégrations par parties
+
+int& profondeurParties() {
+    thread_local int profondeur = 0;
+    return profondeur;
+}
+
+// Fonctions que l'on dérive dans une intégration par parties : leur dérivée est algébrique
+bool estLogarithmique(const ASTNode& e) {
+    const TypeNoeud t = e.type();
+    return (t == TypeNoeud::Logarithme || t == TypeNoeud::ArcTangente || t == TypeNoeud::ArcSinus || t == TypeNoeud::ArcCosinus) &&
+           e.contientVariable();
+}
+
+bool entierPositif(const ExprPtr& exposant) {
+    long long k;
+    const Constante* c = comme<Constante>(exposant);
+    return c && c->getNombre().versEntier(k) && k >= 1;
+}
+
+} // namespace
+
+ExprPtr parParties(const ExprPtr& f) {
+    if (profondeurParties() >= PROFONDEUR_PARTIES_MAX) return nullptr;
+    // Le facteur L = ln(v)^n, atan(v), asin(v), acos(v)... à dériver
+    ExprPtr L;
+    if (estLogarithmique(*f)) {
+        L = f;
+    } else if (const Puissance* p = comme<Puissance>(f)) {
+        if (estLogarithmique(*p->getBase()) && entierPositif(p->getExposant())) L = f;
+    } else if (const Produit* p = comme<Produit>(f)) {
+        for (const Facteur& facteur : p->getFacteurs()) {
+            if (estLogarithmique(*facteur.base) && entierPositif(facteur.exposant)) {
+                L = ast_pow(facteur.base, facteur.exposant);
+                break;
+            }
+        }
+    }
+    if (!L) return nullptr;
+    const ExprPtr x = variableDe(*f);
+    const ExprPtr g = f / L;
+    Journal* const j = journal::actif();
+    const std::size_t etapes = j ? j->etapes().size() : 0;
+    auto echec = [&]() {
+        if (j) j->tronquer(etapes);
+        return ExprPtr();
+    };
+    ++profondeurParties();
+    struct Sortie {
+        ~Sortie() { --profondeurParties(); }
+    } sortie;
+    ExprPtr G;
+    {
+        // Primitive du cofacteur : calcul annexe, sans étapes (l'étape « par parties » la donne)
+        journal::actif() = nullptr;
+        struct Retablir {
+            Journal* journal;
+            ~Retablir() { journal::actif() = journal; }
+        } retablir{j};
+        G = g->contientVariable() ? g->integrer() : g * x;
+    }
+    if (contientNonEvaluee(*G)) return echec();
+    const ExprPtr reste = G * L->derivee();
+    journal::noter([&](Journal& jr) {
+        jr.ajouter("integration.parties",
+                   "Intégration par parties : on dérive " + L->texte() + " et on intègre " + g->texte(), f,
+                   G * L - fabriquer<IntegraleNonEvaluee>(reste));
+    });
+    ExprPtr I;
+    {
+        const journal::SousNiveau sous;
+        I = reste->contientVariable() ? reste->integrer() : reste * x;
+    }
+    if (contientNonEvaluee(*I)) return echec();
+    return G * L - I;
+}
+
+// ============================================================================
 // Suite des méthodes
 // ============================================================================
+
+namespace {
 
 struct Methode {
     ExprPtr (*appliquer)(const ExprPtr& f);
@@ -542,12 +635,21 @@ struct Methode {
     const char* description;
 };
 
-// Du moins cher au plus cher : chaque méthode rejette d'abord sur le type du noeud.
+// Du moins cher au plus cher ; chaque méthode rejette d'abord sur le type du noeud, puis sur
+// la forme. Les méthodes sans règle notent elles-mêmes leurs étapes.
 const Methode METHODES[] = {
     {tableEtendue, "integration.table", "Primitive usuelle"},
+    {parTrigonometrieImpaire, "integration.rationnelle", "Primitive du polynôme en la nouvelle variable"},
+    {parExponentiellePolynome, "integration.exponentielle_polynome",
+     "Produit de polynômes, d'exponentielles, de sinus et de cosinus : primitive explicite de chaque terme"},
     {parFractionRationnelle, "integration.rationnelle",
      "Fraction rationnelle : division, réduction d'Hermite et éléments simples"},
-    {parSubstitution, nullptr, nullptr}, // note ses propres étapes
+    {parTrigonometrie, "integration.rationnelle", "Fraction rationnelle de la nouvelle variable"},
+    {parExponentielleRationnelle, "integration.rationnelle", "Fraction rationnelle de la nouvelle variable"},
+    {parSubstitution, nullptr, nullptr},
+    {parParties, nullptr, nullptr},
+    {parRadicaux, "integration.radicaux", "Fraction rationnelle de x et d'un radical"},
+    {parEquationDeRisch, "integration.risch", "Primitive de la forme S(x) exp(W(x)) : S' + W' S = R"},
     {parDeveloppement, nullptr, nullptr},
 };
 

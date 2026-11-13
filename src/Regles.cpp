@@ -97,7 +97,25 @@ ExprPtr Somme::primitive() const {
     const journal::SousNiveau sous;
     AccumulateurSomme s;
     if (!m_constante.estZero()) s.ajouter(variableDe(*this), m_constante);
-    for (const Terme& t : m_termes) s.ajouter(t.expression->integrer(), t.coefficient);
+    std::vector<std::pair<const Terme*, ExprPtr>> echecs; // termes sans primitive complète
+    for (const Terme& t : m_termes) {
+        const ExprPtr primitive = t.expression->integrer();
+        if (contientNonEvaluee(*primitive)) echecs.emplace_back(&t, primitive);
+        s.ajouter(primitive, t.coefficient);
+    }
+    if (echecs.size() < 2) return s.construire();
+    // Plusieurs termes sans primitive : leur somme peut en avoir une (exp(x)/x - exp(x)/x^2)
+    AccumulateurSomme ensemble;
+    for (const auto& [t, partielle] : echecs) ensemble.ajouter(t->expression, t->coefficient);
+    const ExprPtr reste = ensemble.construire();
+    const ExprPtr primitive = secondeChanceSomme(reste);
+    if (!primitive) return s.construire();
+    journal::noter([&](Journal& j) {
+        j.ajouter("integration.somme", "Les termes sans primitive séparée s'intègrent ensemble", reste, primitive);
+    });
+    // Les résultats partiels des termes en échec sont retirés, la primitive commune ajoutée
+    for (const auto& [t, partielle] : echecs) s.ajouter(partielle, -t->coefficient);
+    s.ajouter(primitive, Nombre(1));
     return s.construire();
 }
 
@@ -137,7 +155,6 @@ ExprPtr Produit::calculerSimplification() const {
 ExprPtr Produit::primitive() const {
     // Les facteurs indépendants de x sortent de l'intégrale
     AccumulateurProduit constant, variable;
-    constant.multiplier(nombre(m_coefficient));
     int nombreVariables = 0;
     for (const Facteur& f : m_facteurs) {
         const ExprPtr facteur = ast_pow(f.base, f.exposant);
@@ -148,8 +165,11 @@ ExprPtr Produit::primitive() const {
             constant.multiplier(facteur);
         }
     }
-    if (nombreVariables != 1) return integraleNonEvaluee(); // autres méthodes : Primitives.cpp
-    const ExprPtr c = constant.construire();
+    ExprPtr c = constant.construire();
+    // Sans facteur symbolique à sortir, un produit de plusieurs facteurs en x est laissé entier
+    // aux méthodes de Primitives.cpp (2 x cos(x^2) est u' cos(u), coefficient compris)
+    if (nombreVariables != 1 && c.get() == un().get()) return integraleNonEvaluee();
+    c = c * nombre(m_coefficient);
     const ExprPtr v = variable.construire();
     journal::noter([&](Journal& j) {
         j.ajouter("integration.linearite", "Linéarité : le facteur constant sort de l'intégrale", clone(),

@@ -186,6 +186,63 @@ Fraction Fraction::composer(const Fraction& g) const {
     return Fraction(std::move(n), std::move(d));
 }
 
+int Fraction::parite() const {
+    // Fraction réduite : paire si n et d sont pairs, impaire si l'un est pair et l'autre impair
+    auto pariteDe = [](const Polynome& p) {
+        bool pair = true, impair = true;
+        for (int i = 0; i <= p.degre(); ++i) {
+            if (p.coefficient(i).estZero()) continue;
+            (i % 2 == 0 ? impair : pair) = false;
+        }
+        return pair ? 1 : impair ? -1 : 0;
+    };
+    if (estNulle()) return 1;
+    return pariteDe(m_n) * pariteDe(m_d);
+}
+
+Fraction Fraction::enPuissance(int k) const {
+    auto reduit = [k](const Polynome& p) {
+        std::vector<Nombre> c;
+        for (int i = 0; i <= p.degre(); i += k) c.push_back(p.coefficient(i));
+        return Polynome(std::move(c));
+    };
+    return Fraction(reduit(m_n), reduit(m_d), DejaReduite{});
+}
+
+// ============================================================================
+// ElementQuadratique
+// ============================================================================
+
+ElementQuadratique ElementQuadratique::puissance(long long k) const {
+    ElementQuadratique base = *this;
+    if (k < 0) {
+        // 1/(A + B y) = (A - B y)/(A^2 - B^2 y^2)
+        const Fraction norme = a * a - b * b * *carre;
+        if (norme.estNulle()) throw std::domain_error("ElementQuadratique : inverse de zero");
+        base = {a / norme, -(b / norme), carre};
+        k = -k;
+    }
+    ElementQuadratique r{Fraction(Nombre(1)), Fraction(), carre};
+    while (k > 0) {
+        if (k & 1) r = r * base;
+        k >>= 1;
+        if (k > 0) base = base * base;
+    }
+    return r;
+}
+
+ElementQuadratique ElementQuadratique::evaluer(const Fraction& f) const {
+    auto horner = [this](const Polynome& p) {
+        ElementQuadratique r{Fraction(), Fraction(), carre};
+        for (int i = p.degre(); i >= 0; --i) {
+            r = r * *this;
+            r.a = r.a + Fraction(p.coefficient(i));
+        }
+        return r;
+    };
+    return horner(f.numerateur()) * horner(f.denominateur()).puissance(-1);
+}
+
 ExprPtr Fraction::versExpression(const ExprPtr& x) const {
     if (m_d.degre() == 0) return m_n.versExpression(x);
     Nombre contenu;
@@ -343,9 +400,16 @@ struct Logarithmes {
         bool positif;                  // dessus et dessous sans racine réelle
     };
     std::vector<Groupe> groupes;
+    // Quand la variable est t = exp(u) : ln|t| = u, tenu à part des autres logarithmes
+    bool variableExponentielle = false;
+    Nombre coefficientVariable;
 
     void ajouter(const Nombre& c, const Polynome& argument, bool positif) {
         if (c.estZero()) return;
+        if (variableExponentielle && argument.degre() == 1 && argument.coefficient(0).estZero()) {
+            coefficientVariable = coefficientVariable + c;
+            return;
+        }
         const Nombre module = c.valeurAbsolue();
         for (Groupe& g : groupes) {
             if (g.coefficient != module) continue;
@@ -358,12 +422,13 @@ struct Logarithmes {
     }
 
     void versSomme(const ExprPtr& x, AccumulateurSomme& somme) const {
+        if (!coefficientVariable.estZero()) somme.ajouter(static_cast<const Exponentielle&>(*x).m_argument, coefficientVariable);
         for (const Groupe& g : groupes) {
             // c ln|P/Q|, ou -c ln|Q| s'il n'y a que le dénominateur
             const bool inverse = g.dessus.degre() == 0;
             const ExprPtr argument = inverse ? g.dessous.versExpression(x)
                                              : g.dessus.versExpression(x) / g.dessous.versExpression(x);
-            somme.ajouter(ast_ln(g.positif ? argument : ast_abs(argument)), inverse ? -g.coefficient : g.coefficient);
+            somme.ajouter(g.positif ? ast_ln(argument) : lnAbs(argument), inverse ? -g.coefficient : g.coefficient);
         }
     }
 };
@@ -421,6 +486,7 @@ void partieLogarithmique(const Polynome& a, const Polynome& d, const ExprPtr& x,
     const Polynome dPrimitif = d.partiePrimitive(contenu); // d = contenu * dPrimitif
     const Polynome numerateur = a * contenu.inverse();     // a/d = numerateur / dPrimitif
     Logarithmes logs;
+    logs.variableExponentielle = x->type() == TypeNoeud::Exponentielle;
     Nombre c;
     if (proportionnels(numerateur, dPrimitif.derivee(), c)) {
         // Dérivée logarithmique : c ln|d|, sans factoriser
@@ -480,48 +546,72 @@ bool substitutionMonomiale(const Fraction& f, Fraction& h, int& k) {
 
 } // namespace
 
-ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
-    bool entiere = true;
-    AccumulateurSomme somme;
+namespace {
+
+/*
+ * Nom : integrerFraction
+ * Description : Coeur de primitiveFraction : partie rationnelle (polynôme + réduction
+ *               d'Hermite) dans rationnelle, logarithmes et arctangentes ajoutés à somme, ce
+ *               qui n'a pas pu être intégré dans nonIntegre.
+ */
+void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle, AccumulateurSomme& somme, Fraction& nonIntegre) {
     Polynome q, r;
     f.numerateur().diviser(f.denominateur(), q, r);
+    rationnelle = Fraction();
     if (!r.estNul()) {
-        Fraction g, nonIntegre;
         Polynome a2, dEtoile, q2, r2;
-        hermite(r, f.denominateur(), g, a2, dEtoile);
+        hermite(r, f.denominateur(), rationnelle, a2, dEtoile);
         a2.diviser(dEtoile, q2, r2);
         q = q + q2;
-        if (!g.estNulle()) {
-            const ExprPtr partie = g.versExpression(x);
-            somme.ajouter(partie, Nombre(1));
+        if (!rationnelle.estNulle()) {
             journal::noter([&](Journal& j) {
                 j.ajouter("integration.hermite",
                           "Réduction d'Hermite : les pôles multiples donnent une fraction rationnelle, il reste un "
                           "dénominateur sans facteur carré",
                           Fraction(r, f.denominateur()).versExpression(x),
-                          partie + fabriquer<IntegraleNonEvaluee>(Fraction(a2, dEtoile).versExpression(x)));
+                          rationnelle.versExpression(x) + fabriquer<IntegraleNonEvaluee>(Fraction(a2, dEtoile).versExpression(x)));
             });
         }
         partieLogarithmique(r2, dEtoile, x, somme, nonIntegre);
-        if (!nonIntegre.estNulle()) {
-            // Dernier recours : u = x^k abaisse le degré des facteurs irréductibles
-            Fraction h;
-            int k;
-            if (substitutionMonomiale(f, h, k)) {
-                bool reussie;
-                const ExprPtr resultat = primitiveFraction(h, ast_pow(x, nombre(Nombre(k))), &reussie);
-                if (reussie) {
-                    if (complete) *complete = true;
-                    return resultat;
-                }
-            }
-            entiere = false;
-            somme.ajouter(fabriquer<IntegraleNonEvaluee>(nonIntegre.versExpression(x)), Nombre(1));
-        }
     }
-    if (!q.estNul()) somme.ajouter(primitive(q).versExpression(x), Nombre(1));
-    if (complete) *complete = entiere;
+    if (!q.estNul()) rationnelle = rationnelle + Fraction(primitive(q));
+}
+
+} // namespace
+
+ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
+    AccumulateurSomme somme;
+    Fraction rationnelle, nonIntegre;
+    integrerFraction(f, x, rationnelle, somme, nonIntegre);
+    if (complete) *complete = nonIntegre.estNulle();
+    if (!nonIntegre.estNulle()) {
+        // Dernier recours : u = x^k abaisse le degré des facteurs irréductibles
+        Fraction h;
+        int k;
+        if (substitutionMonomiale(f, h, k)) {
+            bool reussie;
+            const ExprPtr resultat = primitiveFraction(h, ast_pow(x, nombre(Nombre(k))), &reussie);
+            if (reussie) {
+                if (complete) *complete = true;
+                return resultat;
+            }
+        }
+        somme.ajouter(fabriquer<IntegraleNonEvaluee>(nonIntegre.versExpression(x)), Nombre(1));
+    }
+    // Partie polynomiale et pôles multiples séparés : x^2/2 + 3*x - (8*x - 7)/(2*(x - 1)^2)
+    Polynome q, r;
+    rationnelle.numerateur().diviser(rationnelle.denominateur(), q, r);
+    if (!q.estNul()) somme.ajouter(q.versExpression(x), Nombre(1));
+    if (!r.estNul()) somme.ajouter(Fraction(r, rationnelle.denominateur()).versExpression(x), Nombre(1));
     return somme.construire();
+}
+
+bool primitiveFractionSeparee(const Fraction& f, const ExprPtr& x, Fraction& rationnelle, ExprPtr& transcendante) {
+    AccumulateurSomme somme;
+    Fraction nonIntegre;
+    integrerFraction(f, x, rationnelle, somme, nonIntegre);
+    transcendante = somme.construire();
+    return nonIntegre.estNulle();
 }
 
 ExprPtr parFractionRationnelle(const ExprPtr& f) {
