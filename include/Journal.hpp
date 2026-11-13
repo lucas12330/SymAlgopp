@@ -41,7 +41,10 @@ namespace symalgo {
  *               ex. « integration.substitution ») pour les tests et la traduction ;
  *               description est une phrase en français ; avant / apres sont les
  *               expressions avant et après l'étape (nulles si sans objet) ; niveau est la
- *               profondeur d'imbrication (0 : étape principale).
+ *               profondeur d'imbrication (0 : étape principale). Par défaut avant → après est
+ *               une transformation ; si egalite est vrai, avant et apres sont les deux
+ *               membres d'une équation « avant = apres » (étapes de résolution) ; si de plus
+ *               approchee est vrai, apres n'est qu'une valeur approchée (« avant ≈ apres »).
  */
 struct Etape {
     std::string regle;
@@ -49,6 +52,8 @@ struct Etape {
     ExprPtr avant;
     ExprPtr apres;
     int niveau = 0;
+    bool egalite = false; // vrai : avant = apres est une équation (membres gauche et droit), non une transformation
+    bool approchee = false; // avec egalite : apres est une valeur approchée de avant (notée ≈)
 };
 
 /*
@@ -60,6 +65,14 @@ public:
     void ajouter(std::string regle, std::string description, ExprPtr avant = ExprPtr(),
                  ExprPtr apres = ExprPtr()) {
         m_etapes.push_back({std::move(regle), std::move(description), std::move(avant), std::move(apres), m_niveau});
+    }
+
+    // Étape portant une équation « gauche = droite » (affichée ainsi par latex(journal))
+    // approchee : droite n'est qu'une valeur approchée (affichée « gauche ≈ droite »)
+    void ajouterEquation(std::string regle, std::string description, ExprPtr gauche, ExprPtr droite,
+                         bool approchee = false) {
+        m_etapes.push_back(
+            {std::move(regle), std::move(description), std::move(gauche), std::move(droite), m_niveau, true, approchee});
     }
 
     const std::vector<Etape>& etapes() const noexcept { return m_etapes; }
