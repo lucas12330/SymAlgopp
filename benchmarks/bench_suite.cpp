@@ -581,7 +581,7 @@ static void BM_SymAlgo_IntegraleRationnelle(benchmark::State& state) {
     const ExprPtr x = var("x");
     mesurerPrimitives(state, {1.0 / (ast_pow(x, 2.0) - 1.0), x / (ast_pow(x, 2.0) - 4.0), 1.0 / (ast_pow(x, 3.0) + 1.0),
                               1.0 / ast_pow(ast_pow(x, 2.0) + 1.0, 2.0),
-                              (ast_pow(x, 5.0) + 2.0) / (ast_pow(x, 3.0) - x)});
+                              (ast_pow(x, 5.0) + 2.0) / (ast_pow(x, 3.0) - x), 1.0 / (ast_pow(x, 4.0) + 1.0)});
 }
 BENCHMARK(BM_SymAlgo_IntegraleRationnelle);
 

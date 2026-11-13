@@ -275,6 +275,38 @@ TEST_CASE(rationnelle_grandes_multiplicites) {
     verifier({"(x^2 + 2*x - 1)/(x^3 - x)", "ln(abs((x^2 - x)/(x + 1)))", false, {-3.7, -0.45, 0.31, 4.3}});
 }
 
+TEST_CASE(rationnelle_facteurs_de_degre_4) {
+    // Facteur irréductible sur Q scindé en deux trinômes réels conjugués sur Q(sqrt(m))
+    const std::vector<double> points = {-3.7, -0.45, 0.31, 1.9, 4.3};
+    verifier({"1/(x^4 + 1)",
+              "2^(1/2)*ln((x^2 + 2^(1/2)*x + 1)/(x^2 - 2^(1/2)*x + 1))/8 + 2^(1/2)*atan(2^(1/2)*(x - 2^(1/2)/2))/4 + "
+              "2^(1/2)*atan(2^(1/2)*(x + 2^(1/2)/2))/4",
+              false, points});
+    verifier({"(x^2 + 1)/(x^4 + 1)", "2^(1/2)*atan(2^(1/2)*(x - 2^(1/2)/2))/2 + 2^(1/2)*atan(2^(1/2)*(x + 2^(1/2)/2))/2", false, points});
+    verifier({"x^2/(x^4 + 1)", "", false, points});
+    verifier({"(x^3 + 2*x^2 - x + 5)/(x^4 + 1)", "", false, points});
+    verifier({"1/(x^4 + 1)^2", "", false, points});
+    verifier({"1/((x^4 + 1)*(x - 1))", "", false, points});
+    // x^6 + 1 = (x^2 + 1)(x^4 - x^2 + 1), second facteur scindé sur Q(sqrt(3))
+    verifier({"1/(x^6 + 1)", "3^(1/2)*ln((x^2 + 3^(1/2)*x + 1)/(x^2 - 3^(1/2)*x + 1))/12 + atan(x)/3 + atan(2*x - 3^(1/2))/6 + atan(2*x + 3^(1/2))/6",
+              false, points});
+    // Terme en x^3 (décalage), résolvante cubique à racine rationnelle (polynômes cyclotomiques)
+    verifier({"1/(x^4 + 4*x^3 + 6*x^2 + 4*x + 2)", "", false, points});
+    verifier({"1/(x^4 + x^3 + x^2 + x + 1)", "", false, points});
+    verifier({"(x^3 + 1)/(x^4 - x^3 + x^2 - x + 1)", "", false, points});
+    // Trinômes à racines réelles : logarithmes, radicaux emboîtés
+    verifier({"1/(x^4 - 2)", "", false, points});
+    verifier({"1/(x^4 - 10*x^2 + 1)", "", false, {-0.45, 0.2, 0.31, 1.9, 4.3}});
+    verifier({"1/(x^4 - 5*x^2 + 5)", "", false, {-0.45, 0.2, 0.31, 2.6, 4.3}});
+    // Par ricochet : par parties, puis t = exp(x)
+    verifier({"atan(x^2)", "", false, points});
+    verifier({"tanh(2*x)*sinh(x)", "", false, {-1.3, 0.31, 0.77, 1.9}});
+    // Factorisation réelle hors des corps quadratiques : laissé non évalué
+    for (const char* texte : {"1/(x^4 + x + 1)", "1/(x^4 + 3)", "1/(x^4 + x^2 + 2)", "1/(x^8 + 1)"}) {
+        CHECK(contientIntegrale(lire(texte)->integrer()));
+    }
+}
+
 TEST_CASE(rationnelle_substitution_monomiale) {
     // u = x^k quand x f(x) est une fraction en x^k
     const std::vector<double> points = {-1.7, -0.45, 0.31, 2.3};
@@ -576,7 +608,7 @@ TEST_CASE(integrales_hors_de_portee) {
     // Primitives non élémentaires (exp(x^2), sin(x)/x, 1/ln(x), x^x...) ou demandant des
     // nombres algébriques de degré > 2
     for (const char* texte : {"exp(x^2)", "sin(x^2)", "exp(x)/x", "sin(x)/x", "1/ln(x)", "x^x", "sin(sin(x))", "ln(ln(x))",
-                              "x^2*exp(x^2)", "exp(x)*ln(x)", "1/(x^3 + x + 1)", "1/(x^4 + 1)", "(x^3 + 1)^(1/2)",
+                              "x^2*exp(x^2)", "exp(x)*ln(x)", "1/(x^3 + x + 1)", "1/(x^4 + x + 1)", "(x^3 + 1)^(1/2)",
                               "exp(x^2)/x", "tan(x)/x"}) {
         const ExprPtr f = lire(texte);
         const ExprPtr F = f->integrer();

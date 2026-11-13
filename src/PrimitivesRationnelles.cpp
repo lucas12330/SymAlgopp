@@ -11,6 +11,10 @@
  *      sur Q (Polynome::facteursIrreductibles) et r/d* décomposée en éléments simples.
  *      Un facteur de degré 1 donne un logarithme, un facteur de degré 2 un logarithme et une
  *      arctangente (discriminant négatif) ou un second logarithme (discriminant positif).
+ *      Un facteur irréductible de degré 4 est scindé en deux trinômes réels quand leurs
+ *      coefficients sont dans un corps quadratique Q(sqrt(m)) : x^4 + 1 =
+ *      (x^2 + sqrt(2) x + 1)(x^2 - sqrt(2) x + 1). Au-delà (résidus algébriques de degré
+ *      plus grand), l'élément simple reste une intégrale non évaluée.
  *
  * Les logarithmes de même coefficient sont regroupés, ce qui redonne la forme minimale de
  * Rothstein-Trager quand les résidus sont rationnels : x/(x^2 - 4) s'intègre en
@@ -408,6 +412,7 @@ struct Logarithmes {
     // Quand la variable est t = exp(u) : ln|t| = u, tenu à part des autres logarithmes
     bool variableExponentielle = false;
     Nombre coefficientVariable;
+    bool quartiques = false; // les facteurs de degré 4 peuvent être scindés sur Q(sqrt(m))
 
     void ajouter(const Nombre& c, const Polynome& argument, bool positif) {
         if (c.estZero()) return;
@@ -438,6 +443,173 @@ struct Logarithmes {
     }
 };
 
+// ----------------------------------------------------------------------------
+// Facteur irréductible de degré 4 : factorisation réelle sur un corps quadratique
+// ----------------------------------------------------------------------------
+
+// a + b sqrt(m), m > 0 rationnel non carré fixé par le contexte
+struct Quad {
+    Nombre a, b;
+};
+
+struct CorpsQuadratique {
+    Nombre m;
+
+    Quad plus(const Quad& u, const Quad& v) const { return {u.a + v.a, u.b + v.b}; }
+    Quad moins(const Quad& u, const Quad& v) const { return {u.a - v.a, u.b - v.b}; }
+    Quad fois(const Quad& u, const Quad& v) const { return {u.a * v.a + u.b * v.b * m, u.a * v.b + u.b * v.a}; }
+    Quad fois(const Quad& u, const Nombre& k) const { return {u.a * k, u.b * k}; }
+    Quad inverse(const Quad& u) const {
+        const Nombre norme = (u.a * u.a - u.b * u.b * m).inverse();
+        return {u.a * norme, -(u.b * norme)};
+    }
+    static Quad conjugue(const Quad& u) { return {u.a, -u.b}; }
+    int signe(const Quad& u) const {
+        const int sa = u.a.signe(), sb = u.b.signe();
+        if (sb == 0 || sa == sb) return sa;
+        if (sa == 0) return sb;
+        return sa * (u.a * u.a - u.b * u.b * m).signe(); // signes opposés : le plus grand en module l'emporte
+    }
+    // a + b sqrt(m) en expression
+    ExprPtr expression(const Quad& u) const { return nombre(u.a) + nombre(u.b) * ast_pow(nombre(m), frac(1, 2)); }
+};
+
+/*
+ * Nom : factoriserQuartique
+ * Description : Pour z^4 + P z^2 + Q z + R irréductible sur Q, cherche m > 0 rationnel et une
+ *               factorisation réelle (z^2 + e1 z + e0)(z^2 + e1' z + e0'), e1 et e0 dans
+ *               Q(sqrt(m)), le second facteur étant le conjugué du premier. Avec
+ *               (z^2 + alpha z + beta)(z^2 - alpha z + delta) : beta + delta - alpha^2 = P,
+ *               alpha (delta - beta) = Q, beta delta = R, et alpha^2 est racine de la
+ *               résolvante cubique t^3 + 2P t^2 + (P^2 - 4R) t - Q^2. Renvoie faux si la
+ *               factorisation réelle demande des nombres algébriques de degré > 2.
+ */
+bool factoriserQuartique(const Nombre& P, const Nombre& Q, const Nombre& R, Nombre& m, Quad& e1, Quad& e0) {
+    const Nombre demi = Nombre::rationnel(1, 2);
+    Nombre racine;
+    if (Q.estZero()) {
+        // alpha = 0 : beta et delta racines de t^2 - P t + R
+        const Nombre D = P * P - Nombre(4) * R;
+        if (D.signe() > 0 && !D.racineExacte(2, racine)) {
+            m = D;
+            e1 = {Nombre(0), Nombre(0)};
+            e0 = {P * demi, demi};
+            return true;
+        }
+        // beta = delta = rho, rho^2 = R, alpha^2 = 2 rho - P
+        if (R.signe() > 0 && R.racineExacte(2, racine)) {
+            for (const Nombre& rho : {racine, -racine}) {
+                const Nombre carre = Nombre(2) * rho - P;
+                Nombre inutile;
+                if (carre.signe() <= 0 || carre.racineExacte(2, inutile)) continue;
+                m = carre;
+                e1 = {Nombre(0), Nombre(1)};
+                e0 = {rho, Nombre(0)};
+                return true;
+            }
+        }
+        return false;
+    }
+    const Polynome resolvante({-(Q * Q), P * P - Nombre(4) * R, Nombre(2) * P, Nombre(1)});
+    for (const RacineReelle& r : resolvante.racinesReelles()) {
+        const Constante* valeur = r.exacte ? comme<Constante>(r.exacte) : nullptr;
+        if (!valeur || valeur->getNombre().signe() <= 0) continue;
+        m = valeur->getNombre(); // alpha = sqrt(m)
+        if (m.racineExacte(2, racine)) continue; // le polynôme serait réductible
+        e1 = {Nombre(0), Nombre(1)};
+        e0 = {(P + m) * demi, -(Q / (Nombre(2) * m))}; // beta = (P + m - Q/alpha)/2
+        return true;
+    }
+    return false;
+}
+
+/*
+ * Nom : elementQuartique
+ * Description : int a/p pour p irréductible de degré 4 (deg a < 4) quand p se factorise en
+ *               deux trinômes réels conjugués q et q' sur Q(sqrt(m)) :
+ *               a/p = (A z + B)/q + conjugué, z = x + p3/(4 p4), puis pour chaque trinôme
+ *               (A/2) ln|q| + (B - A e1/2) int dz/q. Les deux logarithmes se regroupent en
+ *               Re(A)/2 ln|p| + Im(A) sqrt(m)/2 ln|q/q'|.
+ */
+bool elementQuartique(const Polynome& a, const Polynome& p, const ExprPtr& x, Logarithmes& logs, AccumulateurSomme& somme) {
+    const Nombre dominant = p.dominant();
+    const Nombre h = p.coefficient(3) / (Nombre(4) * dominant); // z = x + h
+    // p(z - h)/dominant = z^4 + P z^2 + Q z + R et n(z) = a(z - h)/dominant
+    const Fraction decalage(Polynome({-h, Nombre(1)}));
+    const Polynome pz = Fraction(p * dominant.inverse()).composer(decalage).numerateur();
+    const Polynome n = Fraction(a * dominant.inverse()).composer(decalage).numerateur();
+    CorpsQuadratique K;
+    Quad e1, e0;
+    if (!factoriserQuartique(pz.coefficient(2), pz.coefficient(1), pz.coefficient(0), K.m, e1, e0)) return false;
+
+    // Dans K[z]/(q), q = z^2 + e1 z + e0 : éléments r1 z + r0
+    struct Residu {
+        Quad r1, r0;
+    };
+    const auto foisZ = [&](const Residu& r) { // z^2 = -e1 z - e0
+        return Residu{K.moins(r.r0, K.fois(r.r1, e1)), K.fois(K.fois(r.r1, e0), Nombre(-1))};
+    };
+    const auto produit = [&](const Residu& u, const Residu& v) {
+        const Residu haut = foisZ(Residu{K.fois(u.r1, v.r1), {Nombre(0), Nombre(0)}}); // u1 v1 z^2
+        return Residu{K.plus(haut.r1, K.plus(K.fois(u.r1, v.r0), K.fois(u.r0, v.r1))), K.plus(haut.r0, K.fois(u.r0, v.r0))};
+    };
+    // n mod q (schéma de Horner)
+    Residu reste{{Nombre(0), Nombre(0)}, {Nombre(0), Nombre(0)}};
+    for (int i = n.degre(); i >= 0; --i) {
+        reste = foisZ(reste);
+        reste.r0.a = reste.r0.a + n.coefficient(i);
+    }
+    // Inverse de q' mod q : q' = q + (c1 z + c0), c = conj(e) - e
+    const Quad c1 = K.moins(CorpsQuadratique::conjugue(e1), e1), c0 = K.moins(CorpsQuadratique::conjugue(e0), e0);
+    // (c1 z + c0)(u z + v) = 1 : (c0 - c1 e1) u + c1 v = 0, -c1 e0 u + c0 v = 1
+    const Quad m11 = K.moins(c0, K.fois(c1, e1)), m21 = K.fois(K.fois(c1, e0), Nombre(-1));
+    const Quad determinant = K.plus(K.fois(m11, c0), K.fois(K.fois(c1, c1), e0));
+    if (determinant.a.estZero() && determinant.b.estZero()) return false;
+    const Quad inverseDet = K.inverse(determinant);
+    (void)m21;
+    const Residu inverse{K.fois(K.fois(c1, Nombre(-1)), inverseDet), K.fois(m11, inverseDet)};
+    const Residu AB = produit(reste, inverse); // A z + B
+
+    const ExprPtr racineM = ast_pow(nombre(K.m), frac(1, 2));
+    const Nombre demi = Nombre::rationnel(1, 2);
+    ExprPtr trinomes[2];
+    bool positifs[2];
+    for (int i = 0; i < 2; ++i) {
+        const auto conj = [i](const Quad& u) { return i == 0 ? u : CorpsQuadratique::conjugue(u); };
+        const Quad E1 = conj(e1), E0 = conj(e0), A = conj(AB.r1), B = conj(AB.r0);
+        // q(x) = (x + h)^2 + E1 (x + h) + E0
+        const Quad lineaire = K.plus(E1, {Nombre(2) * h, Nombre(0)});
+        const Quad constant = K.plus(K.plus(K.fois(E1, h), E0), {h * h, Nombre(0)});
+        AccumulateurSomme q;
+        q.ajouter(ast_pow(x, 2.0), Nombre(1));
+        q.ajouter(x, lineaire.a);
+        q.ajouter(racineM * x, lineaire.b);
+        q.ajouter(K.expression(constant), Nombre(1));
+        trinomes[i] = q.construire();
+        // discriminant/4 = E1^2/4 - E0
+        const Quad quartDelta = K.moins(K.fois(K.fois(E1, E1), Nombre::rationnel(1, 4)), E0);
+        const int signe = K.signe(quartDelta);
+        positifs[i] = signe < 0;
+        const Quad k = K.moins(B, K.fois(K.fois(A, E1), demi));
+        if (k.a.estZero() && k.b.estZero()) continue;
+        if (signe == 0) return false;
+        const ExprPtr centre = x + K.expression(K.plus(K.fois(E1, demi), {h, Nombre(0)}));
+        const ExprPtr s = ast_pow(K.expression(signe < 0 ? K.fois(quartDelta, Nombre(-1)) : quartDelta), frac(1, 2));
+        if (signe < 0) {
+            somme.ajouter(K.expression(k) * ast_atan(centre / s) / s, Nombre(1));
+        } else {
+            somme.ajouter(K.expression(k) * ast_ln(ast_abs((centre - s) / (centre + s))) / s, demi);
+        }
+    }
+    // (A/2) ln|q| + (A'/2) ln|q'| = Re(A)/2 ln|p| + Im(A) sqrt(m)/2 ln|q/q'|
+    logs.ajouter(AB.r1.a * demi, p, positifs[0] && positifs[1]);
+    if (!AB.r1.b.estZero()) {
+        const ExprPtr rapport = trinomes[0] / trinomes[1];
+        somme.ajouter(racineM * (positifs[0] && positifs[1] ? ast_ln(rapport) : ast_ln(ast_abs(rapport))), AB.r1.b * demi);
+    }
+    return true;
+}
+
 /*
  * Nom : elementSimple
  * Description : int a/p pour un facteur p irréductible sur Q, primitif (deg a < deg p).
@@ -447,7 +619,8 @@ struct Logarithmes {
  *                   k = n - m B/(2A), et avec h = B/(2A), s = sqrt(|B^2 - 4AC|)/(2A) :
  *                   int dx/p = atan((x + h)/s)/(A s)                 (discriminant < 0)
  *                            = ln|(x + h - s)/(x + h + s)|/(2 A s)   (discriminant > 0) ;
- *                 degré >= 3 : c ln|p| si a = c p'.
+ *                 degré >= 3 : c ln|p| si a = c p' ;
+ *                 degré 4 : deux trinômes réels conjugués sur Q(sqrt(m)), s'ils existent.
  */
 bool elementSimple(const Polynome& a, const Polynome& p, const ExprPtr& x, Logarithmes& logs, AccumulateurSomme& somme) {
     if (a.estNul()) return true;
@@ -474,9 +647,11 @@ bool elementSimple(const Polynome& a, const Polynome& p, const ExprPtr& x, Logar
         return true;
     }
     Nombre c;
-    if (!proportionnels(a, p.derivee(), c)) return false;
-    logs.ajouter(c, p, sansRacineReelle(p));
-    return true;
+    if (proportionnels(a, p.derivee(), c)) {
+        logs.ajouter(c, p, sansRacineReelle(p));
+        return true;
+    }
+    return logs.quartiques && p.degre() == 4 && elementQuartique(a, p, x, logs, somme);
 }
 
 /*
@@ -485,13 +660,15 @@ bool elementSimple(const Polynome& a, const Polynome& p, const ExprPtr& x, Logar
  *               arctangentes à somme, et à nonIntegre les éléments simples sans primitive
  *               à coefficients rationnels ou quadratiques.
  */
-void partieLogarithmique(const Polynome& a, const Polynome& d, const ExprPtr& x, AccumulateurSomme& somme, Fraction& nonIntegre) {
+void partieLogarithmique(const Polynome& a, const Polynome& d, const ExprPtr& x, AccumulateurSomme& somme, Fraction& nonIntegre,
+                         bool quartiques) {
     if (a.estNul()) return;
     Nombre contenu;
     const Polynome dPrimitif = d.partiePrimitive(contenu); // d = contenu * dPrimitif
     const Polynome numerateur = a * contenu.inverse();     // a/d = numerateur / dPrimitif
     Logarithmes logs;
     logs.variableExponentielle = x->type() == TypeNoeud::Exponentielle;
+    logs.quartiques = quartiques;
     Nombre c;
     if (proportionnels(numerateur, dPrimitif.derivee(), c)) {
         // Dérivée logarithmique : c ln|d|, sans factoriser
@@ -557,9 +734,11 @@ namespace {
  * Nom : integrerFraction
  * Description : Coeur de primitiveFraction : partie rationnelle (polynôme + réduction
  *               d'Hermite) dans rationnelle, logarithmes et arctangentes ajoutés à somme, ce
- *               qui n'a pas pu être intégré dans nonIntegre.
+ *               qui n'a pas pu être intégré dans nonIntegre. quartiques autorise la
+ *               factorisation réelle des facteurs irréductibles de degré 4.
  */
-void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle, AccumulateurSomme& somme, Fraction& nonIntegre) {
+void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle, AccumulateurSomme& somme, Fraction& nonIntegre,
+                      bool quartiques) {
     Polynome q, r;
     f.numerateur().diviser(f.denominateur(), q, r);
     rationnelle = Fraction();
@@ -577,7 +756,7 @@ void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle
                           rationnelle.versExpression(x) + fabriquer<IntegraleNonEvaluee>(Fraction(a2, dEtoile).versExpression(x)));
             });
         }
-        partieLogarithmique(r2, dEtoile, x, somme, nonIntegre);
+        partieLogarithmique(r2, dEtoile, x, somme, nonIntegre, quartiques);
     }
     if (!q.estNul()) rationnelle = rationnelle + Fraction(primitive(q));
 }
@@ -587,21 +766,16 @@ void integrerFraction(const Fraction& f, const ExprPtr& x, Fraction& rationnelle
 ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
     AccumulateurSomme somme;
     Fraction rationnelle, nonIntegre;
-    const std::size_t etapes = journal::actif() ? journal::actif()->etapes().size() : 0;
-    integrerFraction(f, x, rationnelle, somme, nonIntegre);
-    if (complete) *complete = nonIntegre.estNulle();
+    Journal* const j = journal::actif();
+    const std::size_t etapes = j ? j->etapes().size() : 0;
+    // 1. Facteurs irréductibles de degré 1 et 2
+    integrerFraction(f, x, rationnelle, somme, nonIntegre, false);
     if (!nonIntegre.estNulle()) {
-        // Dernier recours : u = x^k abaisse le degré des facteurs irréductibles
+        // 2. u = x^k abaisse le degré des facteurs irréductibles (x/(x^4 + 1) : atan(x^2)/2)
         Fraction h;
         int k;
         if (substitutionMonomiale(f, h, k)) {
-            // Au journal, la tentative en x laisse la place au changement de variable
-            Journal* const j = journal::actif();
-            std::vector<Etape> tentative;
-            if (j) {
-                tentative.assign(j->etapes().begin() + static_cast<std::ptrdiff_t>(etapes), j->etapes().end());
-                j->tronquer(etapes);
-            }
+            if (j) j->tronquer(etapes); // la tentative en x laisse la place au changement de variable
             const ExprPtr u = ast_pow(x, nombre(Nombre(k)));
             journal::noter([&](Journal& jr) {
                 jr.ajouter("integration.substitution", "Changement de variable u = " + u->texte(), f.versExpression(x),
@@ -617,13 +791,15 @@ ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
                 if (complete) *complete = true;
                 return resultat;
             }
-            if (j) {
-                j->tronquer(etapes);
-                for (Etape& e : tentative) j->ajouter(std::move(e.regle), std::move(e.description), std::move(e.avant), std::move(e.apres));
-            }
         }
-        somme.ajouter(fabriquer<IntegraleNonEvaluee>(nonIntegre.versExpression(x)), Nombre(1));
+        // 3. Facteurs de degré 4 scindés sur un corps quadratique réel
+        if (j) j->tronquer(etapes);
+        somme = AccumulateurSomme();
+        nonIntegre = Fraction();
+        integrerFraction(f, x, rationnelle, somme, nonIntegre, true);
+        if (!nonIntegre.estNulle()) somme.ajouter(fabriquer<IntegraleNonEvaluee>(nonIntegre.versExpression(x)), Nombre(1));
     }
+    if (complete) *complete = nonIntegre.estNulle();
     // Partie polynomiale et pôles multiples séparés : x^2/2 + 3*x - (8*x - 7)/(2*(x - 1)^2)
     Polynome q, r;
     rationnelle.numerateur().diviser(rationnelle.denominateur(), q, r);
@@ -633,11 +809,19 @@ ExprPtr primitiveFraction(const Fraction& f, const ExprPtr& x, bool* complete) {
 }
 
 bool primitiveFractionSeparee(const Fraction& f, const ExprPtr& x, Fraction& rationnelle, ExprPtr& transcendante) {
-    AccumulateurSomme somme;
-    Fraction nonIntegre;
-    integrerFraction(f, x, rationnelle, somme, nonIntegre);
-    transcendante = somme.construire();
-    return nonIntegre.estNulle();
+    for (const bool quartiques : {false, true}) {
+        AccumulateurSomme somme;
+        Fraction nonIntegre;
+        Journal* const j = journal::actif();
+        const std::size_t etapes = j ? j->etapes().size() : 0;
+        integrerFraction(f, x, rationnelle, somme, nonIntegre, quartiques);
+        if (nonIntegre.estNulle()) {
+            transcendante = somme.construire();
+            return true;
+        }
+        if (j) j->tronquer(etapes);
+    }
+    return false;
 }
 
 ExprPtr parFractionRationnelle(const ExprPtr& f) {
