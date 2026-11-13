@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ASTNode.hpp"
+#include "Lecture.hpp"
 #include "Polynome.hpp"
 #include "test_framework.hpp"
 
@@ -192,6 +193,76 @@ TEST_CASE(factorisation) {
     // La factorisation redonne bien le polynôme
     const ExprPtr g = cst(6.0) * ast_pow(X, 4.0) - cst(5.0) * ast_pow(X, 3.0) - cst(2.0) * X;
     CHECK(developper(factoriser(g)).get() == developper(g).get());
+}
+
+TEST_CASE(factorisation_complete_sur_q) {
+    // Facteurs irréductibles de degré > 1 sans racine rationnelle (Berlekamp-Zassenhaus)
+    CHECK_EQ(factoriser(lire("x^4 + x^2 + 1"))->texte(), std::string("(x^2 - x + 1)*(x^2 + x + 1)"));
+    CHECK_EQ(factoriser(lire("x^4 + 5*x^2 + 4"))->texte(), std::string("(x^2 + 1)*(x^2 + 4)"));
+    CHECK_EQ(factoriser(lire("x^6 - 1"))->texte(), std::string("(x^2 - x + 1)*(x - 1)*(x + 1)*(x^2 + x + 1)"));
+    CHECK_EQ(factoriser(lire("x^4 + 4"))->texte(), std::string("(x^2 - 2*x + 2)*(x^2 + 2*x + 2)"));
+    // Irréductibles sur Q, bien que réductibles modulo tout nombre premier
+    for (const char* t : {"x^4 + 1", "x^4 - 10*x^2 + 1", "x^5 - x + 1", "x^2 - 2"}) {
+        const ExprPtr e = lire(t);
+        CHECK(factoriser(e).get() == e.get());
+    }
+    // x^30 - 1 : 8 polynômes cyclotomiques
+    Polynome p;
+    CHECK(Polynome::depuisExpression(lire("x^30 - 1"), p));
+    Nombre contenu;
+    bool complet = false;
+    auto facteurs = p.facteursIrreductibles(contenu, &complet);
+    CHECK(complet);
+    CHECK_EQ(facteurs.size(), std::size_t(8));
+    Polynome produit({contenu});
+    for (const auto& [f, m] : facteurs) {
+        CHECK_EQ(m, 1);
+        produit = produit * f;
+    }
+    CHECK((produit - p).estNul());
+    // Multiplicités, contenu rationnel et tri par degré
+    CHECK(Polynome::depuisExpression(developper(lire("(x^2 + x + 1)^3*(x - 2)^2*(3*x + 5)/7")), p));
+    facteurs = p.facteursIrreductibles(contenu, &complet);
+    CHECK(complet);
+    CHECK(contenu == Nombre::rationnel(1, 7));
+    CHECK_EQ(facteurs.size(), std::size_t(3));
+    if (facteurs.size() == 3) {
+        CHECK_EQ(facteurs[0].first.versExpression(X)->texte(), std::string("x - 2"));
+        CHECK_EQ(facteurs[0].second, 2);
+        CHECK_EQ(facteurs[1].first.versExpression(X)->texte(), std::string("3*x + 5"));
+        CHECK_EQ(facteurs[1].second, 1);
+        CHECK_EQ(facteurs[2].first.versExpression(X)->texte(), std::string("x^2 + x + 1"));
+        CHECK_EQ(facteurs[2].second, 3);
+    }
+    // Polynôme de Swinnerton-Dyer de degré 16 : 8 facteurs modulo p, irréductible sur Q
+    const ExprPtr sd = lire("x^16 - 136*x^14 + 6476*x^12 - 141912*x^10 + 1513334*x^8 - 7453176*x^6 + 13950764*x^4 - 5596840*x^2 + 46225");
+    CHECK(Polynome::depuisExpression(sd, p));
+    facteurs = p.facteursIrreductibles(contenu, &complet);
+    CHECK(complet);
+    CHECK_EQ(facteurs.size(), std::size_t(1));
+    // Coefficient réel : factorisation non certifiée, signalée
+    CHECK(Polynome::depuisExpression(X * X * cst(0.5) - cst(0.5), p));
+    p.facteursIrreductibles(contenu, &complet);
+    CHECK(!complet);
+}
+
+TEST_CASE(pgcd_etendu) {
+    Polynome a, b, u, v;
+    CHECK(Polynome::depuisExpression(lire("x^3 - 2*x + 1"), a));
+    CHECK(Polynome::depuisExpression(lire("x^2 + 1"), b));
+    Polynome g = Polynome::pgcdEtendu(a, b, u, v);
+    CHECK_EQ(g.degre(), 0);
+    CHECK((u * a + v * b - g).estNul());
+    // PGCD non trivial, unitaire
+    CHECK(Polynome::depuisExpression(developper(lire("(2*x - 2)*(x^2 + 3)")), a));
+    CHECK(Polynome::depuisExpression(developper(lire("(x - 1)*(x + 5)")), b));
+    g = Polynome::pgcdEtendu(a, b, u, v);
+    CHECK_EQ(g.versExpression(X)->texte(), std::string("x - 1"));
+    CHECK((u * a + v * b - g).estNul());
+    // Un argument nul
+    g = Polynome::pgcdEtendu(Polynome(), b, u, v);
+    CHECK((u * Polynome() + v * b - g).estNul());
+    CHECK(g.dominant().estUn());
 }
 
 int main() { return test::executerTous(); }
