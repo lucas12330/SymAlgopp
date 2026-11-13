@@ -2,6 +2,20 @@
 
 Ce document répertorie tous les ajouts et correctifs majeurs de la bibliothèque SymAlgo++.
 
+## [Unreleased] - Journal des étapes et export LaTeX (branche feature/journal-latex, empilée sur feature/fonctions-usuelles)
+
+### Ajouts (Additions)
+* **Journal des étapes** (`Journal.hpp`) : `resoudre(gauche, droite, journal)` (et `EquationClassique::resoudre(journal)`) note chaque étape du solveur (forme nulle, discriminant, racines, changement de variable, familles trigonométriques, solutions rejetées, bilan), avec règle stable, description en français et niveau d'imbrication. Résoudre avec ou sans journal donne les mêmes solutions.
+* **Export LaTeX** (`Latex.hpp`) : `latex(expression, options)`, `latex(solutions, inconnue, options)`, `latex(journal, options)` et `documentLatex(corps)`. Options : fractions, racines, multiplication explicite.
+* Nouveau binaire de test `test_latex` (rendu, accolades équilibrées sur expressions aléatoires, partage fort, journaux).
+
+### Correctifs (Patches)
+* Rendu des noms commençant par `_` ou par un chiffre : `x + _1` ne s'écrit plus `x + 1`, ni `_a` comme `a` ; ils sont écrits en `\mathrm{...}` échappé.
+* Les racines approchées du journal sont notées avec `\approx` et non `=` ; `latex(ExprPtr())` lève `std::invalid_argument`.
+
+### Performances
+* Le journal et le LaTeX ne coûtent rien tant qu'ils ne sont pas demandés : le texte et les expressions des étapes ne sont construits que dans des lambdas appelées si un journal est actif (mesures avant/après dans la description de la pull request).
+
 ## [Unreleased] - Plusieurs variables, packaging et cas d'usage (branche feature/multivariable-packaging)
 
 ### Ajouts (Additions)
