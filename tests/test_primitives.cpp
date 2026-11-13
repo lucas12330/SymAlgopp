@@ -1,7 +1,8 @@
 /**
  * @file test_primitives.cpp
- * @brief Tests de l'intégration symbolique : table étendue, ln|u|, changement de variable
- *        « la dérivée divise », intégrales hors de portée et journal des étapes.
+ * @brief Tests de l'intégration symbolique : table étendue, ln|u|, fractions rationnelles,
+ *        changement de variable « la dérivée divise », intégrales hors de portée et journal
+ *        des étapes.
  *
  * Chaque primitive F de f est vérifiée par dérivation : F' - f est nul exactement quand la
  * forme canonique le permet, sinon F' et f sont comparés en plusieurs points (écart relatif
@@ -9,6 +10,7 @@
  */
 
 #include <cmath>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -16,6 +18,7 @@
 #include "EquationClassique.hpp"
 #include "Journal.hpp"
 #include "Lecture.hpp"
+#include "Primitives.hpp"
 #include "Solveur.hpp"
 #include "test_framework.hpp"
 
@@ -181,11 +184,97 @@ TEST_CASE(substitution_autre_variable) {
 }
 
 // ============================================================================
+// Fractions rationnelles : division, Hermite, éléments simples
+// ============================================================================
+
+TEST_CASE(rationnelle_logarithmes) {
+    const std::vector<double> points = {-3.7, -0.45, 0.31, 4.3};
+    verifier({"1/(x^2 - 1)", "ln(abs((x - 1)/(x + 1)))/2", false, points});
+    verifier({"1/(1 - x^2)", "ln(abs((x + 1)/(x - 1)))/2", false, points});
+    verifier({"1/(4*x^2 - 1)", "ln(abs((2*x - 1)/(2*x + 1)))/4", false, points});
+    // Logarithmes de même coefficient regroupés
+    verifier({"x/(x^2 - 4)", "ln(abs(x^2 - 4))/2", true, points});
+    verifier({"1/((x - 1)*(x - 2)*(x - 3))", "ln(abs(x^2 - 4*x + 3))/2 - ln(abs(x - 2))", false, {-3.7, 0.31, 2.5, 4.3}});
+    verifier({"(x^5 + 2)/(x^3 - x)", "x^3/3 + x - 2*ln(abs(x)) + 3*ln(abs(x - 1))/2 + ln(abs(x + 1))/2", false, points});
+    // Dérivée logarithmique d'un dénominateur irréductible de degré 3 : pas de factorisation
+    verifier({"(3*x^2 + 1)/(x^3 + x + 1)", "ln(abs(x^3 + x + 1))", true, points});
+    verifier({"x^3/(x^4 + 1)", "ln(x^4 + 1)/4", true, points});
+    verifier({"1/(x^5 + x)", "-ln(x^4 + 1)/4 + ln(abs(x))", false, points});
+    // Racines irrationnelles de degré 2
+    verifier({"1/(x^2 - 2)", "2^(1/2)*ln(abs((x - 2^(1/2))/(x + 2^(1/2))))/4", false, points});
+    verifier({"1/(x^2 - 3*x + 1)", "", false, points});
+}
+
+TEST_CASE(rationnelle_arctangentes) {
+    const std::vector<double> points = {-3.7, -0.45, 0.31, 4.3};
+    verifier({"1/(x^2 + x + 1)", "2*3^(1/2)*atan(2*3^(1/2)*(x + 1/2)/3)/3", false, points});
+    verifier({"(x^3 + 1)/(x^2 + 1)", "x^2/2 - ln(x^2 + 1)/2 + atan(x)", false, points});
+    verifier({"1/(x^3 + 1)", "3^(1/2)*atan(2*3^(1/2)*(x - 1/2)/3)/3 - ln(x^2 - x + 1)/6 + ln(abs(x + 1))/3", false, points});
+    verifier({"1/(x^4 - 1)", "ln(abs((x - 1)/(x + 1)))/4 - atan(x)/2", false, points});
+    // x^4 + x^2 + 1 = (x^2 - x + 1)(x^2 + x + 1) : factorisation complète sur Q nécessaire
+    verifier({"1/(x^4 + x^2 + 1)", "", false, points});
+    verifier({"1/(x^6 - 1)", "", false, points});
+    verifier({"1/(2*x^2 + 3)", "6^(1/2)*atan(6^(1/2)*x/3)/6", false, points});
+}
+
+TEST_CASE(rationnelle_hermite) {
+    const std::vector<double> points = {-3.7, -0.45, 0.31, 4.3};
+    verifier({"1/(x^2 + 1)^2", "x/2/(x^2 + 1) + atan(x)/2", false, points});
+    verifier({"x^2/(x^2 + 1)^2", "-x/2/(x^2 + 1) + atan(x)/2", false, points});
+    verifier({"1/(x^2 + 1)^3", "(3*x^3 + 5*x)/(8*(x^2 + 1)^2) + 3*atan(x)/8", false, points});
+    verifier({"1/(x*(x + 1)^2)", "1/(x + 1) + ln(abs(x/(x + 1)))", false, points});
+    // Purement rationnelle : aucun logarithme
+    verifier({"(2*x + 3)/(x^2 + 3*x + 5)^2", "-1/(x^2 + 3*x + 5)", true, points});
+    verifier({"x/(1 - x)^3", "(2*x - 1)/(2*(x - 1)^2)", false, points});
+    verifier({"x^4/(x - 1)^3", "x^2/2 + 3*x - (8*x - 7)/(2*(x - 1)^2) + 6*ln(abs(x - 1))", false, {-3.7, -0.45, 0.31, 4.3}});
+    verifier({"1/(x^2*(x^2 + 2)^2)", "", false, points});
+}
+
+TEST_CASE(rationnelle_substitution_monomiale) {
+    // u = x^k quand x f(x) est une fraction en x^k
+    const std::vector<double> points = {-1.7, -0.45, 0.31, 2.3};
+    verifier({"x/(x^4 + 1)", "atan(x^2)/2", true, points});
+    verifier({"x^2/(x^6 + 1)", "atan(x^3)/3", true, points});
+    verifier({"x^3/(x^8 + 1)", "atan(x^4)/4", true, points});
+}
+
+TEST_CASE(rationnelle_outils) {
+    // Fraction : toujours réduite, dénominateur unitaire
+    const Fraction x = Fraction::variable();
+    const Fraction un(Nombre(1));
+    const Fraction f = (x * x - un) / (x - un); // x + 1
+    CHECK(f.estPolynome());
+    CHECK(f == x + un);
+    CHECK_EQ(((x + un) / (x * x * Nombre(2) + x * Nombre(2))).versExpression(X)->texte(), std::string("1/(2*x)"));
+    CHECK((un / x).puissance(-3) == x * x * x);
+    CHECK((x / (x + un)).derivee() == (x + un).puissance(-2));
+    // Composition : f(g) avec f = x/(x + 1), g = 1/x donne 1/(x + 1)
+    CHECK((x / (x + un)).composer(un / x) == un / (x + un));
+    CHECK_THROWS(un / Fraction(), std::domain_error);
+    // versFraction : refuse ce qui n'est pas rationnel exact
+    Fraction g;
+    CHECK(versFraction(lire("(x^2 + 1)/(x - 3)^2 + 1/x"), X, g));
+    CHECK(!versFraction(lire("sin(x)/x"), X, g));
+    CHECK(!versFraction(lire("x^(1/2)"), X, g));
+    CHECK(!versFraction(lire("a*x", {"x", {}}), X, g)); // paramètre
+    CHECK(!versFraction(X * cst(0.5), X, g));              // coefficient réel
+    // Résultat partiel signalé
+    bool complete = true;
+    CHECK(versFraction(lire("1/(x^3 + x + 1) + 1/x"), X, g));
+    const ExprPtr F = primitiveFraction(g, X, &complete);
+    CHECK(!complete);
+    CHECK(contientIntegrale(F));
+    // Produit de polynômes : changement de variable d'abord, développement sinon
+    CHECK_EQ(lire("x^2*(x^3 + 1)^5")->integrer()->texte(), std::string("(x^3 + 1)^6/18"));
+    CHECK_EQ(lire("(x + 1)^2*(x - 3)")->integrer()->texte(), std::string("x^4/4 - x^3/3 - 5*x^2/2 - 3*x"));
+}
+
+// ============================================================================
 // Hors de portée : intégrale non évaluée, jamais de résultat faux
 // ============================================================================
 
 TEST_CASE(integrales_hors_de_portee) {
-    for (const char* texte : {"x*exp(x)", "1/(x^2 - 1)", "sin(x)^2", "exp(x)*sin(x)", "exp(x^2)", "sin(x^2)",
+    for (const char* texte : {"x*exp(x)", "1/(x^3 + x + 1)", "sin(x)^2", "exp(x)*sin(x)", "exp(x^2)", "sin(x^2)",
                               "x*sin(x)", "x^3*exp(x^2)", "1/(x^4 + 1)", "sin(sin(x))", "ln(ln(x))"}) {
         const ExprPtr f = lire(texte);
         const ExprPtr F = f->integrer();
@@ -203,21 +292,21 @@ TEST_CASE(integrales_hors_de_portee) {
 // ============================================================================
 
 TEST_CASE(journal_substitution) {
-    const ExprPtr f = lire("2*x/(x^2 + 1)");
+    const ExprPtr f = lire("2*x*cos(x^2)");
     Journal j;
     const ExprPtr F = f->integrer(j);
-    CHECK(F.get() == lire("ln(x^2 + 1)").get());
+    CHECK(F.get() == lire("sin(x^2)").get());
     CHECK(journal::actif() == nullptr); // désactivé à la sortie
     const std::vector<Etape>& e = j.etapes();
     CHECK_EQ(e.size(), std::size_t(3));
     if (e.size() == 3) {
         CHECK_EQ(e[0].regle, std::string("integration.substitution"));
-        CHECK_EQ(e[0].description, std::string("Changement de variable u = x^2 + 1, du = 2*x dx"));
+        CHECK_EQ(e[0].description, std::string("Changement de variable u = x^2, du = 2*x dx"));
         CHECK(e[0].avant.get() == f.get());
-        CHECK_EQ(e[0].apres->texte(), std::string("1/u"));
+        CHECK_EQ(e[0].apres->texte(), std::string("cos(u)"));
         CHECK_EQ(e[0].niveau, 0);
         CHECK_EQ(e[1].regle, std::string("integration.table"));
-        CHECK_EQ(e[1].apres->texte(), std::string("ln(abs(u))"));
+        CHECK_EQ(e[1].apres->texte(), std::string("sin(u)"));
         CHECK_EQ(e[1].niveau, 1);
         CHECK_EQ(e[2].regle, std::string("integration.retour"));
         CHECK(e[2].apres.get() == F.get());
@@ -226,6 +315,33 @@ TEST_CASE(journal_substitution) {
     // Sans journal : même résultat, rien n'est noté
     CHECK(f->integrer().get() == F.get());
     CHECK_EQ(j.etapes().size(), std::size_t(3));
+}
+
+TEST_CASE(journal_fraction_rationnelle) {
+    // Dérivée logarithmique : une seule étape
+    Journal j;
+    const ExprPtr F = lire("2*x/(x^2 + 1)")->integrer(j);
+    CHECK(F.get() == lire("ln(x^2 + 1)").get());
+    CHECK_EQ(j.etapes().size(), std::size_t(1));
+    if (!j.etapes().empty()) CHECK_EQ(j.etapes()[0].regle, std::string("integration.rationnelle"));
+    // Pôles multiples puis éléments simples
+    Journal k;
+    const ExprPtr f = lire("1/(x^2*(x - 1)*(x + 2))");
+    const ExprPtr G = f->integrer(k);
+    const std::vector<Etape>& e = k.etapes();
+    CHECK_EQ(e.size(), std::size_t(3));
+    if (e.size() == 3) {
+        CHECK_EQ(e[0].regle, std::string("integration.hermite"));
+        CHECK_EQ(e[1].regle, std::string("integration.elements_simples"));
+        CHECK_EQ(e[2].regle, std::string("integration.rationnelle"));
+        CHECK(e[2].avant.get() == f.get());
+        CHECK(e[2].apres.get() == G.get());
+    }
+    // Échec : les étapes de la tentative sont retirées
+    Journal l;
+    lire("1/(x^3 + x + 1)")->integrer(l);
+    CHECK_EQ(l.etapes().size(), std::size_t(1));
+    if (!l.etapes().empty()) CHECK_EQ(l.etapes()[0].regle, std::string("integration.non_evaluee"));
 }
 
 TEST_CASE(journal_linearite_et_echec) {

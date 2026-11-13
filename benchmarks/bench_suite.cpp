@@ -539,10 +539,30 @@ BENCHMARK(BM_SymAlgo_IntegraleSubstitution);
 // Échecs (intégrales encore hors de portée) : coût des méthodes essayées en vain
 static void BM_SymAlgo_IntegraleEchec(benchmark::State& state) {
     const ExprPtr x = var("x");
-    mesurerPrimitives(state, {x * ast_exp(x), 1.0 / (ast_pow(x, 2.0) - 1.0), ast_pow(ast_sin(x), 2.0),
+    mesurerPrimitives(state, {x * ast_exp(x), 1.0 / (ast_pow(x, 3.0) + x + 1.0), ast_pow(ast_sin(x), 2.0),
                               ast_exp(x) * ast_sin(x), ast_exp(ast_pow(x, 2.0))});
 }
 BENCHMARK(BM_SymAlgo_IntegraleEchec);
+
+// Fractions rationnelles : Hermite, factorisation sur Q, éléments simples
+static void BM_SymAlgo_IntegraleRationnelle(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    mesurerPrimitives(state, {1.0 / (ast_pow(x, 2.0) - 1.0), x / (ast_pow(x, 2.0) - 4.0), 1.0 / (ast_pow(x, 3.0) + 1.0),
+                              1.0 / ast_pow(ast_pow(x, 2.0) + 1.0, 2.0),
+                              (ast_pow(x, 5.0) + 2.0) / (ast_pow(x, 3.0) - x)});
+}
+BENCHMARK(BM_SymAlgo_IntegraleRationnelle);
+
+// Factorisation complète sur Q : x^12 - 1 (6 facteurs cyclotomiques)
+static void BM_SymAlgo_Factorisation(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr e = ast_pow(x, 12.0) - 1.0;
+    for (auto _ : state) {
+        ExprPtr f = factoriser(e);
+        benchmark::DoNotOptimize(f);
+    }
+}
+BENCHMARK(BM_SymAlgo_Factorisation);
 
 // ============================================================================
 // Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
