@@ -355,6 +355,67 @@ ExprPtr racine(const Nombre& n) { return ast_pow(nombre(n), frac(1, 2)); }
  *               Les autres cas (racines réelles distinctes : fractions rationnelles) sont
  *               laissés aux méthodes suivantes.
  */
+/*
+ * Nom : trinomeSymbolique
+ * Description : 1/sqrt(a x^2 + b x + c) quand b ou c n'est pas numérique (paramètre, constante
+ *               d'intégration) : le signe de a choisit la forme.
+ *                 a > 0 : ln|2 a x + b + 2 sqrt(a) sqrt(Q)| / sqrt(a) ;
+ *                 a < 0 : asin((-2 a x - b)/sqrt(b^2 - 4 a c)) / sqrt(-a), là où Q > 0 ;
+ *                 a symbolique, b = 0 et c < 0 : Q n'est positif que si a > 0, forme en ln.
+ */
+ExprPtr trinomeSymbolique(const ExprPtr& base) {
+    const Somme* s = comme<Somme>(base);
+    const ExprPtr x = variableDe(*base);
+    if (!s || !x) return nullptr;
+    AccumulateurSomme c[3];
+    c[0].ajouter(nombre(s->getConstante()), Nombre(1));
+    for (const Terme& t : s->getTermes()) {
+        if (!t.expression->contientVariable()) {
+            c[0].ajouter(t.expression, t.coefficient);
+            continue;
+        }
+        // terme = coefficient * reste * x^k, reste sans x
+        long long k = 0;
+        AccumulateurProduit reste;
+        const auto facteur = [&](const ExprPtr& b, const ExprPtr& e) {
+            if (b.get() == x.get()) {
+                const Constante* n = comme<Constante>(e);
+                return n && n->getNombre().versEntier(k) && k >= 1 && k <= 2;
+            }
+            if (b->contientVariable() || e->contientVariable()) return false;
+            reste.multiplier(ast_pow(b, e));
+            return true;
+        };
+        if (const Produit* p = comme<Produit>(t.expression)) {
+            for (const Facteur& f : p->getFacteurs()) {
+                if (!facteur(f.base, f.exposant)) return nullptr;
+            }
+        } else if (const Puissance* p = comme<Puissance>(t.expression)) {
+            if (!facteur(p->getBase(), p->getExposant())) return nullptr;
+        } else if (!facteur(t.expression, un())) {
+            return nullptr;
+        }
+        if (k == 0) return nullptr;
+        c[k].ajouter(reste.construire(), t.coefficient);
+    }
+    const ExprPtr a = c[2].construire(), b = c[1].construire(), c0 = c[0].construire();
+    const Constante* an = comme<Constante>(a);
+    const Constante* bn = comme<Constante>(b);
+    const Constante* cn = comme<Constante>(c0);
+    if (an && an->getNombre().estZero()) return nullptr;
+    const bool positif = an ? an->getNombre().signe() > 0 : bn && bn->getNombre().estZero() && cn && cn->getNombre().signe() < 0;
+    const ExprPtr y = ast_pow(base, frac(1, 2));
+    if (positif) {
+        const ExprPtr racineA = ast_pow(a, frac(1, 2));
+        return ast_ln(ast_abs(2.0 * a * x + b + 2.0 * racineA * y)) / racineA;
+    }
+    if (an) { // a < 0
+        const ExprPtr delta = ast_pow(b, 2.0) - 4.0 * a * c0;
+        return ast_asin((-2.0 * a * x - b) / ast_pow(delta, frac(1, 2))) / ast_pow(-a, frac(1, 2));
+    }
+    return nullptr;
+}
+
 ExprPtr trinome(const ExprPtr& base, bool racineCarree) {
     Polynome p;
     ExprPtr x;
@@ -363,7 +424,7 @@ ExprPtr trinome(const ExprPtr& base, bool racineCarree) {
         const Somme* s = comme<Somme>(base);
         if (!s || s->getTermes().size() > 3) return nullptr;
         const ExprPtr d = developper(base);
-        if (d.get() == base.get() || !Polynome::depuisExpression(d, p, &x)) return nullptr;
+        if (d.get() == base.get() || !Polynome::depuisExpression(d, p, &x)) return racineCarree ? trinomeSymbolique(base) : nullptr;
     }
     if (!x || p.degre() != 2 || !p.estExact()) return nullptr;
     const Nombre& a = p.coefficient(2);

@@ -25,3 +25,4 @@
 #include "Equation.hpp"
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
+#include "EDO.hpp"
