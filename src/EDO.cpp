@@ -1084,6 +1084,113 @@ SolutionsEDO resoudreEquation(const ExprPtr& equation, const InconnuesEDO& inc) 
     return premierOrdre(equation, inc, constantes);
 }
 
+// ============================================================================
+// Conditions initiales
+// ============================================================================
+
+// Les constantes d'intégration C1, C2... de e
+std::vector<ExprPtr> constantesDe(const ExprPtr& e) {
+    std::vector<ExprPtr> parametres, constantes;
+    collecterParametres(*e, parametres);
+    for (const ExprPtr& p : parametres) {
+        const std::string& nom = static_cast<const Parametre&>(*p).getNom();
+        bool numero = nom.size() >= 2 && nom[0] == 'C';
+        for (std::size_t i = 1; numero && i < nom.size(); ++i) numero = std::isdigit(static_cast<unsigned char>(nom[i])) != 0;
+        if (numero) constantes.push_back(p);
+    }
+    return constantes;
+}
+
+/*
+ * Nom : particulariser
+ * Description : Ajoute à r les membres de la famille generale qui vérifient y(x0) = y0 (et
+ *               y'(x0) = dy0 si dy0 est donné). Une constante : elle est isolée dans
+ *               y(x0) = y0. Deux constantes : l'une est isolée dans une condition, reportée
+ *               dans l'autre, où la seconde est isolée. Chaque candidat est contrôlé.
+ */
+void particulariser(const SolutionEDO& generale, const InconnuesEDO& inc, const ExprPtr& x0, const ExprPtr& y0, const ExprPtr& dy0,
+                    SolutionsEDO& r) {
+    // Valeur réelle finie d'une constante (1/0 ou ln(-1) : la famille ne passe pas par le point)
+    const auto finie = [](const ExprPtr& c) {
+        try {
+            return std::isfinite(evaluer(c, {}));
+        } catch (const std::exception&) {
+            return true; // valeur symbolique (paramètre)
+        }
+    };
+    const auto convient = [&](const ExprPtr& Y) {
+        if (!estNul(substituer(Y, inc.x, x0) - y0)) return false;
+        if (dy0 && !estNul(substituer(Y->derivee(inc.x), inc.x, x0) - dy0)) return false;
+        // Deux écritures de la même fonction (sin(x + pi/2) et sin(-x + pi/2)) : une seule
+        for (const SolutionEDO& autre : r.liste) {
+            if (autre.y && estNul(autre.y - Y)) return false;
+        }
+        return true;
+    };
+    if (!generale.y) {
+        // Phi(x, y) - C = 0 : C = Phi(x0, y0)
+        if (dy0) return;
+        const std::vector<ExprPtr> constantes = constantesDe(generale.relation);
+        if (constantes.size() != 1) return;
+        const ExprPtr auPoint = substituer(substituer(generale.relation, inc.x, x0), inc.y, y0);
+        std::vector<ExprPtr> valeurs;
+        if (!isoler(auPoint, zero(), constantes[0], valeurs)) return;
+        for (const ExprPtr& c : valeurs) {
+            if (finie(c)) r.liste.push_back({ExprPtr(), substituer(generale.relation, constantes[0], c->simplifier()), false});
+        }
+        return;
+    }
+    const ExprPtr& Y = generale.y;
+    const std::vector<ExprPtr> constantes = constantesDe(Y);
+    if (constantes.empty()) {
+        if (convient(Y)) ajouterExplicite(r, Y, generale.singuliere);
+        return;
+    }
+    const ExprPtr enX0 = substituer(Y, inc.x, x0);
+    if (constantes.size() == 1) {
+        std::vector<ExprPtr> valeurs;
+        if (!isoler(enX0, y0, constantes[0], valeurs)) return;
+        for (const ExprPtr& c : valeurs) {
+            if (!finie(c)) continue;
+            const ExprPtr particuliere = substituer(Y, constantes[0], c->simplifier());
+            if (convient(particuliere)) ajouterExplicite(r, particuliere);
+        }
+        return;
+    }
+    if (constantes.size() != 2 || !dy0) return;
+    const ExprPtr derivee = substituer(Y->derivee(inc.x), inc.x, x0);
+    const std::pair<ExprPtr, ExprPtr> conditions[] = {{enX0, y0}, {derivee, dy0}};
+    for (int premiere = 0; premiere < 2; ++premiere) {
+        for (int a = 0; a < 2; ++a) {
+            const ExprPtr& ca = constantes[static_cast<std::size_t>(a)];
+            const ExprPtr& cb = constantes[static_cast<std::size_t>(1 - a)];
+            // ca = A(cb) par la première condition, puis cb par la seconde
+            std::vector<ExprPtr> expressionsA;
+            if (!contient(conditions[premiere].first, ca) || !isoler(conditions[premiere].first, conditions[premiere].second, ca, expressionsA)) {
+                continue;
+            }
+            const std::size_t avant = r.liste.size();
+            for (const ExprPtr& A : expressionsA) {
+                const ExprPtr seconde = substituer(conditions[1 - premiere].first, ca, A)->simplifier();
+                std::vector<ExprPtr> valeursB;
+                if (!contient(seconde, cb)) {
+                    // la seconde condition ne dépend plus de cb : cb reste libre si elle est vérifiée
+                    continue;
+                }
+                if (!isoler(seconde, conditions[1 - premiere].second, cb, valeursB)) continue;
+                for (const ExprPtr& B : valeursB) {
+                    const ExprPtr b = B->simplifier();
+                    const ExprPtr a2 = substituer(A, cb, b)->simplifier();
+                    if (!finie(b) || !finie(a2)) continue;
+                    const ExprPtr particuliere = substituer(substituer(Y, ca, a2), cb, b);
+                    if (convient(particuliere)) ajouterExplicite(r, particuliere);
+                }
+            }
+            if (r.liste.size() > avant) return;
+        }
+    }
+}
+
 // y'' et y' deviennent les variables d2y et dy dans le texte
 std::string remplacerPrimes(const std::string& texte, const std::string& fonction) {
     std::string r;
@@ -1150,6 +1257,27 @@ SolutionsEDO resoudreEDO(const std::string& texte, const std::string& variable, 
 SolutionsEDO resoudreEDO(const std::string& texte, Journal& journal, const std::string& variable, const std::string& fonction) {
     const journal::Activation activation(journal);
     return resoudreEDO(texte, variable, fonction);
+}
+
+SolutionsEDO resoudreCauchy(const ExprPtr& equation, const InconnuesEDO& inconnues, const ExprPtr& x0, const ExprPtr& y0,
+                            const ExprPtr& dy0) {
+    const SolutionsEDO generales = resoudreEDO(equation, inconnues);
+    SolutionsEDO r;
+    try {
+        for (const SolutionEDO& s : generales.liste) particulariser(s, inconnues, x0, y0, dy0, r);
+    } catch (const std::exception&) {
+        return SolutionsEDO();
+    }
+    if (r.resolue()) r.methode = generales.methode;
+    return r;
+}
+
+SolutionsEDO resoudreCauchy(const std::string& texte, const ExprPtr& x0, const ExprPtr& y0, const ExprPtr& dy0,
+                            const std::string& variable, const std::string& fonction) {
+    const InconnuesEDO inc{var(variable), var(fonction), var("d" + fonction), var("d2" + fonction)};
+    const EgaliteLue egalite =
+        lireEquation(remplacerPrimes(texte, fonction), OptionsLecture{variable, {fonction, "d" + fonction, "d2" + fonction}});
+    return resoudreCauchy(egalite.gauche - egalite.droite, inc, x0, y0, dy0);
 }
 
 } // namespace symalgo

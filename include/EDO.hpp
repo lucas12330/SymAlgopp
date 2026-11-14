@@ -94,6 +94,23 @@ SolutionsEDO resoudreEDO(const std::string& texte, Journal& journal, const std::
                          const std::string& fonction = "y");
 
 /*
+ * Nom : resoudreCauchy
+ * Description : Solutions de l'équation qui vérifient y(x0) = y0 (et y'(x0) = dy0 pour une
+ *               équation du second ordre) : les constantes de chaque famille sont
+ *               déterminées par les conditions initiales, et seules les branches qui les
+ *               vérifient sont gardées (y = sqrt(...) ou y = -sqrt(...) selon le signe de
+ *               y0). Une solution singulière passant par le point est renvoyée aussi : il y
+ *               a alors plusieurs solutions (perte d'unicité). liste est vide si aucune
+ *               famille trouvée ne passe par le point, ou si les constantes ne s'isolent pas.
+ * Utilisation : resoudreCauchy("y' = x*y", cst(0.0), cst(2.0))       // y = 2*exp(x^2/2)
+ *               resoudreCauchy("y'' = -y", cst(0.0), cst(0.0), cst(1.0)) // y = sin(x)
+ */
+SolutionsEDO resoudreCauchy(const ExprPtr& equation, const InconnuesEDO& inconnues, const ExprPtr& x0, const ExprPtr& y0,
+                            const ExprPtr& dy0 = ExprPtr());
+SolutionsEDO resoudreCauchy(const std::string& texte, const ExprPtr& x0, const ExprPtr& y0, const ExprPtr& dy0 = ExprPtr(),
+                            const std::string& variable = "x", const std::string& fonction = "y");
+
+/*
  * Nom : verifierEDO
  * Description : Réinjecte une solution dans equation = 0 : vrai si le résidu est nul, par
  *               simplification ou, à défaut, numériquement en plusieurs points tirés dans le

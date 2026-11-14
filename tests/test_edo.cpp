@@ -222,6 +222,51 @@ TEST_CASE(interface) {
     CHECK(!verifierEDO(equationDe("y' = -x/y"), V, {ExprPtr(), lire("x^2 - y^2 - C1", OptionsLecture{"x", {"y"}}), false}));
 }
 
+// ============================================================================
+// Conditions initiales
+// ============================================================================
+
+namespace {
+
+std::string cauchy(const char* texte, const char* x0, const char* y0, const char* dy0 = nullptr) {
+    return resume(resoudreCauchy(texte, lire(x0), lire(y0), dy0 ? lire(dy0) : ExprPtr()));
+}
+
+} // namespace
+
+TEST_CASE(probleme_de_cauchy_premier_ordre) {
+    CHECK_EQ(cauchy("y' = x*y", "0", "2"), std::string("lineaire : y = 2*exp(x^2/2)"));
+    CHECK_EQ(cauchy("y' + y/x = x^2", "1", "1"), std::string("lineaire : y = x^3/4 + 3/(4*x)"));
+    CHECK_EQ(cauchy("y' = x*y^2", "0", "1"), std::string("bernoulli : y = 1/(-x^2/2 + 1)"));
+    CHECK_EQ(cauchy("y' = (1 + y^2)*exp(x)", "0", "1"), std::string("separable : y = tan(pi/4 + exp(x) - 1)"));
+    // La famille générale ne passe pas par (0, 0) (il faudrait C infini) : seule la solution nulle
+    CHECK_EQ(cauchy("y' = x*y^2", "0", "0"), std::string("bernoulli : [y = 0]"));
+    // La condition choisit la branche
+    CHECK_EQ(cauchy("y' = y - y^3", "0", "-1/2"), std::string("bernoulli : y = -1/(3*exp(-2*x) + 1)^(1/2)"));
+    CHECK_EQ(cauchy("y' = y/x + x/y", "1", "-2"), std::string("bernoulli : y = -(4*x^2 + 2*x^2*ln(abs(x)))^(1/2)"));
+    // Perte d'unicité : deux solutions par (0, 0) pour y' = 3 y^(2/3), deux droites de Clairaut
+    CHECK_EQ(cauchy("y' = 3*y^(2/3)", "0", "0"), std::string("bernoulli : y = x^3 | [y = 0]"));
+    CHECK_EQ(cauchy("y = x*y' + y'^2", "0", "1"), std::string("clairaut : y = x + 1 | y = -x + 1"));
+    // Forme implicite : la constante vaut Phi(x0, y0)
+    CHECK_EQ(cauchy("(2*x*y + 3) + (x^2 + 4*y)*y' = 0", "1", "1"), std::string("exacte : x^2*y + 2*y^2 + 3*x - 6 = 0"));
+    // Riccati : la solution particulière passe par (1, 1), pas la famille
+    CHECK_EQ(cauchy("y' = y^2 - 2/x^2", "1", "1"), std::string("riccati : [y = 1/x]"));
+}
+
+TEST_CASE(probleme_de_cauchy_second_ordre) {
+    CHECK_EQ(cauchy("y'' = x", "0", "1", "2"), std::string("ordre2_sans_y : y = x^3/6 + 2*x + 1"));
+    CHECK_EQ(cauchy("y'' = y'/x", "1", "0", "3"), std::string("ordre2_sans_y : y = 3*x^2/2 - 3/2"));
+    CHECK_EQ(cauchy("y'' + y'^2 = 0", "0", "0", "1"), std::string("ordre2_sans_y : y = ln(abs(x + 1))"));
+    CHECK_EQ(cauchy("y'' = -y", "0", "0", "1"), std::string("ordre2_sans_x : y = sin(x)"));
+    CHECK_EQ(cauchy("y'' = -y", "0", "1", "0"), std::string("ordre2_sans_x : y = sin(x + pi/2)")); // cos(x), écrit une seule fois
+    CHECK_EQ(cauchy("y'' = y'^2/y", "0", "1", "2"), std::string("ordre2_sans_x : y = exp(2*x)"));
+    // Second ordre sans y'(x0) : pas de solution unique, rien n'est renvoyé
+    CHECK(!resoudreCauchy("y'' = x", cst(0.0), cst(1.0)).resolue());
+    // Chaque solution particulière vérifie l'équation
+    const SolutionsEDO s = resoudreCauchy("y'' = -y", cst(0.0), cst(0.0), cst(1.0));
+    CHECK(s.resolue() && verifierEDO(equationDe("y'' = -y"), V, s.liste[0]));
+}
+
 TEST_CASE(journal_des_etapes) {
     Journal j;
     const SolutionsEDO s = resoudreEDO("y' + y/x = x*y^2", j);
