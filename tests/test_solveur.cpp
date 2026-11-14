@@ -143,4 +143,57 @@ TEST_CASE(equation_classique_resoudre) {
     CHECK_EQ(texte(EquationClassique(ast_sin(X)).resoudre(-1.0, 4.0)), std::string("0 ; pi"));
 }
 
+TEST_CASE(abs_sign_hyperboliques_resolution) {
+    // abs(u) = R : u = R ou u = -R
+    const Solutions a = resoudre(ast_abs(X - 1.0), cst(2.0));
+    CHECK_EQ(texte(a), std::string("-1 ; 3"));
+    CHECK(a.complet);
+    CHECK_EQ(texte(resoudre(ast_abs(cst(2.0) * X + 1.0), cst(0.0))), std::string("-1/2"));
+    const Solutions aucune = resoudre(ast_abs(X), cst(-1.0));
+    CHECK(aucune.liste.empty());
+    CHECK(aucune.complet);
+    CHECK_EQ(texte(resoudre(ast_abs(ast_pow(X, 2.0) - 1.0), cst(3.0))), std::string("-2 ; 2"));
+
+    // cosh(u) = R : R >= 1
+    CHECK_EQ(texte(resoudre(ast_cosh(X), cst(1.0))), std::string("0"));
+    const Solutions c = resoudre(ast_cosh(X), cst(2.0));
+    CHECK_EQ(c.liste.size(), 2u);
+    CHECK_NEAR(c.liste[0].approximation, -std::acosh(2.0), 1e-12);
+    CHECK_NEAR(c.liste[1].approximation, std::acosh(2.0), 1e-12);
+    CHECK(c.complet);
+    CHECK(resoudre(ast_cosh(X), frac(1, 2)).liste.empty());
+    CHECK(resoudre(ast_cosh(X), frac(1, 2)).complet);
+
+    // sinh(u) = R : toujours une solution
+    CHECK_EQ(texte(resoudre(ast_sinh(X), cst(0.0))), std::string("0"));
+    const Solutions s = resoudre(ast_sinh(X), cst(3.0));
+    CHECK_EQ(s.liste.size(), 1u);
+    CHECK_NEAR(s.liste[0].approximation, std::asinh(3.0), 1e-12);
+    CHECK_NEAR(resoudre(ast_sinh(cst(2.0) * X - 1.0), cst(-1.0)).liste[0].approximation, (std::asinh(-1.0) + 1.0) / 2.0, 1e-12);
+
+    // tanh(u) = R : |R| < 1
+    const Solutions t = resoudre(ast_tanh(X), frac(1, 2));
+    CHECK_EQ(t.liste.size(), 1u);
+    CHECK_NEAR(t.liste[0].approximation, std::atanh(0.5), 1e-12);
+    CHECK_EQ(texte(t), std::string("ln(3)/2"));
+    const Solutions rien = resoudre(ast_tanh(X), cst(2.0));
+    CHECK(rien.liste.empty());
+    CHECK(rien.complet);
+    CHECK(resoudre(ast_tanh(X), cst(1.0)).liste.empty());
+
+    // sign : sign(u) = 0 donne u = 0 ; sign(u) = 1 est une inéquation, non résolue
+    CHECK_EQ(texte(resoudre(ast_sign(X - 2.0), cst(0.0))), std::string("2"));
+    CHECK(resoudre(ast_sign(X), cst(3.0)).liste.empty());
+    CHECK(resoudre(ast_sign(X), cst(3.0)).complet);
+    CHECK(!resoudre(ast_sign(X), cst(1.0)).complet);
+
+    // Résolution par substitution : cosh(x)^2 - 3 cosh(x) + 2 = 0 (cosh = 1 ou 2)
+    const ExprPtr f = ast_pow(ast_cosh(X), 2.0) - 3.0 * ast_cosh(X) + 2.0;
+    const Solutions p = resoudre(f);
+    CHECK_EQ(p.liste.size(), 3u);
+    verifierSolutions(p, f);
+    // Depuis du texte
+    CHECK_EQ(texte(EquationClassique("abs(x-1) = 2").resoudre()), std::string("-1 ; 3"));
+}
+
 int main() { return test::executerTous(); }

@@ -356,6 +356,8 @@ private:
             {"ln", ast_ln},     {"log", ast_ln},      {"asin", ast_asin},   {"acos", ast_acos},
             {"atan", ast_atan}, {"arcsin", ast_asin}, {"arccos", ast_acos}, {"arctan", ast_atan},
             {"sqrt", [](const ExprPtr& u) { return ast_pow(u, frac(1, 2)); }},
+            {"abs", ast_abs},   {"sign", ast_sign},   {"sgn", ast_sign},    {"sinh", ast_sinh},
+            {"cosh", ast_cosh}, {"tanh", ast_tanh},
         };
         for (const Fonction& f : FONCTIONS) {
             if (nom != f.nom) continue;

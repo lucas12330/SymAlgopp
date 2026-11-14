@@ -360,4 +360,33 @@ ExprPtr ArcTangente::calculerLimite(double a) const {
     return limiteNonEvaluee(a);
 }
 
+ExprPtr ValeurAbsolue::calculerLimite(double a) const {
+    // abs est continue, abs(+-inf) = +inf
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::fabs(u); }, ast_abs)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr Signe::calculerLimite(double a) const {
+    // Discontinue en 0 : sans limites unilatérales, la limite y reste non évaluée
+    auto signeNum = [](double u) { return estNul(u) ? NAN_LIMITE : signeReel(u); };
+    if (ExprPtr r = limiteUnaire(m_argument, a, signeNum, ast_sign)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr SinusHyperbolique::calculerLimite(double a) const {
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::sinh(u); }, ast_sinh)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr CosinusHyperbolique::calculerLimite(double a) const {
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::cosh(u); }, ast_cosh)) return r;
+    return limiteNonEvaluee(a);
+}
+
+ExprPtr TangenteHyperbolique::calculerLimite(double a) const {
+    // tanh(+-inf) = +-1
+    if (ExprPtr r = limiteUnaire(m_argument, a, [](double u) { return std::tanh(u); }, ast_tanh)) return r;
+    return limiteNonEvaluee(a);
+}
+
 } // namespace symalgo

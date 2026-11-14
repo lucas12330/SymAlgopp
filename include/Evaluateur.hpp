@@ -104,6 +104,11 @@ private:
         ArcSinus,
         ArcCosinus,
         ArcTangente,
+        ValeurAbsolue,
+        Signe,
+        SinusHyperbolique,
+        CosinusHyperbolique,
+        TangenteHyperbolique,
     };
 
     struct Instruction {

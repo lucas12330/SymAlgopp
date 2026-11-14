@@ -168,12 +168,19 @@ public:
     Solutions resoudre() const;
 
     /*
+     * Nom : resoudre (avec journal)
+     * Description : Idem, avec les étapes de la résolution notées dans le journal.
+     */
+    Solutions resoudre(Journal& journal) const;
+
+    /*
      * Nom : resoudre (intervalle)
      * Description : Solutions dans [a, b] : familles dépliées, recherche numérique en
      *               complément des formes non résolues exactement.
      * Utilisation : Solutions s = eq.resoudre(0.0, 10.0);
      */
     Solutions resoudre(double a, double b) const;
+    Solutions resoudre(double a, double b, Journal& journal) const;
 
     /*
      * Nom : developper / factoriser

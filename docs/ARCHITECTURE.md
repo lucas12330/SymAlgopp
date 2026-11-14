@@ -151,6 +151,21 @@ flowchart TB
 * Un polynôme à coefficients réels (non exacts) donne des racines seulement approchées.
 * `complet = false` signale qu'une forme n'a pas pu être résolue exactement : les solutions listées sont justes, mais il peut en manquer.
 
+### 7.1 Journal des étapes et export LaTeX
+
+```mermaid
+flowchart LR
+    R["resoudre(g, d, journal)"] -->|"journal::Activation"| J["Journal : Etape<br/>règle · description · avant · après · niveau"]
+    J --> L["latex(journal)<br/>liste itemize imbriquée"]
+    S["Solutions"] --> LS["latex(solutions, inconnue)"]
+    E["ExprPtr"] --> LE["latex(e, options)"]
+    L --> D["documentLatex(corps)"]
+```
+
+* **Journal** (`include/Journal.hpp`, uniquement des en-têtes) : le calcul note ses étapes avec `journal::noter([&](Journal& j) { ... })`. Tant qu'aucun journal n'est actif (pointeur propre au thread), la lambda n'est pas appelée : ni texte ni expression n'est construit, le coût est un test de pointeur. Les surcharges publiques `resoudre(gauche, droite, journal)` activent le journal par RAII (`Activation`), `SousNiveau` met les étapes suivantes en retrait. Une `Etape` garde des `ExprPtr` (références comptées) et jamais de pointeur issu de `comme<T>()`.
+* **Équivalence** : résoudre avec ou sans journal donne exactement les mêmes `Solutions` (testé sur plusieurs milliers d'équations).
+* **Latex** (`include/Latex.hpp`, `src/Latex.cpp`) : `latex(expression, options)` parcourt la forme canonique en une passe dans une seule `std::string` (fractions, racines, exposants, fonctions, nombres réels dans la notation la plus courte qui se relit au même `double`). Noms : lettres grecques (`\alpha`), indices (`k2` devient `k_{2}`), noms longs en `\mathrm{}` ; un nom sans lettre initiale s'écrit en entier, droit et échappé (`\mathrm{\_1}`) pour ne pas être confondu avec un nombre ; seule la variable interne `_t` du solveur perd son `_`. `latex(Solutions, inconnue)` écrit les solutions (familles avec `\in \mathbb{Z}`, `\approx` pour une valeur approchée), `latex(Journal)` une liste `itemize` et `documentLatex(corps)` un document complet. Une expression nulle lève `std::invalid_argument`. Rien n'est appelé tant qu'on n'exporte pas : le LaTeX est sans coût pour le reste de la bibliothèque.
+
 ## 8. Mémoire et sûreté
 
 * `ExprPtr = Ref<ASTNode>` : compteur de références stocké dans le noeud (une allocation par noeud, libération immédiate du dernier usage, retrait automatique de la table de hash-consing).
@@ -175,6 +190,8 @@ flowchart TB
 | `include/Lecture.hpp`, `src/Lecture.cpp` | lecture depuis du texte : lexèmes compacts, descente récursive, erreurs positionnées |
 | `include/Polynome.hpp`, `src/Polynome.cpp` | `developper`, `Polynome` exact (Sturm, Yun), `factoriser` |
 | `include/Solveur.hpp`, `src/Solveur.cpp` | résolution exacte, familles trigonométriques, recherche numérique |
+| `include/Journal.hpp` | journal des étapes d'un calcul (`Etape`, `journal::noter`, `Activation`, `SousNiveau`) |
+| `include/Latex.hpp`, `src/Latex.cpp` | export LaTeX des expressions, des solutions et du journal ; `documentLatex` |
 | `include/Multivariable.hpp`, `src/Multivariable.cpp` | variables, gradient, jacobienne, hessienne, laplacien, évaluation à plusieurs variables |
 | `include/Evaluateur.hpp`, `src/Evaluateur.cpp` | compilation en programme linéaire (plusieurs entrées et sorties), évaluation par blocs |
 | `CMakeLists.txt`, `cmake/` | construction, installation, `find_package` et pkg-config |

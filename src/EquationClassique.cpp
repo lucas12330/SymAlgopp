@@ -217,6 +217,12 @@ Solutions EquationClassique::resoudre() const { return symalgo::resoudre(m_racin
 
 Solutions EquationClassique::resoudre(double a, double b) const { return resoudreSurIntervalle(m_racine, a, b); }
 
+Solutions EquationClassique::resoudre(Journal& journal) const { return symalgo::resoudre(m_racine, journal); }
+
+Solutions EquationClassique::resoudre(double a, double b, Journal& journal) const {
+    return resoudreSurIntervalle(m_racine, a, b, journal);
+}
+
 EquationClassique EquationClassique::developper() const { return EquationClassique(symalgo::developper(m_racine)); }
 
 EquationClassique EquationClassique::factoriser() const { return EquationClassique(symalgo::factoriser(m_racine)); }

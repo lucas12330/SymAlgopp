@@ -15,6 +15,8 @@
 #include "Nombre.hpp"
 #include "ASTNode.hpp"
 #include "Lecture.hpp"
+#include "Journal.hpp"
+#include "Latex.hpp"
 #include "Multivariable.hpp"
 #include "Polynome.hpp"
 #include "Solveur.hpp"

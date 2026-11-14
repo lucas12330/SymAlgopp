@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "ASTNode.hpp"
+#include "Journal.hpp"
 
 namespace symalgo {
 
@@ -57,12 +58,26 @@ Solutions resoudre(const ExprPtr& gauche, const ExprPtr& droite);
 Solutions resoudre(const ExprPtr& expression);
 
 /*
+ * Nom : resoudre (avec journal)
+ * Description : Mêmes solutions, avec les étapes de la résolution notées dans le journal
+ *               (identifiants « resolution.* » : forme_nulle, polynome, discriminant, racine,
+ *               produit_nul, changement_variable, logarithme, famille_trigonometrique,
+ *               solution_rejetee, incomplet, solution...). Sans journal, le solveur ne paie
+ *               qu'un test de pointeur par point de décision.
+ * Utilisation : Journal j; Solutions s = resoudre(x * ast_ln(x), cst(0.0), j);
+ *               std::string texte = latex(j);   // Latex.hpp
+ */
+Solutions resoudre(const ExprPtr& gauche, const ExprPtr& droite, Journal& journal);
+Solutions resoudre(const ExprPtr& expression, Journal& journal);
+
+/*
  * Nom : resoudreSurIntervalle
  * Description : Solutions de expression = 0 dans [a, b] : les familles sont dépliées pour
  *               chaque entier k donnant une solution de l'intervalle, et une recherche
  *               numérique complète les formes non résolues exactement.
  */
 Solutions resoudreSurIntervalle(const ExprPtr& expression, double a, double b);
+Solutions resoudreSurIntervalle(const ExprPtr& expression, double a, double b, Journal& journal);
 
 /*
  * Nom : resoudreNumerique

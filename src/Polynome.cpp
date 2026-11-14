@@ -122,6 +122,11 @@ private:
             case TypeNoeud::ArcSinus: return ast_asin(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             case TypeNoeud::ArcCosinus: return ast_acos(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             case TypeNoeud::ArcTangente: return ast_atan(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::ValeurAbsolue: return ast_abs(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::Signe: return ast_sign(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::SinusHyperbolique: return ast_sinh(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::CosinusHyperbolique: return ast_cosh(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
+            case TypeNoeud::TangenteHyperbolique: return ast_tanh(developper(static_cast<const FonctionUnaire&>(*e).m_argument));
             default: return e; // constantes, variable, paramètres, noeuds non évalués
         }
     }

@@ -14,13 +14,16 @@
 #include <atomic>
 #include <cstdlib>
 #include <new>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "ASTNode.hpp"
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
+#include "Latex.hpp"
 #include "Lecture.hpp"
+#include "Solveur.hpp"
 
 using namespace symalgo;
 
@@ -179,6 +182,59 @@ static void BM_GiNaC_EvalGrandeExpression(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_GiNaC_EvalGrandeExpression)->Unit(benchmark::kMicrosecond);
+
+// ============================================================================
+// 2 bis. Fonctions abs, sign, sinh, cosh, tanh (SymAlgo++ seul)
+// ============================================================================
+
+// Construction canonique (hash-consing) de fonctions à parité/valeur absolue
+static void BM_SymAlgo_ConstructionAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    for (auto _ : state) {
+        ExprPtr e = ast_abs(cst(-3.0) * x) + ast_sinh(-x) * ast_cosh(-x) + ast_tanh(x) + ast_sign(cst(2.0) * x);
+        benchmark::DoNotOptimize(e);
+    }
+}
+BENCHMARK(BM_SymAlgo_ConstructionAbsHyperboliques);
+
+// Évaluation compilée par blocs sur 10 000 points
+static void BM_SymAlgo_EvalTableauAbsHyperboliques(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const EquationClassique eq(ast_abs(x - 5.0) * ast_sign(x - 3.0) + ast_sinh(x / 5.0) * ast_tanh(x) + ast_cosh(x / 7.0));
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = i * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+BENCHMARK(BM_SymAlgo_EvalTableauAbsHyperboliques);
+
+// Coût par fonction de l'évaluation compilée par blocs (10 000 points sur [-5, 5]) :
+// référence exp, puis abs, sign, sinh, cosh, tanh.
+static void evalBloc(benchmark::State& state, const ExprPtr& e) {
+    const EquationClassique eq(e);
+    std::vector<double> xs(POINTS_TRACE);
+    for (int i = 0; i < POINTS_TRACE; ++i) xs[i] = (i - POINTS_TRACE / 2) * 1e-3;
+    for (auto _ : state) {
+        std::vector<double> y = eq.eval(xs);
+        benchmark::DoNotOptimize(y.data());
+    }
+    state.SetItemsProcessed(state.iterations() * POINTS_TRACE);
+}
+static void BM_SymAlgo_EvalBloc_exp(benchmark::State& s) { evalBloc(s, ast_exp(var("x"))); }
+static void BM_SymAlgo_EvalBloc_abs(benchmark::State& s) { evalBloc(s, ast_abs(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sign(benchmark::State& s) { evalBloc(s, ast_sign(var("x"))); }
+static void BM_SymAlgo_EvalBloc_sinh(benchmark::State& s) { evalBloc(s, ast_sinh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_cosh(benchmark::State& s) { evalBloc(s, ast_cosh(var("x"))); }
+static void BM_SymAlgo_EvalBloc_tanh(benchmark::State& s) { evalBloc(s, ast_tanh(var("x"))); }
+BENCHMARK(BM_SymAlgo_EvalBloc_exp);
+BENCHMARK(BM_SymAlgo_EvalBloc_abs);
+BENCHMARK(BM_SymAlgo_EvalBloc_sign);
+BENCHMARK(BM_SymAlgo_EvalBloc_sinh);
+BENCHMARK(BM_SymAlgo_EvalBloc_cosh);
+BENCHMARK(BM_SymAlgo_EvalBloc_tanh);
 
 // ============================================================================
 // 3. Dérivation (première dérivée, puis dérivée 10e)
@@ -429,6 +485,37 @@ static void BM_SymAlgo_IntegraleDefinie_Gauss(benchmark::State& state) {
 }
 BENCHMARK(BM_SymAlgo_IntegraleDefinie_Gauss);
 
+// integrale de sign(x) sur [-1, 2] : primitive |x| continue, chemin exact malgre le zero de x
+static void BM_SymAlgo_IntegraleDefinie_SignExacte(benchmark::State& state) {
+    const ExprPtr f = ast_sign(var("x"));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -1.0, 2.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_SignExacte);
+
+// integrale de sign(sin(5x)) sur [0, 10] : 16 sauts, coupes aux zeros de sin(5x)
+static void BM_SymAlgo_IntegraleDefinie_SautsSign(benchmark::State& state) {
+    const ExprPtr f = ast_sign(ast_sin(cst(5.0) * var("x")));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, 0.0, 10.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_SautsSign);
+
+// integrale de 1/(1 + |x|) sur [-1, 1] : denominateur de signe demontre sans solveur
+static void BM_SymAlgo_IntegraleDefinie_InverseAbs(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr f = 1.0 / (1.0 + ast_abs(x));
+    for (auto _ : state) {
+        ResultatIntegrale r = integrerDefinie(f, -1.0, 1.0);
+        benchmark::DoNotOptimize(r);
+    }
+}
+BENCHMARK(BM_SymAlgo_IntegraleDefinie_InverseAbs);
+
 static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
     GiNaC::symbol x("x");
     for (auto _ : state) {
@@ -437,5 +524,74 @@ static void BM_GiNaC_IntegraleDefinie_Numerique(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_GiNaC_IntegraleDefinie_Numerique);
+
+// Résolution d'équations (sans journal) : garde-fou du coût des points d'instrumentation du
+// journal des étapes, qui ne doivent rien coûter tant qu'aucun journal n'est actif.
+static void BM_SymAlgo_Resoudre(benchmark::State& state) {
+    const ExprPtr x = var("x");
+    const ExprPtr polynome = ast_pow(x, 2.0) - 5.0 * x + 6.0;
+    const ExprPtr exponentielle = ast_exp(2.0 * x) - 3.0 * ast_exp(x) + 2.0;
+    const ExprPtr sinus = ast_sin(x) - frac(1, 2);
+    const ExprPtr logarithme = x * ast_ln(x);
+    const ExprPtr degre5 = ast_pow(x, 5.0) - 3.0 * ast_pow(x, 3.0) + x - 1.0;
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(resoudre(polynome));
+        benchmark::DoNotOptimize(resoudre(exponentielle));
+        benchmark::DoNotOptimize(resoudre(sinus));
+        benchmark::DoNotOptimize(resoudre(logarithme));
+        benchmark::DoNotOptimize(resoudre(degre5));
+    }
+}
+BENCHMARK(BM_SymAlgo_Resoudre)->Unit(benchmark::kMicrosecond);
+
+// Rendu LaTeX (expression courante, puis dérivée 6e de exp(sin(x)) x^2) : SymAlgo++ latex()
+// contre GiNaC (os << GiNaC::latex << e) sur la même expression.
+static void BM_SymAlgo_Latex(benchmark::State& state) {
+    const ExprPtr e = lire(TEXTE_COURANT);
+    for (auto _ : state) {
+        std::string t = latex(e);
+        benchmark::DoNotOptimize(t);
+    }
+    state.counters["caracteres"] = static_cast<double>(latex(e).size());
+}
+BENCHMARK(BM_SymAlgo_Latex);
+
+static void BM_SymAlgo_LatexGrande(benchmark::State& state) {
+    ExprPtr d = ast_exp(ast_sin(var("x"))) * ast_pow(var("x"), 2.0);
+    for (int k = 0; k < 8; ++k) d = d->derivee();
+    for (auto _ : state) {
+        std::string t = latex(d);
+        benchmark::DoNotOptimize(t);
+    }
+    state.counters["caracteres"] = static_cast<double>(latex(d).size());
+}
+BENCHMARK(BM_SymAlgo_LatexGrande)->Unit(benchmark::kMicrosecond);
+
+static void latexGinac(benchmark::State& state, const GiNaC::ex& e) {
+    for (auto _ : state) {
+        std::ostringstream os;
+        os << GiNaC::latex << e;
+        std::string t = os.str();
+        benchmark::DoNotOptimize(t);
+    }
+    std::ostringstream os;
+    os << GiNaC::latex << e;
+    state.counters["caracteres"] = static_cast<double>(os.str().size());
+}
+
+static void BM_GiNaC_Latex(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    GiNaC::symtab table;
+    table["x"] = x;
+    GiNaC::parser lecteur(table);
+    latexGinac(state, lecteur(TEXTE_COURANT));
+}
+BENCHMARK(BM_GiNaC_Latex);
+
+static void BM_GiNaC_LatexGrande(benchmark::State& state) {
+    GiNaC::symbol x("x");
+    latexGinac(state, (GiNaC::exp(GiNaC::sin(x)) * GiNaC::pow(x, 2)).diff(x, 8));
+}
+BENCHMARK(BM_GiNaC_LatexGrande)->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_MAIN();

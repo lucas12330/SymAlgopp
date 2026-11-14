@@ -158,7 +158,18 @@ Signe signeDe(const ExprPtr& e) {
     }
     switch (e->type()) {
         case TypeNoeud::Exponentielle:
+        case TypeNoeud::CosinusHyperbolique: // cosh >= 1
             return {true, true, true};
+        case TypeNoeud::ValeurAbsolue: {
+            // abs(u) >= 0 toujours, et > 0 seulement si u ne s'annule pas
+            const Signe su = signeDe(static_cast<const ValeurAbsolue&>(*e).m_argument);
+            return {true, true, su.connu && su.strict};
+        }
+        case TypeNoeud::Signe:
+        case TypeNoeud::SinusHyperbolique:
+        case TypeNoeud::TangenteHyperbolique:
+            // sign, sinh et tanh gardent le signe de leur argument (et s'annulent avec lui)
+            return signeDe(static_cast<const FonctionUnaire&>(*e).m_argument);
         case TypeNoeud::Puissance: {
             const Puissance& p = static_cast<const Puissance&>(*e);
             return signePuissance(p.getBase(), p.getExposant());
@@ -223,6 +234,7 @@ public:
     // non évalué (intégrale, limite) rend la vérification négative sans appeler le solveur.
     bool sur(const ExprPtr& e) {
         m_ok = true;
+        m_ruptures = false;
         m_variable = ExprPtr();
         m_noeuds.clear();
         bool nonEvalue = false;
@@ -230,6 +242,7 @@ public:
         parcourir(e, [&](const ExprPtr& n) {
             m_noeuds.push_back(n);
             if (n->type() == TypeNoeud::IntegraleNonEvaluee || n->type() == TypeNoeud::LimiteNonEvaluee) nonEvalue = true;
+            if (n->type() == TypeNoeud::ValeurAbsolue || n->type() == TypeNoeud::Signe) m_ruptures = true;
             if (!m_variable && n->type() == TypeNoeud::Variable) m_variable = n;
         }, vus);
         if (nonEvalue) return m_ok = false;
@@ -238,6 +251,28 @@ public:
     }
 
     const std::vector<double>& coupures() const { return m_coupures; }
+
+    /*
+     * Ajoute aux coupures les zéros intérieurs de l'argument de chaque abs et sign du dernier
+     * appel de sur() : sign(u) saute et abs(u) a un point anguleux là où u s'annule, et une
+     * quadrature adaptative n'y converge que par bissections successives (une trentaine par
+     * rupture pour 1e-10, alors que le budget total est borné). Coupée en ces points, chaque
+     * morceau est lisse. Sans effet, et sans appel au solveur, s'il n'y a ni abs ni sign ;
+     * un zéro non démontrable laisse simplement la rupture sans coupure.
+     */
+    void ajouterRuptures() {
+        if (!m_ruptures) return;
+        for (const ExprPtr& n : m_noeuds) {
+            if (n->type() != TypeNoeud::ValeurAbsolue && n->type() != TypeNoeud::Signe) continue;
+            const ExprPtr& u = static_cast<const FonctionUnaire&>(*n).m_argument;
+            if (!u->contientVariable() || u->plusieursVariables()) continue;
+            const Racines& z = racines(u);
+            if (!z.fiable) continue;
+            for (double r : z.valeurs) {
+                if (interieur(r)) m_coupures.push_back(r);
+            }
+        }
+    }
 
     // Première variable rencontrée par le dernier appel de sur() (nulle s'il n'y en a pas)
     const ExprPtr& variable() const { return m_variable; }
@@ -372,6 +407,7 @@ private:
     double m_a, m_b, m_epsilon;
     bool m_ferme, m_bornesConnues;
     bool m_ok = true;
+    bool m_ruptures = false; // le dernier sur() a rencontré un abs ou un sign
     std::unordered_map<const ASTNode*, Racines> m_memo;
     std::vector<double> m_coupures;
     std::vector<ExprPtr> m_noeuds;
@@ -745,6 +781,7 @@ ResultatIntegrale calculer(const ExprPtr& f, ExprPtr a, ExprPtr b, double A, dou
         throw std::domain_error("integrerDefinie : integrale non calculable en exact et expression non evaluable "
                                 "numeriquement (parametre ou noeud non evalue)");
     }
+    if (fini) ouvert.ajouterRuptures(); // après l'échec du chemin exact : jamais payé quand il réussit
     const SortieQuadrature s = integrerNumerique(programme, A, B, ouvert.coupures(), options);
     r.valeur = inverse ? -s.valeur : s.valeur;
     r.erreurEstimee = s.erreur;
