@@ -94,6 +94,24 @@ TEST_CASE(table_racines_carrees) {
     verifier({"1/sqrt(x^2 - 1)", "ln(abs(x + (x^2 - 1)^(1/2)))", false, {-2.5, 1.5, 4.0}});
 }
 
+TEST_CASE(table_racine_a_coefficients_symboliques) {
+    // 1/sqrt(a x^2 + b x + c) avec un paramètre : le signe de a choisit la forme
+    const ExprPtr F = lire("1/(C1 - y^2)^(1/2)", OptionsLecture{"y"})->integrer();
+    CHECK_EQ(F->texte(), std::string("asin(2*y/(4*C1)^(1/2))"));
+    const ExprPtr G = lire("1/(y^2 + C1)^(1/2)", OptionsLecture{"y"})->integrer();
+    CHECK_EQ(G->texte(), std::string("ln(abs(2*y + 2*(y^2 + C1)^(1/2)))"));
+    // a symbolique : seulement quand le trinôme impose a > 0 (b = 0, c < 0)
+    CHECK(!contientIntegrale(lire("1/(C1*y^2 - 1)^(1/2)", OptionsLecture{"y"})->integrer()));
+    CHECK(contientIntegrale(lire("1/(C1*y^2 + 1)^(1/2)", OptionsLecture{"y"})->integrer()));
+    // Vérification numérique avec C1 = 3 : dérivée de la primitive = intégrande
+    for (const char* texte : {"1/(C1 - y^2)^(1/2)", "1/(y^2 + C1)^(1/2)", "1/(C1*y^2 - 1)^(1/2)", "1/(2*y^2 + C1*y + 1)^(1/2)"}) {
+        const ExprPtr f = lire(texte, OptionsLecture{"y"});
+        const ExprPtr d = substituer(f->integrer()->derivee(), param("C1"), cst(3.0));
+        const ExprPtr g = substituer(f, param("C1"), cst(3.0));
+        for (double y : {0.7, 1.1, 1.5}) CHECK_NEAR(d->eval(y), g->eval(y), 1e-10);
+    }
+}
+
 TEST_CASE(table_trigonometrique_hyperbolique) {
     verifier({"1/cos(x)^2", "tan(x)", false, {-1.0, 0.3, 2.0}});
     verifier({"1/sin(x)^2", "-cos(x)/sin(x)", false, {-1.0, 0.3, 2.0}});

@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "EDO.hpp"
 #include "ASTNode.hpp"
 #include "EquationClassique.hpp"
 #include "EquationDifferentielle.hpp"
@@ -595,6 +596,28 @@ static void BM_SymAlgo_Factorisation(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_SymAlgo_Factorisation);
+
+// ============================================================================
+// Tâche « équations différentielles non linéaires » : reconnaissance, résolution, réinjection
+// ============================================================================
+
+static void BM_SymAlgo_EDO_PremierOrdre(benchmark::State& state) {
+    const InconnuesEDO v;
+    const std::vector<ExprPtr> equations = {
+        v.dy + v.y / v.x - ast_pow(v.x, 2.0),                    // linéaire
+        v.dy + v.y / v.x - v.x * ast_pow(v.y, 2.0),              // Bernoulli
+        v.dy - (1.0 + ast_pow(v.y, 2.0)) * ast_exp(v.x),         // séparable
+        v.dy - (v.x + v.y) / (v.x - v.y),                        // homogène
+        (2.0 * v.x * v.y + 3.0) + (ast_pow(v.x, 2.0) + 4.0 * v.y) * v.dy, // exacte
+    };
+    for (auto _ : state) {
+        for (const ExprPtr& e : equations) {
+            SolutionsEDO s = resoudreEDO(e, v);
+            benchmark::DoNotOptimize(s);
+        }
+    }
+}
+BENCHMARK(BM_SymAlgo_EDO_PremierOrdre);
 
 // ============================================================================
 // Tâche « intégrale définie » : chemin exact, quadrature G7-K15, GiNaC (evalf)
